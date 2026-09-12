@@ -55,7 +55,12 @@ def process_telemetry(sample: TelemetryInput) -> dict:
             "policy": decision.model_dump(mode="json"),
         }
 
-    incident = vehicle_agent.create_incident(sample, prediction, decision)
+    incident = vehicle_agent.create_incident(
+        sample,
+        prediction,
+        decision,
+        window or [sample],
+    )
     return {
         "status": "incident_created",
         "vehicle_id": sample.vehicle_id,

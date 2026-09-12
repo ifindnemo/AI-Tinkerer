@@ -9,7 +9,19 @@ description: Chẩn đoán và định hướng sửa chữa hỗn hợp giàu/n
 
 Chuyên môn nạp khí, nhiên liệu, đốt cháy, làm mát và bôi trơn của động cơ xăng. Các thông số đo, điều kiện vận hành và kết quả đánh giá trạng thái đã sẵn sàng để chẩn đoán.
 
-Dùng các ngưỡng tham chiếu dưới đây để diễn giải số đo và chỉ số đã có. Các chỉ số dẫn xuất, quy đổi đơn vị, đánh giá xu hướng và thời gian duy trì do tool tính; sử dụng kết quả được trả về, không tự tính lại hoặc tự đặt thêm ngưỡng. Các mô tả “ổn định”, “dao động bất thường” và “kéo dài” theo kết quả đánh giá đúng động cơ và điều kiện đo.
+Dùng các ngưỡng tham chiếu dưới đây để diễn giải số đo và chỉ số đã có. Các chỉ số dẫn xuất, quy đổi và xu hướng do `diagnostic_metrics` service tính; sử dụng kết quả được cung cấp, không tự tính lại hoặc tự đặt thêm ngưỡng. Các mô tả “ổn định”, “dao động bất thường” và “kéo dài” theo kết quả đánh giá đúng động cơ và điều kiện đo.
+
+## Chỉ số do service cung cấp
+
+Đọc dữ liệu trong `diagnostic_metrics` theo các nhóm sau:
+
+- `snapshot.air_fuel`: Lambda, AFR, nguồn của từng giá trị và độ lệch tuyệt đối giữa AFR đo được với AFR quy đổi từ Lambda.
+- `snapshot.intake`: tỷ lệ `MAP/BARO` và chênh lệch `BARO - MAP`.
+- `snapshot.performance`: tỷ lệ công suất thực tế/kỳ vọng và tiêu hao thực tế/kỳ vọng.
+- `snapshot.temperature`: chênh lệch `ECT - IAT` và `EOT - ECT`.
+- `trends`: số mẫu, thời lượng, min, max, trung bình, độ lệch chuẩn, tổng thay đổi và độ dốc mỗi phút của từng tín hiệu có dữ liệu.
+
+Giá trị `null` nghĩa là không đủ đầu vào để tính. Các trường `source` phân biệt số đo trực tiếp với giá trị quy đổi; không xem hai giá trị cùng nguồn là hai bằng chứng độc lập. Service chỉ thực hiện phép tính trung lập, không xác nhận lỗi và không chọn phương án sửa chữa.
 
 Phân biệt trạng thái hỗn hợp với lỗi: hỗn hợp giàu hoặc nghèo chỉ trở thành dấu hiệu hư hỏng khi không phù hợp với chế độ vận hành. Kết luận linh kiện hỏng cần phép kiểm tra xác nhận.
 
@@ -43,7 +55,7 @@ Lambda stoichiometric là `1.00`. Bảng dưới giữ các mốc sàng lọc r�
 | Nghèo | `> 1.05` và `<= 1.10` | `> 15.435` và `<= 16.17` |
 | Nghèo rõ | `> 1.10` | `> 16.17` |
 
-Đọc Lambda/AFR đo được hoặc đã được tool quy đổi theo nhiên liệu. Không áp cột AFR này cho nhiên liệu có chuẩn stoichiometric khác. Không gán lỗi từ hướng giàu/nghèo trong chế độ làm giàu chủ động hoặc cắt nhiên liệu.
+Đọc Lambda/AFR đo được hoặc đã được service quy đổi theo nhiên liệu. Không áp cột AFR này cho nhiên liệu có chuẩn stoichiometric khác. Không gán lỗi từ hướng giàu/nghèo trong chế độ làm giàu chủ động hoặc cắt nhiên liệu.
 
 ### Điện áp O2 narrowband zirconia
 
@@ -67,25 +79,25 @@ Các mốc trên phân vùng điện áp; không phải điều kiện xác nh�
 
 Đây là khoảng điển hình tại không tải cho động cơ và xúc tác hoạt động bình thường, không phải bảng áp dụng cho mọi tải hoặc mẫu trước xúc tác. Giá trị ngoài khoảng cần đối chiếu hỗn hợp, xúc tác và điều kiện lấy mẫu. CO thấp hơn khoảng điển hình không tự biểu thị lỗi. [Walker — bảng chẩn đoán khí thải](https://www.walkerexhaust.com/support/tech-tips/five-gas-diagnostic-chart.html).
 
-### Đường nạp và các chỉ số đã được tool tính
+### Đường nạp và các chỉ số đã được service tính
 
 Các mốc trong bảng này là sàng lọc kinh nghiệm, chưa phải giới hạn đã hiệu chuẩn cho từng xe. Chỉ dùng trong điều kiện ghi kèm; giữ các ngoại lệ TPS–MAP ở mục đường nạp.
 
 | Chỉ số | Mốc tham chiếu | Điều kiện và ý nghĩa |
 |---|---|---|
 | RPM không tải | `600–1000 vòng/phút` | Khoảng thường gặp ở động cơ xăng đã nóng; tốc độ mục tiêu của xe có ưu tiên cao hơn |
-| MAP tương đối với BARO, do tool trả về dạng tỉ lệ | `0.25–0.45` | Khoảng gợi ý ở không tải đã nóng, động cơ hút khí tự nhiên |
-| MAP tương đối với BARO, do tool trả về dạng tỉ lệ | `> 0.55` ở không tải | Cần đối chiếu tải phụ, phối khí và bướm ga trước khi nghi đường nạp |
-| MAP tương đối với BARO, do tool trả về dạng tỉ lệ | `>= 0.85` khi mở hết ga | Có thể phù hợp động cơ hút khí tự nhiên; mở ga thêm không bắt buộc MAP tăng nhiều |
-| Công suất thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `>= 0.90` | Không ghi nhận hụt lớn theo mốc sàng lọc này; không xác nhận toàn bộ động cơ bình thường |
-| Công suất thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `>= 0.75` và `< 0.90` | Hụt vừa so với kỳ vọng cùng điều kiện |
-| Công suất thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `< 0.75` | Hụt rõ; cần phân biệt cháy kém, hạn chế nạp và điều khiển bảo vệ |
-| Tiêu hao thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `< 0.90` | Thấp hơn kỳ vọng; không tự kết luận nghèo |
-| Tiêu hao thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `>= 0.90` và `<= 1.10` | Gần mức kỳ vọng |
-| Tiêu hao thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `> 1.10` và `<= 1.25` | Cao hơn kỳ vọng |
-| Tiêu hao thực tế so với kỳ vọng, do tool trả về dạng tỉ lệ | `> 1.25` | Cao rõ so với kỳ vọng; không tự kết luận giàu |
+| MAP tương đối với BARO, do service trả về dạng tỉ lệ | `0.25–0.45` | Khoảng gợi ý ở không tải đã nóng, động cơ hút khí tự nhiên |
+| MAP tương đối với BARO, do service trả về dạng tỉ lệ | `> 0.55` ở không tải | Cần đối chiếu tải phụ, phối khí và bướm ga trước khi nghi đường nạp |
+| MAP tương đối với BARO, do service trả về dạng tỉ lệ | `>= 0.85` khi mở hết ga | Có thể phù hợp động cơ hút khí tự nhiên; mở ga thêm không bắt buộc MAP tăng nhiều |
+| Công suất thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `>= 0.90` | Không ghi nhận hụt lớn theo mốc sàng lọc này; không xác nhận toàn bộ động cơ bình thường |
+| Công suất thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `>= 0.75` và `< 0.90` | Hụt vừa so với kỳ vọng cùng điều kiện |
+| Công suất thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `< 0.75` | Hụt rõ; cần phân biệt cháy kém, hạn chế nạp và điều khiển bảo vệ |
+| Tiêu hao thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `< 0.90` | Thấp hơn kỳ vọng; không tự kết luận nghèo |
+| Tiêu hao thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `>= 0.90` và `<= 1.10` | Gần mức kỳ vọng |
+| Tiêu hao thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `> 1.10` và `<= 1.25` | Cao hơn kỳ vọng |
+| Tiêu hao thực tế so với kỳ vọng, do service trả về dạng tỉ lệ | `> 1.25` | Cao rõ so với kỳ vọng; không tự kết luận giàu |
 
-Các chỉ số tỉ lệ chỉ dùng khi tool xác định phép so sánh có ý nghĩa tại điều kiện đo. Không áp chúng cho trạng thái tool đánh dấu không áp dụng, như công suất kỳ vọng bằng không. Không tự đặt mốc sai lệch Lambda–AFR, độ tăng MAP theo TPS hoặc thời gian kẹt O2 để kết luận lỗi.
+Các chỉ số tỉ lệ chỉ dùng khi service có đủ đầu vào hợp lệ. Giá trị `null` là không áp dụng, chẳng hạn khi thiếu giá trị kỳ vọng. Không tự đặt mốc sai lệch Lambda–AFR, độ tăng MAP theo TPS hoặc thời gian kẹt O2 để kết luận lỗi.
 
 ### ECT và EOT
 
@@ -95,7 +107,7 @@ Các chỉ số tỉ lệ chỉ dùng khi tool xác định phép so sánh có �
 | EOT | Giới hạn nhiệt độ dầu của đúng động cơ và điều kiện tải | Không dùng ngưỡng ECT để đánh giá EOT |
 | EOT — ví dụ có phạm vi xác định | `80–120°C` cho các xe Audi 3.0 TFSI liệt kê trong TSB 2054893/3 | Khoảng nhiệt độ làm việc của nhóm xe đó; không phải ngưỡng quá nhiệt chung |
 
-Ví dụ EOT có nguồn: [Audi — TSB 2054893/3](https://static.nhtsa.gov/odi/tsbs/2020/MC-10178560-0001.pdf). Skill không đặt một con số cảnh báo ECT/EOT chung cho mọi xe. Xu hướng tăng nhiệt và chênh lệch dầu–nước dùng kết quả tool; không tự quy đổi hay tính lại.
+Ví dụ EOT có nguồn: [Audi — TSB 2054893/3](https://static.nhtsa.gov/odi/tsbs/2020/MC-10178560-0001.pdf). Skill không đặt một con số cảnh báo ECT/EOT chung cho mọi xe. Xu hướng tăng nhiệt và chênh lệch dầu–nước dùng kết quả service; không tự quy đổi hay tính lại.
 
 ## Điều kiện cần xét trước khi khoanh vùng
 

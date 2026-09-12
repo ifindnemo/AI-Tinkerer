@@ -14,6 +14,7 @@ from schemas import (
     PredictionResult,
     TelemetryInput,
 )
+from services import calculate_diagnostic_metrics
 from store import store
 
 
@@ -47,7 +48,11 @@ class VehicleAgent:
         )
 
     def _openai_analysis(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        samples: list[TelemetryInput],
     ) -> tuple[VehicleAnalysis, list[dict[str, Any]]]:
         context = VehicleToolContext(
             vehicle_id=sample.vehicle_id,
@@ -58,6 +63,7 @@ class VehicleAgent:
             "telemetry": sample.model_dump(mode="json"),
             "prediction": prediction.model_dump(mode="json"),
             "policy": decision.model_dump(mode="json"),
+            "diagnostic_metrics": calculate_diagnostic_metrics(samples),
         }
         result = Runner.run_sync(
             self.agent,
@@ -70,13 +76,22 @@ class VehicleAgent:
         return result.final_output, context.trace
 
     def create_incident(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        samples: list[TelemetryInput] | None = None,
     ) -> dict[str, Any]:
         existing = store.get_open_incident(sample.vehicle_id)
         if existing:
             return existing
 
-        analysis, trace = self._openai_analysis(sample, prediction, decision)
+        analysis, trace = self._openai_analysis(
+            sample,
+            prediction,
+            decision,
+            samples or [sample],
+        )
 
         return store.create_incident(
             vehicle_id=sample.vehicle_id,

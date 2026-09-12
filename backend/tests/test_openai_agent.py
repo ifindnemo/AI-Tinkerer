@@ -70,7 +70,9 @@ def test_openai_analysis_uses_runner_and_collects_tool_trace(monkeypatch) -> Non
     def fake_run_sync(agent, input_text, *, context, max_turns):
         assert agent.name == "Vehicle Guardian"
         assert max_turns == 6
-        assert json.loads(input_text)["telemetry"]["vehicle_id"] == "VF-DEMO-001"
+        payload = json.loads(input_text)
+        assert payload["telemetry"]["vehicle_id"] == "VF-DEMO-001"
+        assert payload["diagnostic_metrics"]["window"]["sample_count"] == 1
         context.trace.extend(
             [
                 {"tool": "get_maintenance_history", "arguments": {}, "result": {}},
@@ -100,7 +102,7 @@ def test_openai_analysis_uses_runner_and_collects_tool_trace(monkeypatch) -> Non
     )
 
     analysis, trace = orchestrator.vehicle_agent._openai_analysis(
-        _sample(), prediction, decision
+        _sample(), prediction, decision, [_sample()]
     )
 
     assert analysis.diagnosis == "Kết quả kiểm thử"

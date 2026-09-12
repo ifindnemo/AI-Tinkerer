@@ -21,6 +21,25 @@ class TelemetryInput(BaseModel):
     intake_air_temp: float = Field(ge=-40, le=100)
     engine_load: float = Field(ge=0, le=100)
     battery_voltage: float = Field(ge=0, le=30)
+    map_kpa: float | None = Field(default=None, ge=0)
+    baro_kpa: float | None = Field(default=None, gt=0)
+    tps_percent: float | None = Field(default=None, ge=0, le=100)
+    lambda_value: float | None = Field(default=None, gt=0)
+    afr: float | None = Field(default=None, gt=0)
+    stoichiometric_afr: float | None = Field(default=None, gt=0)
+    o2_narrowband_voltage: float | None = Field(default=None, ge=0)
+    exhaust_o2_percent: float | None = Field(default=None, ge=0, le=100)
+    co_percent: float | None = Field(default=None, ge=0, le=100)
+    hc_ppm: float | None = Field(default=None, ge=0)
+    co2_percent: float | None = Field(default=None, ge=0, le=100)
+    engine_oil_temp_c: float | None = Field(default=None, ge=-40, le=250)
+    engine_power_kw: float | None = Field(default=None, ge=0)
+    expected_power_kw: float | None = Field(default=None, gt=0)
+    fuel_consumption_l_per_100km: float | None = Field(default=None, ge=0)
+    expected_fuel_consumption_l_per_100km: float | None = Field(
+        default=None,
+        gt=0,
+    )
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
 
