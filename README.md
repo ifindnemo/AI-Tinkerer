@@ -1,6 +1,6 @@
-# AutoLink Garage
+# Car Neuron
 
-AutoLink Garage is a frontend prototype for exploring vehicle health through an interactive 3D car and simulated blackbox data.
+Car Neuron is a frontend prototype for exploring vehicle health through an interactive 3D car and simulated blackbox data.
 
 Built with Next.js, React, TypeScript, and Three.js, it features a local BMW M2 model, adjustable camera views, and clickable sensor hotspots. Mock analysis compares vehicle temperatures with environmental conditions to explain potential overheating and suggest next steps.
 
