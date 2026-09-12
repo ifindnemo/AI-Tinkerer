@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from agents import RunContextWrapper, function_tool
 
+from .environment_context import get_external_environment_context_data
 from .garage_search import search_nearby_garages
 from .maintenance_history import get_maintenance_history
 
@@ -49,6 +50,31 @@ def get_maintenance_history_tool(
     )
 
 
+@function_tool(name_override="get_external_environment_context")
+def get_external_environment_context_tool(
+    wrapper: RunContextWrapper[VehicleToolContext],
+) -> str:
+    """Return outside temperature at the final coordinate of the telemetry batch."""
+    latitude = wrapper.context.latitude
+    longitude = wrapper.context.longitude
+    if latitude is None or longitude is None:
+        return _run_and_trace(
+            wrapper,
+            "get_external_environment_context",
+            {},
+            lambda: _raise_missing_gps(),
+        )
+    return _run_and_trace(
+        wrapper,
+        "get_external_environment_context",
+        {},
+        lambda: get_external_environment_context_data(
+            latitude,
+            longitude,
+        ).model_dump(mode="json"),
+    )
+
+
 @function_tool(name_override="search_nearby_garages")
 def search_nearby_garages_tool(
     wrapper: RunContextWrapper[VehicleToolContext],
@@ -82,6 +108,7 @@ def _raise_missing_gps() -> dict[str, Any]:
 
 
 VEHICLE_READ_TOOLS = [
+    get_external_environment_context_tool,
     get_maintenance_history_tool,
     search_nearby_garages_tool,
 ]

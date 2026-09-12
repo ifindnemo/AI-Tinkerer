@@ -1,9 +1,8 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
@@ -176,61 +175,3 @@ def create_google_calendar_event(
     )
     _raise_for_status(response, "Google Calendar rejected the new event")
     return _event_result(response.json(), event)
-
-
-def update_google_calendar_event(
-    event_id: str,
-    summary: str,
-    start_time: str,
-    end_time: str,
-    time_zone: str,
-    description: str | None,
-    location: str | None,
-) -> dict[str, Any]:
-    """Update a Google Calendar event after the caller confirms the action."""
-    event = _event_payload(
-        summary, start_time, end_time, time_zone, description, location
-    )
-    response = httpx.patch(
-        _event_url(event_id),
-        headers=_authorization_headers(),
-        params={"sendUpdates": "all"},
-        json=event,
-        timeout=20,
-    )
-    _raise_for_status(response, "Google Calendar rejected the event update")
-    return _event_result(response.json(), event)
-
-
-def delete_google_calendar_event(event_id: str) -> dict[str, Any]:
-    """Delete a Google Calendar event after the caller confirms the action."""
-    response = httpx.delete(
-        _event_url(event_id),
-        headers=_authorization_headers(),
-        params={"sendUpdates": "all"},
-        timeout=20,
-    )
-    _raise_for_status(response, "Google Calendar rejected the event deletion")
-    return {"event_id": event_id, "status": "deleted"}
-
-
-if __name__ == "__main__":
-    day = "2026-09-19"
-    start = datetime.strptime(day, "%Y-%m-%d").replace(
-        hour=9,
-        minute=0,
-        tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"),
-    )
-    end = start + timedelta(hours=1)
-    try:
-        event = create_google_calendar_event(
-            summary="Lịch bảo trì xe",
-            start_time=start.isoformat(timespec="seconds"),
-            end_time=end.isoformat(timespec="seconds"),
-            time_zone="Asia/Ho_Chi_Minh",
-            description="Sự kiện kiểm thử tích hợp Vehicle Guardian.",
-            location="Garage thử nghiệm",
-        )
-        print("Event created:", event)
-    except Exception as error:
-        print("Error:", error)

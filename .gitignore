@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+credentials.json
+client_secret_*.json
+token.json
+backend/data/private/
+backend/vehicle_guardian.db
