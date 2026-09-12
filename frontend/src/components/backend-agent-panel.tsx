@@ -1,5 +1,5 @@
 "use client";
-import {Activity,ArrowRight,Check,Clock3,History,LoaderCircle,Radio,ShieldCheck,Sparkles,TriangleAlert,WifiOff} from 'lucide-react';
+import {Activity,ArrowRight,Check,Clock3,ExternalLink,History,LoaderCircle,MapPin,Radio,ShieldCheck,Sparkles,TriangleAlert,WifiOff} from 'lucide-react';
 import type {BackendState} from '@/lib/backend/contract';
 import type {BlackboxTransfer} from '@/lib/blackbox/types';
 const time=(value:string)=>new Date(value).toLocaleTimeString('vi-VN');
@@ -7,6 +7,7 @@ export default function BackendAgentPanel({state,transfer,connected,onInject,onV
  const {reply,incident}=state;const busy=state.phase==='sending';const a=reply?.latest.assessment;
  const severity=a?.severity??'normal';const phase=!connected?'paused':state.phase;
  const environment=reply?.latest.tool_trace.find(t=>t.tool==='get_external_environment_context')?.result;
+ const nearbyGarages=reply?.latest.tool_trace.find(t=>t.tool==='search_nearby_garages')?.result.options??[];
  const status=!connected?'Blackbox ngoại tuyến':busy?'Agent đang phân tích 15 mẫu':phase==='error'?'Chưa nhận được kết quả':reply?'Đã nhận nhận định từ agent':'Đang thu thập dữ liệu';
  return <section className={`safety-agent-panel periodic-agent backend-agent severity-${severity}`} aria-label="Vehicle Safety Agent">
   <header className="periodic-agent-heading"><span className="periodic-agent-avatar"><Sparkles size={22}/></span><div><span className="section-kicker">ĐỒNG HÀNH CÙNG CHIẾC XE</span><h2>Car Neuron Agent</h2></div><span className="agent-demo-badge">API</span></header>
@@ -21,6 +22,7 @@ export default function BackendAgentPanel({state,transfer,connected,onInject,onV
     <p>{a.diagnosis}</p>
     {reply.incident&&<small data-testid="backend-incident" data-incident-id={reply.incident.id}>Sự cố: {reply.incident.id}</small>}
     <div className="agent-recommendations"><h4>Đề xuất cho bạn</h4>{a.recommendations.map((text,i)=><div className="agent-recommendation" key={i}><span>{i+1}</span><p>{text}</p></div>)}</div>
+    {nearbyGarages.length>0&&<section className="backend-nearby-garages" data-testid="backend-nearby-garages" aria-label="Garage gần xe"><div className="nearby-garages-heading"><div><h4><MapPin size={14}/>Garage gần xe</h4><p>Trong bán kính 5 km · chỉ dẫn tham khảo, không đặt lịch</p></div><span>{nearbyGarages.length} địa điểm</span></div><ol>{nearbyGarages.map((garage,index)=>{const safeUrl=garage.osm_url&&/^https:\/\/www\.openstreetmap\.org\//.test(garage.osm_url)?garage.osm_url:null;return <li key={garage.place_id||`${garage.latitude}-${garage.longitude}`}><span className="garage-rank">{index+1}</span><div><strong>{garage.name}</strong>{garage.address&&<small>{garage.address}</small>}<b>{garage.distance_km.toLocaleString('vi-VN')} km</b></div>{safeUrl&&<a href={safeUrl} target="_blank" rel="noreferrer" aria-label={`Mở ${garage.name} trên bản đồ`}><ExternalLink size={14}/></a>}</li>})}</ol><small className="garage-provider">Dữ liệu LocationIQ và OpenStreetMap</small></section>}
     {environment?.success&&environment.data&&<dl className="agent-observations"><div><dt>Ngoài trời · Open-Meteo</dt><dd>{environment.data.outside_temperature_c}°C</dd></div><div><dt>Quan sát lúc</dt><dd>{time(environment.data.observed_at)}</dd></div></dl>}
     <details><summary>Cơ sở & mức độ chắc chắn</summary><p>Độ tin cậy do agent tự đánh giá: {Math.round(a.confidence*100)}% · chưa hiệu chuẩn.</p><ul>{a.evidence.map((text,i)=><li key={i}>{text}</li>)}</ul>{a.suspected_faults.length>0&&<p>Khả năng cần kiểm tra: {a.suspected_faults.join('; ')}.</p>}{a.missing_data.length>0&&<p>Dữ liệu còn thiếu: {a.missing_data.join('; ')}.</p>}</details>
     <footer><Check size={12}/>{reply.accepted}/15 mẫu · Phản hồi trực tiếp từ backend</footer>

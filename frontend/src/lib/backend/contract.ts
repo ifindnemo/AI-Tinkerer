@@ -1,7 +1,7 @@
 import type {BlackboxBatch,BlackboxRecord} from '../blackbox/types';
 export type Severity='normal'|'warning'|'critical';
 export type Assessment={severity:Severity;diagnosis:string;suspected_faults:string[];evidence:string[];confidence:number;missing_data:string[];recommendations:string[]};
-export type GarageOption={place_id:string;name:string;address?:string;latitude:number;longitude:number;distance_km:number};
+export type GarageOption={place_id:string;name:string;address?:string;latitude:number;longitude:number;distance_km:number;distance_meters?:number;osm_url?:string};
 export type ToolTrace={tool:string;result:{options?:GarageOption[];error?:unknown;success?:boolean;source?:string;data?:{outside_temperature_c:number;observed_at:string;latitude:number;longitude:number;weather_grid_distance_km:number}}};
 export type Incident={id:string;vehicle_id:string;severity:Severity;status:string;diagnosis:string;assessment:Assessment;reasons:string[];recommendations:string[];created_at:string;tool_trace:ToolTrace[]};
 export type AgentReply={status:'normal'|'incident_created';vehicle_id:string;batch_id:string;accepted_records:number;assessment:Assessment;hard_safety_guardrail:{triggered:boolean;minimum_severity:Severity;reasons:string[]};tool_trace:ToolTrace[];incident?:Incident;memory:{id:string;status:string;expires_at:string}|null;sanitization:{removed_fields:string[];removed_values:number}};

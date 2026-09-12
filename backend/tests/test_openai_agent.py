@@ -126,13 +126,19 @@ def test_agent_receives_batch_safety_and_short_term_memory(monkeypatch) -> None:
 
 
 def test_hard_safety_guardrail_cannot_be_downgraded(monkeypatch) -> None:
+    garage_calls = []
     monkeypatch.setattr(
         orchestrator.Runner,
         "run_sync",
         lambda *args, **kwargs: SimpleNamespace(final_output=_normal_assessment()),
     )
+    monkeypatch.setattr(
+        orchestrator,
+        "search_nearby_garages",
+        lambda **kwargs: garage_calls.append(kwargs) or {"options": []},
+    )
 
-    assessment, _, safety = orchestrator.vehicle_agent._run_analysis(
+    assessment, trace, safety = orchestrator.vehicle_agent._run_analysis(
         _telemetry_context(coolant=125),
         None,
     )
@@ -140,3 +146,38 @@ def test_hard_safety_guardrail_cannot_be_downgraded(monkeypatch) -> None:
     assert safety["minimum_severity"] == "critical"
     assert assessment.severity == Severity.CRITICAL
     assert assessment.recommendations[0].startswith("Dừng xe")
+    assert garage_calls == [
+        {
+            "latitude": 10.7769,
+            "longitude": 106.7009,
+            "radius_meters": 5_000,
+            "max_results": 5,
+        }
+    ]
+    assert trace[-1]["tool"] == "search_nearby_garages"
+
+
+def test_existing_agent_garage_lookup_is_not_duplicated(monkeypatch) -> None:
+    warning = _normal_assessment().model_copy(
+        update={"severity": Severity.WARNING}
+    )
+
+    def fake_run_sync(*args, context, **kwargs):
+        context.trace.append(
+            {"tool": "search_nearby_garages", "arguments": {}, "result": {}}
+        )
+        return SimpleNamespace(final_output=warning)
+
+    monkeypatch.setattr(orchestrator.Runner, "run_sync", fake_run_sync)
+    monkeypatch.setattr(
+        orchestrator,
+        "search_nearby_garages",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("duplicate lookup")),
+    )
+
+    _, trace, _ = orchestrator.vehicle_agent._run_analysis(
+        _telemetry_context(),
+        None,
+    )
+
+    assert [item["tool"] for item in trace].count("search_nearby_garages") == 1

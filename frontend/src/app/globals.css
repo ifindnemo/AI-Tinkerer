@@ -3187,3 +3187,18 @@ td:last-child {
 .backend-agent .agent-recommendation p { margin: 0; }
 .backend-agent .agent-response details { font-size: 12px; line-height: 1.6; margin-top: 14px; }
 .backend-open-note { display: block; line-height: 1.6; padding: 10px 0; color: #a13434; }
+.backend-nearby-garages { margin: 16px 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.nearby-garages-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.nearby-garages-heading h4 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11px; }
+.nearby-garages-heading p, .nearby-garages-heading > span, .garage-provider { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.nearby-garages-heading p { margin: 4px 0 0; }
+.nearby-garages-heading > span { white-space: nowrap; }
+.backend-nearby-garages ol { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
+.backend-nearby-garages li { display: grid; grid-template-columns: 22px minmax(0,1fr) 24px; align-items: center; gap: 8px; padding: 9px; border-radius: 8px; background: var(--bg); }
+.garage-rank { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: 650; }
+.backend-nearby-garages li strong, .backend-nearby-garages li small, .backend-nearby-garages li b { display: block; }
+.backend-nearby-garages li strong { font-size: 10px; line-height: 1.4; }
+.backend-nearby-garages li small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.backend-nearby-garages li b { margin-top: 4px; color: var(--accent); font-size: 9px; font-weight: 600; }
+.backend-nearby-garages li a { display: grid; place-items: center; width: 24px; height: 24px; color: var(--accent); border: 1px solid var(--border); border-radius: 6px; }
+.garage-provider { display: block; margin-top: 9px; }

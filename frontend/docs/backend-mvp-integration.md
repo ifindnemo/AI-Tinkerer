@@ -27,6 +27,7 @@ Next.js defaults to `http://127.0.0.1:8000`; optional server-only `BACKEND_URL` 
 - The payload remains the sensor-only blackbox schema (`schemaVersion`, `batchId`, `vehicleId`, `source`, `sampleIntervalMs`, `recordCount`, `records`). Raw units stay raw; no unit reinterpretation or frontend weather/diagnosis is inserted.
 - Backend validates records, strips `fault` before agent input, evaluates deterministic safety guardrails, and calls the agent with short-term incident memory. The old ML/sliding-window stage has been removed by the backend team.
 - The frontend displays the returned `assessment` (severity, diagnosis, evidence, suspected faults, confidence, missing data, recommendations), tool weather, incident identity and memory context. Confidence is the agent's self-assessment, not a calibrated probability or health score.
+- For every final `warning` or `critical` assessment with valid GPS, the backend ensures one LocationIQ garage lookup within 5 km even when the model did not request the tool. The frontend shows the returned locations ordered by distance with OpenStreetMap links; it does not offer booking.
 - Readings continue while the agent works. If a call exceeds 15 seconds, the frontend skips completed batches while busy, reports the count, and resumes at the next full batch. Reply timing therefore includes backend/AI latency. It does not send overlapping requests or accumulate a backlog.
 - Offline/scenario change/disposal invalidates pending UI responses. Already accepted backend work cannot be undone by cancelling a browser request. A failed POST is not automatically replayed; the next fresh batch may be sent normally.
 
@@ -34,7 +35,7 @@ The gateway is only a same-origin local adapter (no CORS changes or browser API 
 
 ## MVP scope
 
-Appointment booking and reminders are intentionally omitted from the frontend MVP. The backend action endpoints remain owned by the backend team, but the Next.js gateway does not expose them and the dashboard does not call them. Google OAuth is not required for the current telemetry and assessment flow.
+Appointment booking and reminders are intentionally omitted from the frontend MVP. Nearby garages are informational only. The backend action endpoints remain owned by the backend team, but the Next.js gateway does not expose them and the dashboard does not call them. Google OAuth is not required for the current telemetry and assessment flow.
 
 ## Verification
 

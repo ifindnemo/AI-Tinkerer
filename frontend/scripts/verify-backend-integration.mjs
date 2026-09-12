@@ -15,9 +15,11 @@ try{
  await page.waitForFunction(previous=>document.querySelector('[data-testid="backend-response"]')?.getAttribute('data-batch-id')!==previous,id,{timeout:145000});
  await page.getByTestId('backend-incident').waitFor({timeout:145000});
  assert.match(await page.getByTestId('backend-incident').innerText(),/Sự cố:/);
+ await page.getByTestId('backend-nearby-garages').waitFor({timeout:30000});
+ assert(await page.getByTestId('backend-nearby-garages').locator('li').count()>0);
  await page.screenshot({path:'docs/screenshots/backend-agent-live.png',fullPage:true});
  await page.getByLabel('Kịch bản mô phỏng').selectOption('offline');const count=batches.length;await page.waitForTimeout(1300);assert.equal(batches.length,count);assert.equal(await page.getByTestId('backend-agent-phase').getAttribute('data-phase'),'paused');
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.screenshot({path:'docs/screenshots/backend-mobile.png',fullPage:true});
- assert.deepEqual(errors,[]);console.log('PASS live backend batch, normal result, real incident response, offline, mobile and hydration.');
+ assert.deepEqual(errors,[]);console.log('PASS live backend batch, normal result, real incident response with nearby garages, offline, mobile and hydration.');
 }finally{await browser.close();}

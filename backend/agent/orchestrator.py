@@ -7,6 +7,7 @@ from agents import Agent, ModelSettings, Runner
 
 from agent.prompt import build_agent_instructions
 from agent.safety import evaluate_hard_safety
+from agent.tools.garage_search import search_nearby_garages
 from agent.tools import (
     VEHICLE_READ_TOOLS,
     VehicleToolContext,
@@ -97,7 +98,46 @@ class VehicleAgent:
         if not isinstance(result.final_output, VehicleAssessment):
             raise RuntimeError("OpenAI agent returned an invalid vehicle assessment")
         assessment = self._enforce_safety_floor(result.final_output, safety)
+        self._ensure_nearby_garages(assessment, telemetry_context, context.trace)
         return assessment, context.trace, safety.model_dump(mode="json")
+
+    @staticmethod
+    def _ensure_nearby_garages(
+        assessment: VehicleAssessment,
+        telemetry_context: dict[str, Any],
+        trace: list[dict[str, Any]],
+    ) -> None:
+        """Always attempt a nearby-garage lookup for a final warning or critical result."""
+        if assessment.severity == Severity.NORMAL or any(
+            item.get("tool") == "search_nearby_garages" for item in trace
+        ):
+            return
+
+        location = telemetry_context.get("current_location") or {}
+        latitude = location.get("latitude")
+        longitude = location.get("longitude")
+        if not isinstance(latitude, (int, float)) or not isinstance(
+            longitude, (int, float)
+        ):
+            return
+
+        arguments = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_meters": 5_000,
+            "max_results": 5,
+        }
+        try:
+            result = search_nearby_garages(**arguments)
+        except Exception as error:
+            result = {"error": str(error)}
+        trace.append(
+            {
+                "tool": "search_nearby_garages",
+                "arguments": arguments,
+                "result": result,
+            }
+        )
 
     def analyze_telemetry_context(
         self,
