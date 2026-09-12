@@ -6,9 +6,7 @@ import Image from "next/image";
 import { useVehicleSession } from "@/hooks/use-vehicle-session";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
-import ServicePlanner from "./service-planner";
 import BackendAgentPanel from "./backend-agent-panel";
-import BackendServicePlanner from "./backend-service-planner";
 import VehicleLibrary from "./vehicle-library";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
@@ -323,7 +321,6 @@ export default function Garage() {
                 </div>
                 <div className="health-actions">
                   <button className="outline-button" disabled={busy} onClick={runAnalysis}>Kiểm tra xe <ArrowRight size={16} /></button>
-                  {result && result.severity !== "good" && <button className="outline-button booking-shortcut" onClick={() => {const target=document.getElementById("service-planner");target?.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",block:"start"});target?.focus({preventScroll:true});}}>Đặt lịch kiểm tra <ArrowRight size={16} /></button>}
                 </div>
               </section>
               <div className="live-vehicle-strip" aria-label="Trạng thái luồng dữ liệu">
@@ -550,7 +547,6 @@ export default function Garage() {
                   </div>
                 )}
               </section>
-              {backend ? <BackendServicePlanner incident={backend.incident} /> : <ServicePlanner analysis={busy ? null : result} vehicleId={vehicle.id} urgent={!!incident && incident.status !== "RESOLVED"} />}
             </>
           )}
           {tab === "telemetry" && (

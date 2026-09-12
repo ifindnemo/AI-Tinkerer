@@ -3047,7 +3047,6 @@ td:last-child {
 .health-overview.critical { background: linear-gradient(115deg, #fff0ed, var(--surface) 85%); border-color: #e5a099; border-left: 4px solid #ce3c32; }
 .health-overview.critical h2 { color: #a62924; }
 .health-actions { display: flex; flex-direction: column; gap: 8px; }
-.health-actions .booking-shortcut { border-color: var(--accent); color: var(--accent); }
 .metric-card.danger { background: #fff0ed; border-color: #e99b91; box-shadow: inset 0 3px #d33d31; }
 .metric-card.danger .metric-label, .metric-card.danger .metric-value, .metric-card.danger .metric-value small, .metric-card.danger .metric-sub, .metric-card.danger .sparkline { color: #b32f26; }
 .metric-card.danger .tiny-dot { background: #c8372b; }
@@ -3188,23 +3187,3 @@ td:last-child {
 .backend-agent .agent-recommendation p { margin: 0; }
 .backend-agent .agent-response details { font-size: 12px; line-height: 1.6; margin-top: 14px; }
 .backend-open-note { display: block; line-height: 1.6; padding: 10px 0; color: #a13434; }
-.backend-service { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 26px; margin: 22px 0; scroll-margin-top: 100px; }
-.backend-service h3 { display: flex; align-items: center; gap: 10px; font-size: 17px; margin: 0 0 14px; }
-.backend-service > p { color: var(--muted); font-size: 13px; line-height: 1.7; }
-.backend-service .backend-urgent { color: #b33333; display: flex; gap: 8px; }
-.backend-action-tabs, .backend-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
-.backend-action-tabs button { padding: 10px 16px; border-radius: 20px; border: 1px solid var(--border); }
-.backend-action-tabs button[aria-pressed="true"] { background: var(--accent); color: white; }
-.backend-garages { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,240px),1fr)); gap: 10px; margin: 15px 0; }
-.backend-garages label { display: flex; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
-.backend-garages small { display: block; margin-top: 5px; line-height: 1.6; color: var(--muted); }
-.backend-garages label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.backend-date { display: grid; gap: 8px; width: min(100%,320px); font-size: 13px; margin: 18px 0; }
-.backend-date input { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); min-width: 0; }
-.backend-review { border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-top: 18px; }
-.backend-review dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.backend-review dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
-.backend-consent { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.7; margin: 18px 0; }
-.backend-consent input { margin-top: 4px; accent-color: var(--accent); }
-.backend-receipt { display: flex; gap: 15px; padding: 20px; color: var(--accent); border: 1px solid var(--border); border-radius: 12px; }
-@media(max-width:600px) { .backend-service { padding: 18px; } .backend-actions button { width: 100%; justify-content: center; } }

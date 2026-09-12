@@ -6,8 +6,6 @@ export type ToolTrace={tool:string;result:{options?:GarageOption[];error?:unknow
 export type Incident={id:string;vehicle_id:string;severity:Severity;status:string;diagnosis:string;assessment:Assessment;reasons:string[];recommendations:string[];created_at:string;tool_trace:ToolTrace[]};
 export type AgentReply={status:'normal'|'incident_created';vehicle_id:string;batch_id:string;accepted_records:number;assessment:Assessment;hard_safety_guardrail:{triggered:boolean;minimum_severity:Severity;reasons:string[]};tool_trace:ToolTrace[];incident?:Incident;memory:{id:string;status:string;expires_at:string}|null;sanitization:{removed_fields:string[];removed_values:number}};
 export type BatchReply={batchId:string;vehicleId:string;accepted:number;completedAt:string;latest:AgentReply;incident:Incident|null};
-export type PendingAction={id:string;incident_id:string;action_type:'book_appointment'|'remind_later';payload:{garage_id?:string;slot?:string;scheduled_for?:string};status:string};
-export type PreparedAction={requires_confirmation:boolean;pending_action?:PendingAction};
 export type BackendState={phase:'collecting'|'sending'|'ready'|'error'|'paused';api:'checking'|'online'|'offline';error:string;reply:BatchReply|null;incident:Incident|null;history:BatchReply[];skipped:number};
 export const initialBackendState=():BackendState=>({phase:'collecting',api:'checking',error:'',reply:null,incident:null,history:[],skipped:0});
 const finite=(v:unknown,low:number,high:number):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=low&&v<=high;

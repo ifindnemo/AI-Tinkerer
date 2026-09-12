@@ -3,14 +3,13 @@ export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 async function handle(request:Request,context:Context){
   const path=(await context.params).path.join('/');
-  const allowed=request.method==='GET'?/^(health|incidents\/inc_[\w-]+(?:\/memory)?)$/.test(path):/^incidents\/inc_[\w-]+\/(action|confirm)$/.test(path);
+  const allowed=request.method==='GET'&&/^(health|incidents\/inc_[\w-]+(?:\/memory)?)$/.test(path);
   if(!allowed)return Response.json({error:'Endpoint không được hỗ trợ.'},{status:404});
   if(!sameOrigin(request))return Response.json({error:'Origin không hợp lệ.'},{status:403});
   try{
-    const body=request.method==='POST'?await request.json():undefined;
-    const response=await upstream(path==='health'?'/health':`/api/${path}`,body);
+    const response=await upstream(path==='health'?'/health':`/api/${path}`);
     if(!response.ok)return Response.json({error:safeApiError(response.status)},{status:response.status});
     return Response.json(publicPayload(await response.json()));
-  }catch{return Response.json({error:'Không kết nối được backend hoặc yêu cầu đã hết thời gian. Chưa xác định kết quả hành động; không tự gửi lại.'},{status:502});}
+  }catch{return Response.json({error:'Không kết nối được backend hoặc yêu cầu đã hết thời gian.'},{status:502});}
 }
-export const GET=handle;export const POST=handle;
+export const GET=handle;

@@ -32,25 +32,12 @@ Next.js defaults to `http://127.0.0.1:8000`; optional server-only `BACKEND_URL` 
 
 The gateway is only a same-origin local adapter (no CORS changes or browser API keys). It validates the batch and caches a small number of identical submissions in memory. No accounts, deployment stack, background queues or production infrastructure were added.
 
-## Confirmed actions
+## MVP scope
 
-The frontend uses the new backend's existing API unchanged:
-
-- `POST /api/incidents/{id}/action` prepares `book_appointment` or `remind_later`.
-- The frontend renders the returned pending payload and requires a checkbox plus a separate final confirmation click.
-- `POST /api/incidents/{id}/confirm` executes the pending ID.
-- Booking now creates a one-hour Google Calendar event and then stores the appointment. The result includes `calendar_event`; the UI can open its returned Google Calendar link. This is not confirmation of availability by the garage.
-- Reminder currently stores a database record; it does not imply scheduled notification delivery.
-- Garage choices come only from the agent's returned `search_nearby_garages` trace. The old standalone `find_garage` action is no longer supported and has been removed from the connected UI.
-
-The current backend has no pending-action status endpoint. The earlier temporary frontend-integration additions to Python were set aside before merging main and were not reapplied. On an uncertain confirmation outcome the frontend blocks automatic retry, including after reload, and asks the user to check Calendar/backend rather than risking duplicate writes. Unconfirmed review state stays in memory; editing clears consent. This is deliberately limited to the single-user demo.
-
-## Google Calendar configuration
-
-The backend uses its OAuth credential loader: configure `GOOGLE_CALENDAR_CREDENTIALS_FILE` or provide the expected `client_secret_*.json`, then authorize the account. A saved `backend/token.json` is used for refreshes. The standalone `GOOGLE_CALENDAR_ACCESS_TOKEN` variable is not consumed by this backend implementation. Keep all these files out of Git.
+Appointment booking and reminders are intentionally omitted from the frontend MVP. The backend action endpoints remain owned by the backend team, but the Next.js gateway does not expose them and the dashboard does not call them. Google OAuth is not required for the current telemetry and assessment flow.
 
 ## Verification
 
 - Frontend tests cover preservation of raw units, sensor whitelisting, invalid records, one native batch request, duplicate handling, visible failures and mismatched reply identities.
 - Run backend tests from `backend/` with `python -m pytest tests -q`.
-- `node scripts/verify-backend-integration.mjs` uses the real local batch/agent API and checks desktop/mobile, offline behavior and hydration. Booking POSTs are intercepted in that browser test; no real Calendar event is created.
+- `node scripts/verify-backend-integration.mjs` uses the real local batch/agent API and checks normal and overheating assessments, desktop/mobile layout, offline behavior and hydration.
