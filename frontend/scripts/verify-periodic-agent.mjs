@@ -1,0 +1,55 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({args:['--no-sandbox','--enable-gpu','--use-gl=angle','--use-angle=gl']});
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1080}});const errors=[],posts=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ page.on('console',m=>{if(/hydrat|server rendered HTML/i.test(m.text()))errors.push(m.text());});
+ page.on('request',r=>{if(r.method()==='POST')posts.push(r.url());});
+ await page.goto(process.env.BASE_URL||'http://localhost:3000');
+ await page.getByRole('heading',{name:'Car Neuron Agent',exact:true}).waitFor();
+ await page.getByTestId('periodic-agent-phase').waitFor();
+ await page.evaluate(()=>{
+   window.agentPhases=[];
+   const phase=document.querySelector('[data-testid="periodic-agent-phase"]');
+   const record=()=>window.agentPhases.push(phase?.getAttribute('data-phase'));
+   new MutationObserver(record).observe(phase,{attributes:true,attributeFilter:['data-phase']});record();
+ });
+ await page.getByTestId('periodic-agent-phase').filter({hasText:'Đang thu thập'}).waitFor();
+ assert.equal(await page.getByTestId('agent-response').count(),0,'no reply before the first complete batch');
+ await page.waitForSelector('canvas[data-loaded="true"]',{timeout:60000});
+ await page.screenshot({path:'docs/screenshots/agent-collecting.png',fullPage:true});
+ await page.waitForSelector('[data-phase="ready"]',{timeout:25000});
+ assert(await page.evaluate(()=>window.agentPhases.includes('sending')&&window.agentPhases.includes('analyzing')));
+ const response=page.getByTestId('agent-response');const first=await response.getAttribute('data-response-id');
+ const firstTime=await page.getByTestId('agent-response-time').getAttribute('datetime');
+ assert.match(await response.innerText(),/vận hành ổn định/);
+ assert.equal(await page.locator('.agent-recommendation').count(),2);
+ await page.waitForTimeout(2100);
+ assert.equal(await response.getAttribute('data-response-id'),first,'one-second sensor packets must not replace the reply');
+ await page.screenshot({path:'docs/screenshots/agent-periodic-response.png',fullPage:true});
+ await page.waitForFunction(id=>document.querySelector('[data-testid="agent-response"]')?.getAttribute('data-response-id')!==id,first,{timeout:18000});
+ const second=await response.getAttribute('data-response-id');
+ const secondTime=await page.getByTestId('agent-response-time').getAttribute('datetime');
+ const difference=Date.parse(secondTime)-Date.parse(firstTime);
+ assert(difference>=14500&&difference<=16500,`15-second response cadence, got ${difference}`);
+ assert.equal(await page.locator('.agent-reply-history li').count(),2);
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(600);
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.locator('.periodic-agent').screenshot({path:'docs/screenshots/agent-periodic-mobile.png'});
+ // Interrupt the third batch while the mock response is in flight.
+ await page.waitForSelector('[data-phase="sending"]',{timeout:18000});
+ await page.getByLabel('Kịch bản mô phỏng').selectOption('offline');await page.waitForTimeout(1200);
+ assert.equal(await page.getByTestId('periodic-agent-phase').getAttribute('data-phase'),'paused');
+ assert.equal(await response.getAttribute('data-response-id'),second);
+ assert.match(await response.innerText(),/PHẢN HỒI TRƯỚC ĐÓ/);
+ await page.getByLabel('Kịch bản mô phỏng').selectOption('normal');
+ await page.getByRole('button',{name:'Inject Overheating',exact:true}).click();
+ await page.getByTestId('incident-status').filter({hasText:'Đã cảnh báo'}).waitFor();
+ assert.equal(await page.locator('.periodic-agent').count(),0,'normal fixture cannot cover an overheating incident');
+ await page.getByLabel('Kịch bản mô phỏng').selectOption('normal');
+ await page.getByRole('button',{name:'Xem dữ liệu blackbox',exact:true}).click();
+ await page.locator('.data-panel').waitFor();
+ assert.deepEqual(errors,[]);assert.deepEqual(posts,[]);
+ console.log('PASS: first batch wait, sending/analysis/response states, fixed reply between packets, two replies 15 seconds apart, bounded history UI, mobile, cancellation on offline, overheating priority, working telemetry action and zero POST requests.');
+}finally{await browser.close();}

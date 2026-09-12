@@ -1,0 +1,352 @@
+{
+  "filename": "EngineFaultDB_Final.xlsx",
+  "sha256": "c9775abb158132069df57c08a9c7bd70677e355936939bc1e6cdd1ea82840ea7",
+  "sheet": "EngineFaultDB_Final",
+  "rowCount": 55999,
+  "headers": [
+    "MAP",
+    "TPS",
+    "Force",
+    "Power",
+    "RPM",
+    "Consumption L/H",
+    "Consumption L/100KM",
+    "Speed",
+    "CO",
+    "HC",
+    "CO2",
+    "O2",
+    "Lambda",
+    "AFR",
+    "Fault"
+  ],
+  "ranges": {
+    "MAP": [
+      0.84,
+      45811.0
+    ],
+    "TPS": [
+      0.81,
+      45780.0
+    ],
+    "Force": [
+      2.58,
+      1537118.0
+    ],
+    "Power": [
+      0.47,
+      46022.0
+    ],
+    "RPM": [
+      336.0,
+      5013402.0
+    ],
+    "Consumption L/H": [
+      1.95,
+      46005.0
+    ],
+    "Consumption L/100KM": [
+      5.22,
+      46010.0
+    ],
+    "Speed": [
+      23.49,
+      107539.0
+    ],
+    "CO": [
+      0.43,
+      45998.0
+    ],
+    "HC": [
+      1.83,
+      975657.0
+    ],
+    "CO2": [
+      8.75,
+      46005.0
+    ],
+    "O2": [
+      0.21,
+      45992.0
+    ],
+    "Lambda": [
+      0.72,
+      45992.0
+    ],
+    "AFR": [
+      10.21,
+      46007.0
+    ],
+    "Fault": [
+      0.0,
+      3.0
+    ]
+  },
+  "classes": [
+    {
+      "code": "0",
+      "count": 16000,
+      "samples": [
+        {
+          "row": 2,
+          "values": {
+            "MAP": 3549.0,
+            "TPS": 1889.0,
+            "Force": 7428.0,
+            "Power": 5227.0,
+            "RPM": 1192769.0,
+            "Consumption L/H": 3057.0,
+            "Consumption L/100KM": 11.72,
+            "Speed": 24901.0,
+            "CO": 0.46,
+            "HC": 196089.0,
+            "CO2": 14356.0,
+            "O2": 45870.0,
+            "Lambda": 1047.0,
+            "AFR": 15385.0,
+            "Fault": 0.0
+          }
+        },
+        {
+          "row": 3,
+          "values": {
+            "MAP": 3559.0,
+            "TPS": 1899.0,
+            "Force": 7646.0,
+            "Power": 5327.0,
+            "RPM": 1145191.0,
+            "Consumption L/H": 2914.0,
+            "Consumption L/100KM": 11276.0,
+            "Speed": 45741.0,
+            "CO": 478.0,
+            "HC": 196283.0,
+            "CO2": 14492.0,
+            "O2": 1107.0,
+            "Lambda": 1083.0,
+            "AFR": 15926.0,
+            "Fault": 0.0
+          }
+        },
+        {
+          "row": 4,
+          "values": {
+            "MAP": 3539.0,
+            "TPS": 1899.0,
+            "Force": 7578.0,
+            "Power": 45662.0,
+            "RPM": 1208505.0,
+            "Consumption L/H": 2976.0,
+            "Consumption L/100KM": 11926.0,
+            "Speed": 24213.0,
+            "CO": 464.0,
+            "HC": 200367.0,
+            "CO2": 14443.0,
+            "O2": 1099.0,
+            "Lambda": 1072.0,
+            "AFR": 15754.0,
+            "Fault": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "code": "1",
+      "count": 10998,
+      "samples": [
+        {
+          "row": 16002,
+          "values": {
+            "MAP": 1044.0,
+            "TPS": 769.0,
+            "Force": 80.04,
+            "Power": 497.0,
+            "RPM": 1188551.0,
+            "Consumption L/H": 1989.0,
+            "Consumption L/100KM": 8207.0,
+            "Speed": 25038.0,
+            "CO": 1925.0,
+            "HC": 247444.0,
+            "CO2": 12834.0,
+            "O2": 0.56,
+            "Lambda": 1003.0,
+            "AFR": 14.75,
+            "Fault": 1.0
+          }
+        },
+        {
+          "row": 16003,
+          "values": {
+            "MAP": 1023.0,
+            "TPS": 779.0,
+            "Force": 77381.0,
+            "Power": 0.51,
+            "RPM": 1202051.0,
+            "Consumption L/H": 2105.0,
+            "Consumption L/100KM": 8118.0,
+            "Speed": 25715.0,
+            "CO": 1.97,
+            "HC": 242786.0,
+            "CO2": 13106.0,
+            "O2": 512.0,
+            "Lambda": 937.0,
+            "AFR": 13776.0,
+            "Fault": 1.0
+          }
+        },
+        {
+          "row": 16004,
+          "values": {
+            "MAP": 1044.0,
+            "TPS": 789.0,
+            "Force": 79835.0,
+            "Power": 504.0,
+            "RPM": 1158458.0,
+            "Consumption L/H": 2069.0,
+            "Consumption L/100KM": 8301.0,
+            "Speed": 25319.0,
+            "CO": 1.97,
+            "HC": 245882.0,
+            "CO2": 12968.0,
+            "O2": 516.0,
+            "Lambda": 935.0,
+            "AFR": 13739.0,
+            "Fault": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "code": "2",
+      "count": 15000,
+      "samples": [
+        {
+          "row": 27000,
+          "values": {
+            "MAP": 1614.0,
+            "TPS": 1095.0,
+            "Force": 78864.0,
+            "Power": 1844.0,
+            "RPM": 3566671.0,
+            "Consumption L/H": 4489.0,
+            "Consumption L/100KM": 5626.0,
+            "Speed": 77641.0,
+            "CO": 722.0,
+            "HC": 148625.0,
+            "CO2": 14189.0,
+            "O2": 1119.0,
+            "Lambda": 1074.0,
+            "AFR": 15788.0,
+            "Fault": 2.0
+          }
+        },
+        {
+          "row": 27001,
+          "values": {
+            "MAP": 1645.0,
+            "TPS": 1074.0,
+            "Force": 78343.0,
+            "Power": 1796.0,
+            "RPM": 3646355.0,
+            "Consumption L/H": 4335.0,
+            "Consumption L/100KM": 5652.0,
+            "Speed": 80732.0,
+            "CO": 705.0,
+            "HC": 150252.0,
+            "CO2": 14455.0,
+            "O2": 1069.0,
+            "Lambda": 1045.0,
+            "AFR": 15362.0,
+            "Fault": 2.0
+          }
+        },
+        {
+          "row": 27002,
+          "values": {
+            "MAP": 1685.0,
+            "TPS": 1115.0,
+            "Force": 76971.0,
+            "Power": 1806.0,
+            "RPM": 3641563.0,
+            "Consumption L/H": 4491.0,
+            "Consumption L/100KM": 5688.0,
+            "Speed": 76881.0,
+            "CO": 672.0,
+            "HC": 146046.0,
+            "CO2": 14333.0,
+            "O2": 1103.0,
+            "Lambda": 1069.0,
+            "AFR": 15718.0,
+            "Fault": 2.0
+          }
+        }
+      ]
+    },
+    {
+      "code": "3",
+      "count": 14001,
+      "samples": [
+        {
+          "row": 42000,
+          "values": {
+            "MAP": 1685.0,
+            "TPS": 983.0,
+            "Force": 283629.0,
+            "Power": 3236.0,
+            "RPM": 1878746.0,
+            "Consumption L/H": 3202.0,
+            "Consumption L/100KM": 7952.0,
+            "Speed": 40384.0,
+            "CO": 462.0,
+            "HC": 214.24,
+            "CO2": 12971.0,
+            "O2": 0.87,
+            "Lambda": 45748.0,
+            "AFR": 15284.0,
+            "Fault": 3.0
+          }
+        },
+        {
+          "row": 42001,
+          "values": {
+            "MAP": 1685.0,
+            "TPS": 993.0,
+            "Force": 275083.0,
+            "Power": 3.13,
+            "RPM": 1932515.0,
+            "Consumption L/H": 3198.0,
+            "Consumption L/100KM": 8003.0,
+            "Speed": 38698.0,
+            "CO": 439.0,
+            "HC": 211013.0,
+            "CO2": 12623.0,
+            "O2": 863.0,
+            "Lambda": 1003.0,
+            "AFR": 14.75,
+            "Fault": 3.0
+          }
+        },
+        {
+          "row": 42002,
+          "values": {
+            "MAP": 1645.0,
+            "TPS": 962.0,
+            "Force": 292947.0,
+            "Power": 3285.0,
+            "RPM": 1845178.0,
+            "Consumption L/H": 3.23,
+            "Consumption L/100KM": 7721.0,
+            "Speed": 39622.0,
+            "CO": 454.0,
+            "HC": 215228.0,
+            "CO2": 12571.0,
+            "O2": 867.0,
+            "Lambda": 1004.0,
+            "AFR": 14753.0,
+            "Fault": 3.0
+          }
+        }
+      ]
+    }
+  ],
+  "interpretation": "Raw values only. No units, scale corrections, fault-name mapping, or diagnostic predictions inferred."
+}

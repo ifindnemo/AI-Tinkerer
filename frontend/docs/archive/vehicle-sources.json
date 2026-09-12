@@ -1,0 +1,96 @@
+[
+  {
+    "key": "vf3",
+    "uid": "d2f091c453d6427a8ae58c936c44db6f",
+    "name": "VinFast VF3 2025",
+    "author": "Ardhi3D",
+    "url": "https://sketchfab.com/3d-models/vinfast-vf3-2025-d2f091c453d6427a8ae58c936c44db6f",
+    "thumbnail": "https://media.sketchfab.com/models/d2f091c453d6427a8ae58c936c44db6f/thumbnails/3df45c0d2ebc448888634bec7ea430c2/9b65a8e645d54959aeae3e82cffa7c4d.jpeg",
+    "license": {},
+    "downloadable": false,
+    "triangles": 214204
+  },
+  {
+    "key": "vf9",
+    "uid": "cac6cb95b9084d0abee37dccb46fa10b",
+    "name": "Vinfast VF9 model (no interior)",
+    "author": "Giang Trần",
+    "url": "https://sketchfab.com/3d-models/vinfast-vf9-model-no-interior-cac6cb95b9084d0abee37dccb46fa10b",
+    "thumbnail": "https://media.sketchfab.com/models/cac6cb95b9084d0abee37dccb46fa10b/thumbnails/8a01b389eb2941f9ac33ae42f1695996/54d31330a5c044d083ed80261dbd7fea.jpeg",
+    "license": {
+      "uri": "https://api.sketchfab.com/v3/licenses/322a749bcfa841b29dff1e8a1bb74b0b",
+      "label": "CC Attribution",
+      "fullName": "Creative Commons Attribution",
+      "requirements": "Author must be credited. Commercial use is allowed.",
+      "url": "http://creativecommons.org/licenses/by/4.0/",
+      "slug": "by"
+    },
+    "downloadable": true,
+    "triangles": 1091310
+  },
+  {
+    "key": "civic",
+    "uid": "0dc6454d74a241e5a08fac82ce2826b2",
+    "name": "2025 Honda Civic RS e:HEV",
+    "author": "Palma123 JAAT",
+    "url": "https://sketchfab.com/3d-models/2025-honda-civic-rs-ehev-0dc6454d74a241e5a08fac82ce2826b2",
+    "thumbnail": "https://media.sketchfab.com/models/0dc6454d74a241e5a08fac82ce2826b2/thumbnails/ec4d712481c14ef0b80833012eec6a94/faa4af6e492a4131a584150e65cfaf01.jpeg",
+    "license": {
+      "uri": "https://api.sketchfab.com/v3/licenses/322a749bcfa841b29dff1e8a1bb74b0b",
+      "label": "CC Attribution",
+      "fullName": "Creative Commons Attribution",
+      "requirements": "Author must be credited. Commercial use is allowed.",
+      "url": "http://creativecommons.org/licenses/by/4.0/",
+      "slug": "by"
+    },
+    "downloadable": true,
+    "triangles": 96069
+  },
+  {
+    "key": "crv",
+    "uid": "91c6673859444597bf006a0ef8570005",
+    "name": "2025 Honda CR-V 1.5 VTEC Turbo CVT",
+    "author": "Palma123 JAAT",
+    "url": "https://sketchfab.com/3d-models/2025-honda-cr-v-15-vtec-turbo-cvt-91c6673859444597bf006a0ef8570005",
+    "thumbnail": "https://media.sketchfab.com/models/91c6673859444597bf006a0ef8570005/thumbnails/1eb63fc2b3594d59a0d76bb374b6a531/95021420983546f0b198f705480d6052.jpeg",
+    "license": {
+      "uri": "https://api.sketchfab.com/v3/licenses/322a749bcfa841b29dff1e8a1bb74b0b",
+      "label": "CC Attribution",
+      "fullName": "Creative Commons Attribution",
+      "requirements": "Author must be credited. Commercial use is allowed.",
+      "url": "http://creativecommons.org/licenses/by/4.0/",
+      "slug": "by"
+    },
+    "downloadable": true,
+    "triangles": 108434
+  },
+  {
+    "key": "prelude",
+    "uid": "cb119f8c032745a3875da2f4babeae6c",
+    "name": "2026 Honda Prelude",
+    "author": "ImperialBlue3D",
+    "url": "https://sketchfab.com/3d-models/2026-honda-prelude-cb119f8c032745a3875da2f4babeae6c",
+    "thumbnail": "https://media.sketchfab.com/models/cb119f8c032745a3875da2f4babeae6c/thumbnails/516ba72a9edf4d618b23ed689d0b946b/3130fb9ecc174b53ad0bb9762d654107.jpeg",
+    "license": {},
+    "downloadable": false,
+    "triangles": 1986
+  },
+  {
+    "key": "kona",
+    "uid": "26c27a6e061d4776b750e483b933df79",
+    "name": "2025 Hyundai Kona N Line",
+    "author": "Ddiaz Design",
+    "url": "https://sketchfab.com/3d-models/2025-hyundai-kona-n-line-26c27a6e061d4776b750e483b933df79",
+    "thumbnail": "https://media.sketchfab.com/models/26c27a6e061d4776b750e483b933df79/thumbnails/67717217b9d84d57be128091feccdfd1/ab0a623231ee47be907aebbb1a065690.jpeg",
+    "license": {
+      "uri": "https://api.sketchfab.com/v3/licenses/2628dbe5140a4e9592126c8df566c0b7",
+      "label": "CC Attribution-NonCommercial-ShareAlike",
+      "fullName": "CC Attribution-NonCommercial-ShareAlike",
+      "requirements": "Author must be credited. No commercial use. Modified versions must have the same license.",
+      "url": "http://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "slug": "by-nc-sa"
+    },
+    "downloadable": true,
+    "triangles": 794108
+  }
+]

@@ -1,0 +1,33 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({args:['--no-sandbox','--enable-gpu','--use-gl=angle','--use-angle=gl']});
+try {
+ const page = await browser.newPage({viewport:{width:1440,height:1000}});
+ const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+ await page.goto('http://localhost:3000');
+ const canvas = page.locator('canvas[data-loaded="true"]');
+ await canvas.waitFor({timeout:60000});
+ assert.equal(await canvas.getAttribute('data-wheel-count'),'4');
+ await page.waitForSelector('canvas[data-motion="running"]');
+ const travel=await canvas.getAttribute('data-travel');
+ await page.waitForTimeout(400);
+ assert.notEqual(await canvas.getAttribute('data-travel'),travel);
+ await page.locator('.viewer').screenshot({path:'docs/screenshots/vehicle-driving.png'});
+ await page.getByRole('button',{name:'Tạm dừng hiệu ứng',exact:true}).click();
+ await page.waitForSelector('canvas[data-motion="stopped"]');
+ const paused=await canvas.getAttribute('data-travel');
+ await page.waitForTimeout(400); assert.equal(await canvas.getAttribute('data-travel'),paused);
+ await page.getByRole('button',{name:'Bật hiệu ứng xe chạy',exact:true}).click();
+ await page.waitForSelector('canvas[data-motion="running"]');
+ await page.getByLabel('Kịch bản mô phỏng').selectOption('offline');
+ await page.waitForSelector('canvas[data-motion="stopped"]');
+ await page.getByLabel('Kịch bản mô phỏng').selectOption('normal');
+ await page.waitForSelector('canvas[data-motion="running"]');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.waitForSelector('canvas[data-motion="stopped"]');
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('.viewer').screenshot({path:'docs/screenshots/vehicle-driving-mobile.png'});
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ assert.deepEqual(errors,[]);
+ console.log('PASS: four wheel pivots, motion, pause/resume, offline, reduced motion, mobile and no browser errors.');
+} finally {await browser.close();}

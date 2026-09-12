@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "source": "EngineFaultDB_Final.xlsx",
+  "sha256": "c9775abb158132069df57c08a9c7bd70677e355936939bc1e6cdd1ea82840ea7",
+  "method": "Exclude date-formatted cells and values outside explicit demo bands; use nearest-index P05–P95 of retained values. No rescaling or row replay. Units and filters are demo assumptions, not validated sensor calibration.",
+  "channels": {
+    "rpm": {
+      "column": "RPM",
+      "rawRange": [
+        336.0,
+        5013402.0
+      ],
+      "demoFilter": [
+        600,
+        6500
+      ],
+      "acceptedCount": 4475,
+      "excludedDateCells": 1130,
+      "retainedRange": [
+        1096.39,
+        4901.13
+      ],
+      "range": [
+        1176.13,
+        4536.86
+      ]
+    },
+    "map": {
+      "column": "MAP",
+      "rawRange": [
+        0.84,
+        45811.0
+      ],
+      "demoFilter": [
+        0,
+        100
+      ],
+      "acceptedCount": 3791,
+      "excludedDateCells": 1782,
+      "retainedRange": [
+        0.84,
+        3.61
+      ],
+      "range": [
+        1.37,
+        3.59
+      ]
+    },
+    "tps": {
+      "column": "TPS",
+      "rawRange": [
+        0.81,
+        45780.0
+      ],
+      "demoFilter": [
+        0,
+        100
+      ],
+      "acceptedCount": 3719,
+      "excludedDateCells": 1,
+      "retainedRange": [
+        0.81,
+        1.95
+      ],
+      "range": [
+        0.81,
+        1.94
+      ]
+    },
+    "consumption": {
+      "column": "Consumption L/H",
+      "rawRange": [
+        1.95,
+        46005.0
+      ],
+      "demoFilter": [
+        0,
+        30
+      ],
+      "acceptedCount": 4485,
+      "excludedDateCells": 1078,
+      "retainedRange": [
+        1.95,
+        14.81
+      ],
+      "range": [
+        2.46,
+        9.59
+      ]
+    },
+    "speed": {
+      "column": "Speed",
+      "rawRange": [
+        23.49,
+        107539.0
+      ],
+      "demoFilter": [
+        0,
+        130
+      ],
+      "acceptedCount": 5380,
+      "excludedDateCells": 154,
+      "retainedRange": [
+        23.49,
+        105.45
+      ],
+      "range": [
+        25.72,
+        98.72
+      ]
+    }
+  }
+}
