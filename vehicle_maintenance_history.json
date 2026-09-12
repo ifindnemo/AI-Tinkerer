@@ -1,0 +1,155 @@
+{
+  "vehicle_id": "VF-DEMO-001",
+  "generated_at": "2026-09-12T04:44:34.750573",
+  "source_note": "Dữ liệu MÔ PHỎNG lịch sử bảo trì cho mục đích demo/hackathon. Mỗi bản ghi là một lần xe thực sự được đưa đến garage (kiểm tra định kỳ hoặc sửa chữa).",
+  "fault_taxonomy": {
+    "0": {
+      "label": "Không phát hiện lỗi",
+      "desc": "Các chỉ số cảm biến nằm trong ngưỡng bình thường."
+    },
+    "1": {
+      "label": "Cảnh báo - Hỗn hợp nhiên liệu nghèo (Lean Mixture)",
+      "desc": "Lambda và AFR lệch cao hơn ngưỡng chuẩn, nghi ngờ rò rỉ khí nạp hoặc cảm biến oxy lệch."
+    },
+    "2": {
+      "label": "Trung bình - Hỗn hợp nhiên liệu giàu (Rich Mixture)",
+      "desc": "CO và HC tăng cao bất thường kèm tiêu hao nhiên liệu vượt mức, nghi ngờ kim phun hoặc cảm biến MAP."
+    },
+    "3": {
+      "label": "Nghiêm trọng - Nghi bỏ máy (Possible Misfire)",
+      "desc": "Công suất giảm mạnh so với vòng tua, lambda dao động lớn, cần kiểm tra ngay hệ thống đánh lửa."
+    }
+  },
+  "maintenance_history": [
+    {
+      "record_id": "2a515f14",
+      "date": "2025-03-01",
+      "odometer_km": 46673,
+      "garage": "Trung tâm bảo dưỡng An Bình Auto",
+      "fault_code": 0,
+      "fault_label": "Không phát hiện lỗi",
+      "diagnosis": "Các chỉ số cảm biến nằm trong ngưỡng bình thường.",
+      "evidence": [
+        "RPM ổn định quanh 838 vòng/phút khi không tải",
+        "Lambda = 0.994 (trong ngưỡng chuẩn 0.95-1.05)",
+        "CO = 0.12% (dưới ngưỡng cảnh báo 1.0%)"
+      ],
+      "confidence": 0.97,
+      "status": "no_fault"
+    },
+    {
+      "record_id": "b125752b",
+      "date": "2025-03-21",
+      "odometer_km": 47665,
+      "garage": "Garage Thành Phát - Đà Nẵng",
+      "fault_code": 1,
+      "fault_label": "Cảnh báo - Hỗn hợp nhiên liệu nghèo (Lean Mixture)",
+      "diagnosis": "Lambda và AFR lệch cao hơn ngưỡng chuẩn, nghi ngờ rò rỉ khí nạp hoặc cảm biến oxy lệch.",
+      "evidence": [
+        "Lambda = 1.181 (vượt ngưỡng chuẩn, hỗn hợp nghèo)",
+        "AFR = 17.36 (cao hơn mức lý tưởng 14.7)",
+        "O2 dư trong khí thải = 1.64% (cao bất thường)"
+      ],
+      "confidence": 0.83,
+      "status": "resolved"
+    },
+    {
+      "record_id": "1c5b8cf4",
+      "date": "2025-05-10",
+      "odometer_km": 48541,
+      "garage": "Garage Minh Quân (đối tác quen)",
+      "fault_code": 0,
+      "fault_label": "Không phát hiện lỗi",
+      "diagnosis": "Các chỉ số cảm biến nằm trong ngưỡng bình thường.",
+      "evidence": [
+        "RPM ổn định quanh 822 vòng/phút khi không tải",
+        "Lambda = 0.996 (trong ngưỡng chuẩn 0.95-1.05)",
+        "CO = 0.13% (dưới ngưỡng cảnh báo 1.0%)"
+      ],
+      "confidence": 0.91,
+      "status": "no_fault"
+    },
+    {
+      "record_id": "3827b6f8",
+      "date": "2025-07-04",
+      "odometer_km": 50210,
+      "garage": "Garage Thành Phát - Đà Nẵng",
+      "fault_code": 2,
+      "fault_label": "Trung bình - Hỗn hợp nhiên liệu giàu (Rich Mixture)",
+      "diagnosis": "CO và HC tăng cao bất thường kèm tiêu hao nhiên liệu vượt mức, nghi ngờ kim phun hoặc cảm biến MAP.",
+      "evidence": [
+        "CO = 1.68% (vượt ngưỡng 1.0%)",
+        "HC = 478 ppm (vượt ngưỡng 200 ppm)",
+        "Tiêu hao nhiên liệu tăng 22% so với trung bình 30 ngày gần nhất"
+      ],
+      "confidence": 0.86,
+      "status": "resolved"
+    },
+    {
+      "record_id": "40d08e7e",
+      "date": "2025-09-15",
+      "odometer_km": 52203,
+      "garage": "Trung tâm bảo dưỡng An Bình Auto",
+      "fault_code": 0,
+      "fault_label": "Không phát hiện lỗi",
+      "diagnosis": "Các chỉ số cảm biến nằm trong ngưỡng bình thường.",
+      "evidence": [
+        "RPM ổn định quanh 815 vòng/phút khi không tải",
+        "Lambda = 1.005 (trong ngưỡng chuẩn 0.95-1.05)",
+        "CO = 0.26% (dưới ngưỡng cảnh báo 1.0%)"
+      ],
+      "confidence": 0.99,
+      "status": "no_fault"
+    },
+    {
+      "record_id": "d9adfe66",
+      "date": "2025-11-09",
+      "odometer_km": 53098,
+      "garage": "Garage Minh Quân (đối tác quen)",
+      "fault_code": 1,
+      "fault_label": "Cảnh báo - Hỗn hợp nhiên liệu nghèo (Lean Mixture)",
+      "diagnosis": "Lambda và AFR lệch cao hơn ngưỡng chuẩn, nghi ngờ rò rỉ khí nạp hoặc cảm biến oxy lệch.",
+      "evidence": [
+        "Lambda = 1.208 (vượt ngưỡng chuẩn, hỗn hợp nghèo)",
+        "AFR = 17.76 (cao hơn mức lý tưởng 14.7)",
+        "O2 dư trong khí thải = 1.69% (cao bất thường)"
+      ],
+      "confidence": 0.8,
+      "status": "resolved",
+      "related_to_previous_record_id": "b125752b",
+      "note": "Tình trạng này trùng khớp với lần bất thường trước đó — xem record_id liên quan."
+    },
+    {
+      "record_id": "956b9dbb",
+      "date": "2026-01-20",
+      "odometer_km": 55005,
+      "garage": "Garage Minh Quân (đối tác quen)",
+      "fault_code": 0,
+      "fault_label": "Không phát hiện lỗi",
+      "diagnosis": "Các chỉ số cảm biến nằm trong ngưỡng bình thường.",
+      "evidence": [
+        "RPM ổn định quanh 830 vòng/phút khi không tải",
+        "Lambda = 1.004 (trong ngưỡng chuẩn 0.95-1.05)",
+        "CO = 0.32% (dưới ngưỡng cảnh báo 1.0%)"
+      ],
+      "confidence": 0.96,
+      "status": "no_fault"
+    },
+    {
+      "record_id": "93337580",
+      "date": "2026-03-04",
+      "odometer_km": 56016,
+      "garage": "Garage Thành Phát - Đà Nẵng",
+      "fault_code": 3,
+      "fault_label": "Nghiêm trọng - Nghi bỏ máy (Possible Misfire)",
+      "diagnosis": "Công suất giảm mạnh so với vòng tua, lambda dao động lớn, cần kiểm tra ngay hệ thống đánh lửa.",
+      "evidence": [
+        "Công suất đo được thấp hơn 31% so với công suất kỳ vọng ở cùng vòng tua",
+        "Lambda dao động bất thường trong khoảng 0.72–1.29 trong 60 giây",
+        "HC = 532 ppm (vượt xa ngưỡng bình thường)"
+      ],
+      "confidence": 0.84,
+      "status": "resolved"
+    }
+  ]
+}
