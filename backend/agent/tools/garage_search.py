@@ -144,7 +144,6 @@ def search_nearby_garages(
         "gps": {"latitude": latitude, "longitude": longitude},
         "radius_meters": radius_meters,
         "total_results": len(garages),
-        "recommended_option": garages[0] if garages else None,
         "options": garages,
         "map": {
             "provider": "locationiq",
@@ -156,10 +155,6 @@ def search_nearby_garages(
             "markers": markers,
             "attribution": "© LocationIQ © OpenStreetMap contributors",
         },
-        "recommendation_basis": (
-            "LocationIQ trả kết quả theo khoảng cách tăng dần. "
-            "Hãy xác nhận dịch vụ, giá và lịch trống trước khi đặt."
-        ),
     }
 
 if __name__ == "__main__":

@@ -21,6 +21,14 @@ class TelemetryInput(BaseModel):
     intake_air_temp: float = Field(ge=-40, le=100)
     engine_load: float = Field(ge=0, le=100)
     battery_voltage: float = Field(ge=0, le=30)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def validate_gps_fields(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
 
 
 class PredictionResult(BaseModel):
@@ -54,6 +62,12 @@ class IncidentAction(BaseModel):
 
     @model_validator(mode="after")
     def validate_action_fields(self):
+        if self.action == ActionType.FIND_GARAGE and (
+            self.latitude is None or self.longitude is None
+        ):
+            raise ValueError(
+                "latitude and longitude are required for find_garage"
+            )
         if self.action == ActionType.BOOK_APPOINTMENT and (not self.garage_id or not self.slot):
             raise ValueError("garage_id and slot are required for book_appointment")
         if self.action == ActionType.REMIND_LATER and not self.scheduled_for:

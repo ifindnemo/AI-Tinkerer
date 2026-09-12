@@ -125,6 +125,8 @@ def run_scenario(scenario_id: str, request: DemoRunRequest) -> dict:
         sample = TelemetryInput(
             vehicle_id=request.vehicle_id,
             timestamp=started_at + timedelta(seconds=index),
+            latitude=request.latitude,
+            longitude=request.longitude,
             **values,
         )
         responses.append(process_telemetry(sample))

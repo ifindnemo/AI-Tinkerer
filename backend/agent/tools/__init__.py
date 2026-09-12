@@ -5,24 +5,13 @@ from .google_calendar import (
 )
 from .garage_search import search_nearby_garages
 from .maintenance_history import get_maintenance_history
-from .registry import (
-    READ_TOOL_FUNCTIONS,
-    READ_TOOL_SCHEMAS,
-    WRITE_TOOL_FUNCTIONS,
-    WRITE_TOOL_SCHEMAS,
-    execute_read_tool,
-    execute_write_tool,
-)
+from .openai_tools import VEHICLE_READ_TOOLS, VehicleToolContext
 
 __all__ = [
-    "READ_TOOL_FUNCTIONS",
-    "READ_TOOL_SCHEMAS",
-    "WRITE_TOOL_FUNCTIONS",
-    "WRITE_TOOL_SCHEMAS",
+    "VEHICLE_READ_TOOLS",
+    "VehicleToolContext",
     "create_google_calendar_event",
     "delete_google_calendar_event",
-    "execute_read_tool",
-    "execute_write_tool",
     "get_maintenance_history",
     "search_nearby_garages",
     "update_google_calendar_event",

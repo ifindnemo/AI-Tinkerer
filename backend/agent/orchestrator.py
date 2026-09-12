@@ -2,95 +2,72 @@ import json
 import os
 from typing import Any
 
+from agents import Agent, ModelSettings, Runner
+from pydantic import BaseModel, Field
+
 from agent.prompt import SYSTEM_PROMPT
-from agent.tools import (
-    READ_TOOL_SCHEMAS,
-    execute_read_tool,
-    get_garage_slots,
-    get_vehicle_history,
-    prepare_booking,
-    prepare_reminder,
-    search_garages,
+from agent.tools import VEHICLE_READ_TOOLS, VehicleToolContext, search_nearby_garages
+from schemas import (
+    ActionType,
+    IncidentAction,
+    PolicyDecision,
+    PredictionResult,
+    TelemetryInput,
 )
-from schemas import ActionType, IncidentAction, PolicyDecision, PredictionResult, Severity, TelemetryInput
 from store import store
+
+
+class VehicleAnalysis(BaseModel):
+    diagnosis: str = Field(
+        description=(
+            "Giải thích cảnh báo và khuyến nghị an toàn ngắn gọn "
+            "bằng tiếng Việt."
+        )
+    )
+    recommendations: list[str] = Field(
+        min_length=1,
+        max_length=5,
+        description="Các bước tiếp theo dựa trên dữ liệu và kết quả công cụ.",
+    )
 
 
 class VehicleAgent:
     def __init__(self):
         self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-
-    @staticmethod
-    def _fallback_analysis(
-        sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
-    ) -> tuple[str, list[dict[str, Any]]]:
-        history = get_vehicle_history(sample.vehicle_id)
-        garages = search_garages()
-        trace = [
-            {"tool": "get_vehicle_history", "arguments": {"vehicle_id": sample.vehicle_id}, "result": history},
-            {"tool": "search_garages", "arguments": {"latitude": 16.0544, "longitude": 108.2022}, "result": garages},
-        ]
-        previous = "Xe chưa có lỗi tương tự trong lịch sử."
-        if history["records"]:
-            previous = f"Tìm thấy {len(history['records'])} bản ghi bảo dưỡng/lỗi trước đây."
-        diagnosis = (
-            f"Hệ thống phát hiện {prediction.label} ({prediction.confidence:.0%}). "
-            f"{previous} Cần kiểm tra tại garage; kết quả ML không thay thế chẩn đoán kỹ thuật."
+        self.agent = Agent[VehicleToolContext](
+            name="Vehicle Guardian",
+            instructions=SYSTEM_PROMPT,
+            model=self.model,
+            model_settings=ModelSettings(
+                parallel_tool_calls=True,
+                store=False,
+            ),
+            tools=VEHICLE_READ_TOOLS,
+            output_type=VehicleAnalysis,
         )
-        if decision.severity == Severity.CRITICAL:
-            diagnosis = "Hãy dừng xe ở vị trí an toàn và tắt máy. " + diagnosis
-        return diagnosis, trace
 
     def _openai_analysis(
         self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
-    ) -> tuple[str, list[dict[str, Any]]]:
-        from openai import OpenAI
-
-        client = OpenAI()
-        input_items: list[Any] = [
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "telemetry": sample.model_dump(mode="json"),
-                        "prediction": prediction.model_dump(mode="json"),
-                        "policy": decision.model_dump(mode="json"),
-                        "default_location": {"latitude": 16.0544, "longitude": 108.2022},
-                    },
-                    ensure_ascii=False,
-                ),
-            }
-        ]
-        trace: list[dict[str, Any]] = []
-
-        for turn in range(4):
-            response = client.responses.create(
-                model=self.model,
-                instructions=SYSTEM_PROMPT,
-                input=input_items,
-                tools=READ_TOOL_SCHEMAS,
-                tool_choice="required" if turn == 0 else "auto",
-                store=False,
-            )
-            input_items.extend(item.model_dump() for item in response.output)
-            calls = [item for item in response.output if item.type == "function_call"]
-            if not calls:
-                return response.output_text, trace
-            for call in calls:
-                arguments = json.loads(call.arguments)
-                try:
-                    result = execute_read_tool(call.name, arguments)
-                except Exception as error:
-                    result = {"error": str(error)}
-                trace.append({"tool": call.name, "arguments": arguments, "result": result})
-                input_items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": json.dumps(result, ensure_ascii=False),
-                    }
-                )
-        raise RuntimeError("Agent exceeded the tool-call turn limit")
+    ) -> tuple[VehicleAnalysis, list[dict[str, Any]]]:
+        context = VehicleToolContext(
+            vehicle_id=sample.vehicle_id,
+            latitude=sample.latitude,
+            longitude=sample.longitude,
+        )
+        input_data = {
+            "telemetry": sample.model_dump(mode="json"),
+            "prediction": prediction.model_dump(mode="json"),
+            "policy": decision.model_dump(mode="json"),
+        }
+        result = Runner.run_sync(
+            self.agent,
+            json.dumps(input_data, ensure_ascii=False),
+            context=context,
+            max_turns=6,
+        )
+        if not isinstance(result.final_output, VehicleAnalysis):
+            raise RuntimeError("OpenAI agent returned an invalid analysis")
+        return result.final_output, context.trace
 
     def create_incident(
         self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
@@ -99,27 +76,15 @@ class VehicleAgent:
         if existing:
             return existing
 
-        if os.getenv("OPENAI_API_KEY"):
-            try:
-                diagnosis, trace = self._openai_analysis(sample, prediction, decision)
-            except Exception as error:
-                diagnosis, trace = self._fallback_analysis(sample, prediction, decision)
-                trace.append({"tool": "openai_agent", "error": str(error), "fallback": True})
-        else:
-            diagnosis, trace = self._fallback_analysis(sample, prediction, decision)
-            trace.append({"tool": "openai_agent", "skipped": "OPENAI_API_KEY is not configured"})
-
-        recommendations = ["Xem garage gần nhất", "Chọn lịch sửa xe", "Nhắc lại vào thời điểm khác"]
-        if decision.severity == Severity.CRITICAL:
-            recommendations.insert(0, "Dừng xe an toàn và tắt máy")
+        analysis, trace = self._openai_analysis(sample, prediction, decision)
 
         return store.create_incident(
             vehicle_id=sample.vehicle_id,
             severity=decision.severity.value,
-            diagnosis=diagnosis,
+            diagnosis=analysis.diagnosis,
             prediction=prediction.model_dump(mode="json"),
             reasons=decision.reasons,
-            recommendations=recommendations,
+            recommendations=analysis.recommendations,
             tool_trace=trace,
         )
 
@@ -134,18 +99,28 @@ class VehicleAgent:
             raise LookupError("Incident not found")
 
         if action.action == ActionType.FIND_GARAGE:
+            if action.latitude is None or action.longitude is None:
+                raise ValueError("latitude and longitude are required for find_garage")
             return {
                 "status": "completed",
                 "requires_confirmation": False,
-                "result": search_garages(action.latitude or 16.0544, action.longitude or 108.2022),
+                "result": search_nearby_garages(
+                    action.latitude,
+                    action.longitude,
+                ),
             }
         if action.action == ActionType.BOOK_APPOINTMENT:
-            slots = get_garage_slots(action.garage_id)
-            if action.slot not in slots["slots"]:
-                raise ValueError("Selected slot is not available")
-            pending = prepare_booking(incident_id, action.garage_id, action.slot)
+            pending = store.create_pending_action(
+                incident_id,
+                "book_appointment",
+                {"garage_id": action.garage_id, "slot": action.slot},
+            )
         else:
-            pending = prepare_reminder(incident_id, action.scheduled_for.isoformat())
+            pending = store.create_pending_action(
+                incident_id,
+                "remind_later",
+                {"scheduled_for": action.scheduled_for.isoformat()},
+            )
 
         return {
             "status": "pending_confirmation",
