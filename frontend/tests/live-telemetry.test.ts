@@ -6,7 +6,7 @@ test("live stream stays scoped to the selected car and advances packet data", ()
  const first = liveSample("normal", "bmw-m2", 0);
  const next = liveSample("normal", "bmw-m2", 1, new Date(Date.now() + 2000));
  assert.equal(next.vehicleId,"bmw-m2");
- assert.notEqual(first.rpm,next.rpm);
+ assert(Math.abs(first.rpm-next.rpm)<=25);
  assert.notEqual(first.capturedAt,next.capturedAt);
  assert.equal(next.fault,0);
  assert.throws(()=>liveSample("normal","missing-car",1));
@@ -24,7 +24,7 @@ test("scenario classification remains coherent over a ten-minute stream", () => 
 test("filtered workbook ranges bound a smooth per-car stream without assigning unknown units", async () => {
  const {operatingRanges, operatingUnit} = await import("../src/lib/telemetry-profile");
  let previous=liveSample("normal","bmw-m2",0);
- const distinct = new Set<number>();
+ const observed={rpm:[previous.rpm],map:[previous.map!],tps:[previous.tps!],speed:[previous.speed],consumption:[previous.consumption!]};
  for(let tick=1;tick<=3600;tick++){
   const packet=liveSample("normal","bmw-m2",tick);
   assert.equal(packet.operatingSource,"excel-range");
@@ -34,9 +34,15 @@ test("filtered workbook ranges bound a smooth per-car stream without assigning u
    assert(packet[key]!>=low && packet[key]!<=high,`${key} stays inside the filtered reference range`);
    assert(Math.abs(packet[key]!-previous[key]!) <= (high-low)*.06+1,`${key} does not jump between samples`);
   }
-  distinct.add(packet.rpm);previous=packet;
+  for(const key of ["rpm","map","tps","speed","consumption"] as const)observed[key].push(packet[key]!);
+  previous=packet;
  }
- assert(distinct.size>100);
+ const span=(values:number[])=>Math.max(...values)-Math.min(...values);
+ assert(span(observed.rpm)<=25);
+ assert(span(observed.map)<=.02);
+ assert(span(observed.tps)<=.02);
+ assert(span(observed.speed)<=.6);
+ assert(span(observed.consumption)<=.06);
  assert.equal(operatingUnit(previous,"map"),"raw");
  assert.equal(operatingUnit(previous,"tps"),"raw");
  assert.equal(operatingUnit(previous,"speed"),"raw");

@@ -51,6 +51,18 @@ def _normal_assessment() -> VehicleAssessment:
     )
 
 
+def _critical_assessment() -> VehicleAssessment:
+    return VehicleAssessment(
+        severity=Severity.CRITICAL,
+        diagnosis="Hệ thống làm mát có nguy cơ hỏng.",
+        suspected_faults=["Hệ thống làm mát"],
+        evidence=["Quạt không hoạt động."],
+        confidence=0.8,
+        missing_data=[],
+        recommendations=["Dừng xe ngay."],
+    )
+
+
 def test_agent_registers_read_tools() -> None:
     tool_names = {tool.name for tool in orchestrator.vehicle_agent.agent.tools}
     assert tool_names == {
@@ -181,3 +193,41 @@ def test_existing_agent_garage_lookup_is_not_duplicated(monkeypatch) -> None:
     )
 
     assert [item["tool"] for item in trace].count("search_nearby_garages") == 1
+
+
+def test_stable_simulated_thermal_profile_cannot_be_escalated_by_model(
+    monkeypatch,
+) -> None:
+    context = _telemetry_context(coolant=88)
+    context["source"] = "simulated"
+    for record in context["records"]:
+        record.update(
+            {
+                "oil_temp_c": 94,
+                "intake_air_temp_c": 34,
+                "fuel_percent": 68,
+                "fan_percent": 0,
+                "dtc": [],
+            }
+        )
+    monkeypatch.setattr(
+        orchestrator.Runner,
+        "run_sync",
+        lambda *args, **kwargs: SimpleNamespace(final_output=_critical_assessment()),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "search_nearby_garages",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("false alert lookup")),
+    )
+
+    assessment, trace, safety = orchestrator.vehicle_agent._run_analysis(
+        context,
+        {"incident_id": "inc_old", "status": "active"},
+    )
+
+    assert safety["triggered"] is False
+    assert assessment.severity == Severity.NORMAL
+    assert assessment.suspected_faults == []
+    assert "chưa ghi nhận dấu hiệu quá nhiệt" in assessment.diagnosis
+    assert not any(item["tool"] == "search_nearby_garages" for item in trace)

@@ -8,6 +8,8 @@ try{
  await page.goto('http://localhost:3000');
  await page.getByTestId('backend-response').waitFor({timeout:65000});
  assert.equal(batches[0].records.length,15);assert.equal(batches[0].records[0].units.speed,'raw');
+ assert.match(await page.locator('.backend-agent').getAttribute('class'),/severity-normal/);
+ assert.equal(await page.getByTestId('backend-nearby-garages').count(),0);
  const id=await page.getByTestId('backend-response').getAttribute('data-batch-id');await page.waitForTimeout(1800);
  assert.equal(await page.getByTestId('backend-response').getAttribute('data-batch-id'),id);
  await page.screenshot({path:'docs/screenshots/backend-normal.png',fullPage:true});

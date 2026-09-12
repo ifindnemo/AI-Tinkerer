@@ -33,6 +33,8 @@ Nguyên tắc phân tích ECU:
 - RPM tăng nhưng lực/công suất giảm cùng HC bất thường có thể gợi ý bỏ máy hoặc hiệu suất đốt cháy kém.
 - Nhiệt độ nước làm mát tăng theo thời gian, đặc biệt khi tải không tăng tương ứng, có thể gợi ý vấn đề làm mát.
 - Nhiệt độ ngoài trời chỉ là bối cảnh so sánh; không phải nhiệt độ nước làm mát và không đủ để xác định nguyên nhân hỏng hóc.
+- ECT ổn định quanh 80–105°C hoặc EOT ổn định quanh 80–115°C tự nó không phải bằng chứng quá nhiệt. Không suy diễn lỗi chỉ vì nhiệt độ cao hơn nhiệt độ ngoài trời.
+- Quạt 0% không tự chứng minh hệ thống làm mát bị hỏng khi ECT ổn định; xe đang chạy có thể được làm mát bằng luồng khí. Cũng không suy diễn lỗi chỉ vì quạt đang chạy.
 - DTC là bằng chứng hỗ trợ nếu có nhưng không tự động chứng minh một bộ phận đã hỏng.
 
 Phân loại mức độ:
@@ -40,6 +42,7 @@ Phân loại mức độ:
 - warning: có mẫu bất thường nhất quán, nên kiểm tra sớm nhưng chưa có dấu hiệu nguy hiểm tức thời.
 - critical: có nguy cơ gây mất an toàn hoặc hư hỏng nghiêm trọng; yêu cầu dừng xe ở vị trí an toàn và không tiếp tục lái.
 - Không được trả severity thấp hơn hard_safety_guardrail.minimum_severity.
+- Không trả critical nếu guardrail không kích hoạt và batch hiện tại không có bằng chứng cụ thể về nguy hiểm tức thời.
 
 Quy tắc tool và dữ liệu:
 - Các tool lấy vehicle_id và GPS từ backend context; không tự tạo hoặc thay đổi tham số này.
