@@ -1,3 +1,5 @@
+> Current integration: see [single-user backend MVP](backend-mvp-integration.md). The older mock-only notes below describe the previous stage.
+
 > Update: the frontend mock incident UI and consent workflow are now implemented; see [Safety Agent UI](safety-agent-ui.md). Backend integration remains pending. The dashboard now uses a [session adapter with browser recovery](vehicle-session-adapter.md). The original gap assessment below is historical.
 
 # Frontend / backend alignment

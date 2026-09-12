@@ -3,6 +3,7 @@ import type {BlackboxTransfer} from "../blackbox/types";
 import type { SafetyIncident, IncidentCommand } from "../safety-agent";
 import type { Analysis, ScenarioId, Telemetry } from "../telemetry";
 export type SessionSnapshot = {
+  backend?: import("../backend/contract").BackendState;
   scenario: ScenarioId; telemetry: Telemetry; samples: Telemetry[];
   result: Analysis | null; history: Analysis[]; incident: SafetyIncident | null;
   blackbox: BlackboxTransfer;

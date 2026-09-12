@@ -1,3 +1,5 @@
+> Current integration: see [single-user backend MVP](backend-mvp-integration.md). The older mock-only notes below describe the previous stage.
+
 # Periodic normal-operation Agent UI
 
 The default normal-driving view now shows AutoLink Agent beside the local 3D vehicle. Each complete batch of 15 one-second blackbox records is passed to a local mock response controller. It simulates sending for 300 ms and analysis until 900 ms, then displays a canned normal-operation reply with recommendations. With foreground one-second sampling, replies arrive approximately at 15.9s, 30.9s, 45.9s: the response cadence is 15 seconds, with a short illustrative processing delay after each batch.

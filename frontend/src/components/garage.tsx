@@ -7,6 +7,8 @@ import { useVehicleSession } from "@/hooks/use-vehicle-session";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
 import ServicePlanner from "./service-planner";
+import BackendAgentPanel from "./backend-agent-panel";
+import BackendServicePlanner from "./backend-service-planner";
 import VehicleLibrary from "./vehicle-library";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
@@ -83,7 +85,10 @@ export default function Garage() {
   const [notice, setNotice] = useState("");
   const [theme, setTheme] = useState("studio");
   const modalRef = useRef<HTMLDialogElement>(null);
-  const busy = false;
+  const backend = snapshot.backend;
+  const busy = backend?.phase === "sending";
+  const weatherResult = backend?.reply?.latest.tool_trace.find(t => t.tool === "get_external_environment_context")?.result;
+  const liveWeather = weatherResult?.success ? weatherResult.data : null;
   const thermalDanger = thermalLevel(telemetry,"engine") === "danger" || thermalLevel(telemetry,"cooling") === "danger";
   useEffect(() => {
     if (modal) modalRef.current?.showModal();
@@ -105,6 +110,7 @@ export default function Garage() {
     setError("");
   };
   const runAnalysis = () => {
+    if (backend) {setTab("overview");setNotice(`Tự gửi mỗi 15 mẫu · Đang gom ${snapshot.blackbox.buffered}/15 mẫu.`);return;}
     try {adapter.check();setError("");setNotice("Đã kiểm tra gói dữ liệu mới nhất của xe.");}
     catch(error){setError(error instanceof Error?error.message:"Chưa thể phân tích.");}
   };
@@ -114,7 +120,7 @@ export default function Garage() {
       [
         JSON.stringify(
           {
-            mode: "demo",
+            mode: backend ? "backend-with-simulated-telemetry" : "demo",
             vehicle: {
               id: vehicle.id,
               brand: vehicle.brand,
@@ -124,7 +130,7 @@ export default function Garage() {
             },
             telemetry,
             analysis: result,
-            incident,
+            incident: backend?.incident ?? incident,
           },
           null,
           2,
@@ -313,7 +319,7 @@ export default function Garage() {
                 <div className="health-overview-copy"><span className="section-kicker">TÌNH TRẠNG XE · TỰ ĐỘNG THEO DÕI</span>
                   <h2>{busy ? "Đang kiểm tra chiếc xe…" : !telemetry.connected ? "Chưa có dữ liệu kết nối" : result?.title ?? "Xe có cần kiểm tra không?"}</h2>
                   <p>{result ? result.summary : "Đối chiếu nhiều cảm biến để đánh giá trước khi đề xuất garage."}</p>
-                  <small>{result ? "Quy tắc demo · chưa có xác suất tin cậy được hiệu chuẩn" : "Chưa có kết luận chẩn đoán"}</small>
+                  <small>{backend ? "Agent đánh giá từ dữ liệu mô phỏng · Cần kiểm tra kỹ thuật để xác nhận" : result ? "Quy tắc demo · chưa có xác suất tin cậy được hiệu chuẩn" : "Chưa có kết luận chẩn đoán"}</small>
                 </div>
                 <div className="health-actions">
                   <button className="outline-button" disabled={busy} onClick={runAnalysis}>Kiểm tra xe <ArrowRight size={16} /></button>
@@ -391,7 +397,7 @@ export default function Garage() {
                   </div>
                 </section>
                 <aside className="insights-column">
-                  <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />
+                  {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                   <details className="vehicle-context"><summary>Kết nối & bối cảnh môi trường</summary>
                   <section className="connection-card">
                     <div className="card-top">
@@ -434,14 +440,12 @@ export default function Garage() {
                     <div className="weather-line">
                       <div>
                         <span className="weather-value">
-                          {display(telemetry.ambient)}
+                          {backend ? liveWeather?.outside_temperature_c ?? "—" : display(telemetry.ambient)}
                           <small>°C</small>
                         </span>
                         <p>
-                          {scenario === "environment"
-                            ? "Nắng nóng"
-                            : "Trời nắng nhẹ"}{" "}
-                          <span>· Mô phỏng</span>
+                          {backend ? liveWeather ? "Nhiệt độ tại vị trí xe" : "Chưa nhận được thời tiết" : scenario === "environment" ? "Nắng nóng" : "Trời nắng nhẹ"}{" "}
+                          <span>{backend ? "· Open-Meteo qua backend" : "· Mô phỏng"}</span>
                         </p>
                       </div>
                       <Sun className="sun-icon" size={43} strokeWidth={1.3} />
@@ -478,7 +482,7 @@ export default function Garage() {
                   Dữ liệu của xe <ArrowRight size={15} />
                 </button>
               </div>
-              <BlackboxTransferStatus transfer={snapshot.blackbox} />
+              <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />
               <OperatingMetrics telemetry={telemetry} samples={samples} />
               <VehicleMetrics telemetry={telemetry} samples={samples} />
               <section
@@ -491,12 +495,11 @@ export default function Garage() {
                   </span>
                   <div>
                     <div className="analysis-kicker">
-                      CAR NEURON INTELLIGENCE <span>DEMO</span>
+                      CAR NEURON INTELLIGENCE <span>{backend ? "BACKEND" : "DEMO"}</span>
                     </div>
                     <h2>Dữ liệu kể gì về chiếc xe của bạn?</h2>
                     <p>
-                      Đối chiếu cảm biến, thời tiết và điều kiện vận hành để tìm
-                      nguyên nhân.
+                      {backend ? "Nhận đánh giá và đề xuất trực tiếp từ agent theo từng gói 15 mẫu." : "Đối chiếu cảm biến, thời tiết và điều kiện vận hành để tìm nguyên nhân."}
                     </p>
                   </div>
                   <button
@@ -512,7 +515,7 @@ export default function Garage() {
                     <span>
                       {busy
                         ? "Đang phân tích…"
-                        : result
+                        : backend ? "Theo dõi kết quả API" : result
                           ? "Analysis lại"
                           : "Analysis"}
                     </span>
@@ -543,11 +546,11 @@ export default function Garage() {
                     <span>
                       <Check size={14} /> Đề xuất có cơ sở
                     </span>
-                    <small>Dữ liệu & quy tắc đánh giá được mô phỏng.</small>
+                    <small>{backend ? "Đang chờ backend xử lý gói dữ liệu đầu tiên." : "Dữ liệu & quy tắc đánh giá được mô phỏng."}</small>
                   </div>
                 )}
               </section>
-              <ServicePlanner analysis={busy ? null : result} vehicleId={vehicle.id} urgent={!!incident && incident.status !== "RESOLVED"} />
+              {backend ? <BackendServicePlanner incident={backend.incident} /> : <ServicePlanner analysis={busy ? null : result} vehicleId={vehicle.id} urgent={!!incident && incident.status !== "RESOLVED"} />}
             </>
           )}
           {tab === "telemetry" && (
@@ -588,7 +591,7 @@ export default function Garage() {
                 <div className="empty-state">
                   <History size={35} />
                   <h3>Mỗi hành trình bắt đầu bằng sự thấu hiểu.</h3>
-                  <p>Bấm Analysis ở trang Tổng quan để tạo báo cáo đầu tiên.</p>
+                  <p>{backend ? "Kết quả sẽ được lưu trong phiên sau mỗi gói 15 mẫu được backend xử lý." : "Bấm Analysis ở trang Tổng quan để tạo báo cáo đầu tiên."}</p>
                   <button
                     className="primary-button"
                     onClick={() => setTab("overview")}
@@ -600,8 +603,8 @@ export default function Garage() {
                 visibleHistory.map((h) => (
                   <article className={`history-row ${h.severity}`} key={h.id}>
                     <span className="history-score">
-                      {h.score}
-                      <small>/100</small>
+                      {h.score ?? "—"}
+                      <small>{h.source === "backend" ? "API" : "/100"}</small>
                     </span>
                     <div>
                       <h3>{h.title}</h3>
@@ -613,7 +616,7 @@ export default function Garage() {
                             ? "Động cơ"
                             : h.cause === "environment"
                               ? "Môi trường"
-                              : "Bình thường"}
+                              : h.cause === "unclassified" ? "Nhận định backend" : "Bình thường"}
                       </p>
                       <details>
                         <summary>Xem nhận định & đề xuất</summary>
@@ -693,8 +696,7 @@ export default function Garage() {
               <div className="modal-note">
                 <Cpu size={18} />
                 <span>
-                  Chế độ local mock. Không gửi dữ liệu đến máy chủ, không cần
-                  API key.
+                  {backend ? "Telemetry mô phỏng được gửi đến backend mỗi 15 mẫu. Khóa API chỉ được cấu hình ở backend." : "Chế độ local mock. Không gửi dữ liệu đến máy chủ."}
                 </span>
               </div>
               <button className="primary-button" onClick={() => setModal(null)}>
@@ -734,7 +736,7 @@ export default function Garage() {
                   {vehicle.brand} {vehicle.name} — {vehicle.author}
                 </a>
                 . {vehicle.license}. Model GLB được lưu và tải từ ứng dụng.
-                Dữ liệu và ngưỡng chẩn đoán chỉ là mô phỏng.
+                {backend ? "Dữ liệu cảm biến mô phỏng; kết quả phân tích lấy từ backend." : "Dữ liệu và ngưỡng chẩn đoán chỉ là mô phỏng."}
               </p>
             </>
           )}
@@ -761,11 +763,11 @@ function AnalysisResult({
     <div className={`analysis-result ${result.severity}`} role="status">
       <div className="result-heading">
         <div className="health-score">
-          <b>{result.score}</b>
-          <span>/ 100</span>
+          <b>{result.score ?? "—"}</b>
+          <span>{result.source === "backend" ? "Chưa chấm điểm" : "/ 100"}</span>
         </div>
         <div>
-          <span className="section-kicker">ĐÁNH GIÁ MÔ PHỎNG</span>
+          <span className="section-kicker">{result.source === "backend" ? "KẾT QUẢ TỪ BACKEND" : "ĐÁNH GIÁ MÔ PHỎNG"}</span>
           <h3>{result.title}</h3>
           <p>{result.summary}</p>
         </div>
@@ -803,8 +805,7 @@ function AnalysisResult({
         </div>
       </div>
       <p className="result-disclaimer">
-        Kết quả dựa trên quy tắc demo, cần backend và dữ liệu thực để xác thực
-        chẩn đoán.
+        {result.source === "backend" ? "Nguồn cảm biến được mô phỏng. Kết quả từ agent và quy tắc an toàn backend, cần kiểm tra kỹ thuật để xác nhận." : "Kết quả dựa trên quy tắc demo, cần backend và dữ liệu thực để xác thực chẩn đoán."}
       </p>
     </div>
   );

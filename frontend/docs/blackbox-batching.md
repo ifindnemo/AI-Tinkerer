@@ -1,3 +1,5 @@
+> Current integration: see [single-user backend MVP](backend-mvp-integration.md). The older mock-only notes below describe the previous stage.
+
 # Blackbox sample batch for backend testing
 
 The current handoff is **docs/blackbox-batch-15-samples.json**, a plain payload with exactly 15 sensor records, one second apart. It replaces the previous broad frontend/agent contract export. The file contains an illustrative normal-driving sequence for the selected BMW; `source: simulated` makes its origin explicit.

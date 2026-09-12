@@ -1,10 +1,10 @@
 import type {Vehicle} from "../vehicles";
+import {BackendVehicleSessionAdapter} from "../backend/session";
 import {MockVehicleSessionAdapter} from "./mock-adapter";
 import {browserSessionRepository} from "./repository";
 import type {SessionRepository, VehicleSessionAdapter} from "./types";
 
-// One composition point. A future backend adapter implements the same contract;
-// do not add pretend API routes or expose an unavailable backend option in the UI.
+// Backend is default; explicit local mock mode remains available for isolated demos.
 export function createVehicleSessionAdapter(vehicle: Vehicle, repository: SessionRepository = browserSessionRepository()): VehicleSessionAdapter {
-  return new MockVehicleSessionAdapter(vehicle,repository);
+  return process.env.NEXT_PUBLIC_AGENT_MODE === "mock" ? new MockVehicleSessionAdapter(vehicle,repository) : new BackendVehicleSessionAdapter(vehicle);
 }

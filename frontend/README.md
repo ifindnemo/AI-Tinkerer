@@ -1,7 +1,7 @@
 # Car Neuron
 
-Car Neuron is a frontend prototype for exploring vehicle health through an interactive 3D car and simulated blackbox data.
+Car Neuron is a vehicle health dashboard featuring an interactive local 3D car, simulated blackbox telemetry, and an AI agent for explaining vehicle alerts and suggesting next steps.
 
-Built with Next.js, React, TypeScript, and Three.js, it features a local BMW M2 model, adjustable camera views, and clickable sensor hotspots. Mock analysis compares vehicle temperatures with environmental conditions to explain potential overheating and suggest next steps.
+Built with Next.js, React, TypeScript, and Three.js, the frontend sends 15 sensor readings to a Python backend every 15 seconds. Agent assessments appear on the dashboard, with user confirmation required before creating a Google Calendar appointment or saving a reminder.
 
-The project currently uses simulated data and is designed for future integration with a blackbox backend and an analysis agent.
+Sensor data is simulated. Agent analysis and database actions use the connected backend. See [local setup and API integration](docs/backend-mvp-integration.md).

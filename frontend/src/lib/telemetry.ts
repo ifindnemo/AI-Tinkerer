@@ -39,7 +39,8 @@ export type Analysis = {
   powertrain: Powertrain;
   createdAt: string;
   severity: "good" | "watch" | "critical";
-  score: number;
+  score: number | null;
+  source?: "backend";
   cause: "normal" | "environment" | "engine" | "traction" | "unclassified";
   title: string;
   summary: string;
