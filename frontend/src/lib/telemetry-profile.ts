@@ -24,6 +24,25 @@ export function sampleOperatingRanges(tick: number) {
   };
 }
 
+// Normal driving stays close to a steady operating point. Values still sit
+// inside the filtered workbook ranges, but only move by a few tenths.
+export function sampleStableOperatingRanges(tick: number) {
+  const calm = Math.sin(tick * 0.08);
+  const at = (channel: OperatingChannel, amplitude: number) => {
+    const [low, high] = operatingRanges[channel].range;
+    const midpoint = low + (high - low) * 0.5;
+    return Math.round((midpoint + (high - low) * amplitude * calm) * 100) / 100;
+  };
+  return {
+    rpm: Math.round(at("rpm", 0.003)),
+    map: at("map", 0.002),
+    tps: at("tps", 0.002),
+    consumption: at("consumption", 0.003),
+    speed: at("speed", 0.003),
+    engineLoad: Math.round((42 + calm * 0.2) * 10) / 10,
+  };
+}
+
 export function operatingUnit(t: Telemetry, channel: OperatingChannel) {
   if (channel === "rpm") return "rpm";
   if (channel === "consumption") return "L/h";
