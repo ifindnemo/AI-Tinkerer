@@ -29,7 +29,11 @@ def _sample() -> TelemetryInput:
 
 def test_agent_registers_read_tools() -> None:
     tool_names = {tool.name for tool in orchestrator.vehicle_agent.agent.tools}
-    assert tool_names == {"get_maintenance_history", "search_nearby_garages"}
+    assert tool_names == {
+        "get_external_environment_context",
+        "get_maintenance_history",
+        "search_nearby_garages",
+    }
 
 
 def test_maintenance_function_tool_uses_run_context() -> None:

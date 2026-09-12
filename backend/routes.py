@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
@@ -15,6 +16,7 @@ from schemas import (
     PolicyDecision,
     PredictionResult,
     Severity,
+    TelemetryBatchInput,
     TelemetryInput,
 )
 
@@ -23,7 +25,10 @@ router = APIRouter()
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def process_telemetry(sample: TelemetryInput) -> dict:
+def process_telemetry(
+    sample: TelemetryInput,
+    telemetry_context: dict[str, Any] | None = None,
+) -> dict:
     window = telemetry_buffer.add(sample)
     hard_limit = alert_policy.evaluate_hard_limits(sample)
 
@@ -59,7 +64,7 @@ def process_telemetry(sample: TelemetryInput) -> dict:
         sample,
         prediction,
         decision,
-        window or [sample],
+        telemetry_context=telemetry_context,
     )
     return {
         "status": "incident_created",
@@ -73,6 +78,33 @@ def process_telemetry(sample: TelemetryInput) -> dict:
 @router.post("/telemetry", tags=["telemetry"])
 def receive_telemetry(sample: TelemetryInput) -> dict:
     return process_telemetry(sample)
+
+
+@router.post("/telemetry/batch", tags=["telemetry"])
+def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
+    """Validate and process a frontend black-box telemetry batch."""
+    telemetry_context = batch.to_agent_context()
+    results = [
+        process_telemetry(sample, telemetry_context=telemetry_context)
+        for sample in batch.to_telemetry_inputs()
+    ]
+    incident_result = next(
+        (result for result in results if result["status"] == "incident_created"),
+        None,
+    )
+    final_result = incident_result or results[-1]
+    return {
+        "status": final_result["status"],
+        "batch_id": batch.batch_id,
+        "vehicle_id": batch.vehicle_id,
+        "accepted_records": len(batch.records),
+        "sanitization": {
+            "removed_fields": ["fault"],
+            "removed_values": sum(record.fault is not None for record in batch.records),
+        },
+        "final_result": final_result,
+        "results": results,
+    }
 
 
 @router.get("/incidents/{incident_id}", tags=["incidents"])
