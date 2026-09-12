@@ -3,6 +3,7 @@ uvicorn[standard]>=0.34,<1
 pydantic>=2.10,<3
 python-dotenv>=1.0,<2
 openai>=1.68,<3
+openai-agents>=0.2,<1
 numpy>=2.0,<3
 scikit-learn>=1.5,<2
 joblib>=1.4,<2

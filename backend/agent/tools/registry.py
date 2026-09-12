@@ -1,5 +1,13 @@
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
+from schemas import EnvironmentToolContext
+
+from .environment_context import (
+    get_external_environment_context,
+    get_external_environment_context_data,
+)
 from .google_calendar import (
     create_google_calendar_event,
     delete_google_calendar_event,
@@ -12,7 +20,18 @@ from .maintenance_history import get_maintenance_history
 ToolFunction = Callable[..., Any]
 
 
+def _sdk_tool_schema(tool) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.params_json_schema,
+        "strict": True,
+    }
+
+
 READ_TOOL_SCHEMAS = [
+    _sdk_tool_schema(get_external_environment_context),
     {
         "type": "function",
         "name": "get_maintenance_history",
@@ -165,7 +184,33 @@ WRITE_TOOL_FUNCTIONS: dict[str, ToolFunction] = {
 }
 
 
-def execute_read_tool(name: str, arguments: dict[str, Any]) -> Any:
+def execute_read_tool(
+    name: str,
+    arguments: dict[str, Any],
+    telemetry_context: dict[str, Any] | None = None,
+) -> Any:
+    if name == "get_external_environment_context":
+        if arguments:
+            raise ValueError(
+                "get_external_environment_context does not accept model-provided arguments"
+            )
+        if telemetry_context is None:
+            raise ValueError(
+                "get_external_environment_context requires backend telemetry context"
+            )
+        try:
+            location = EnvironmentToolContext.model_validate(
+                telemetry_context.get("current_location")
+            )
+        except ValidationError as error:
+            raise ValueError(
+                "Telemetry context does not contain a valid last-record location"
+            ) from error
+        return get_external_environment_context_data(
+            location.latitude,
+            location.longitude,
+        ).model_dump(mode="json")
+
     function = READ_TOOL_FUNCTIONS.get(name)
     if function is None:
         raise ValueError(f"Unknown or disallowed tool: {name}")

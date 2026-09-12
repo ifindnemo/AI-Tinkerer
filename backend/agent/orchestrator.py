@@ -6,13 +6,21 @@ from agent.prompt import SYSTEM_PROMPT
 from agent.tools import (
     READ_TOOL_SCHEMAS,
     execute_read_tool,
+    get_external_environment_context_data,
     get_garage_slots,
     get_vehicle_history,
     prepare_booking,
     prepare_reminder,
     search_garages,
 )
-from schemas import ActionType, IncidentAction, PolicyDecision, PredictionResult, Severity, TelemetryInput
+from schemas import (
+    ActionType,
+    IncidentAction,
+    PolicyDecision,
+    PredictionResult,
+    Severity,
+    TelemetryInput,
+)
 from store import store
 
 
@@ -22,14 +30,48 @@ class VehicleAgent:
 
     @staticmethod
     def _fallback_analysis(
-        sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        telemetry_context: dict[str, Any],
     ) -> tuple[str, list[dict[str, Any]]]:
+        current_location = telemetry_context.get(
+            "current_location",
+            {"latitude": sample.latitude, "longitude": sample.longitude},
+        )
+        environment_context = get_external_environment_context_data(
+            current_location["latitude"], current_location["longitude"]
+        ).model_dump(mode="json")
         history = get_vehicle_history(sample.vehicle_id)
-        garages = search_garages()
+        garages = search_garages(
+            current_location["latitude"], current_location["longitude"]
+        )
         trace = [
-            {"tool": "get_vehicle_history", "arguments": {"vehicle_id": sample.vehicle_id}, "result": history},
-            {"tool": "search_garages", "arguments": {"latitude": 16.0544, "longitude": 108.2022}, "result": garages},
+            {
+                "tool": "get_external_environment_context",
+                "arguments": {},
+                "resolved_location": current_location,
+                "result": environment_context,
+            },
+            {
+                "tool": "get_vehicle_history",
+                "arguments": {"vehicle_id": sample.vehicle_id},
+                "result": history,
+            },
+            {
+                "tool": "search_garages",
+                "arguments": current_location,
+                "result": garages,
+            },
         ]
+        trace.insert(
+            0,
+            {
+                "source": "frontend_telemetry",
+                "record_count": telemetry_context["record_count"],
+                "fault_label_removed": True,
+            },
+        )
         previous = "Xe chưa có lỗi tương tự trong lịch sử."
         if history["records"]:
             previous = f"Tìm thấy {len(history['records'])} bản ghi bảo dưỡng/lỗi trước đây."
@@ -42,20 +84,28 @@ class VehicleAgent:
         return diagnosis, trace
 
     def _openai_analysis(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        telemetry_context: dict[str, Any],
     ) -> tuple[str, list[dict[str, Any]]]:
         from openai import OpenAI
 
         client = OpenAI()
+        current_location = telemetry_context.get(
+            "current_location",
+            {"latitude": sample.latitude, "longitude": sample.longitude},
+        )
         input_items: list[Any] = [
             {
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "telemetry": sample.model_dump(mode="json"),
+                        "telemetry_context": telemetry_context,
                         "prediction": prediction.model_dump(mode="json"),
                         "policy": decision.model_dump(mode="json"),
-                        "default_location": {"latitude": 16.0544, "longitude": 108.2022},
+                        "default_location": current_location,
                     },
                     ensure_ascii=False,
                 ),
@@ -69,7 +119,14 @@ class VehicleAgent:
                 instructions=SYSTEM_PROMPT,
                 input=input_items,
                 tools=READ_TOOL_SCHEMAS,
-                tool_choice="required" if turn == 0 else "auto",
+                tool_choice=(
+                    {
+                        "type": "function",
+                        "name": "get_external_environment_context",
+                    }
+                    if turn == 0
+                    else "auto"
+                ),
                 store=False,
             )
             input_items.extend(item.model_dump() for item in response.output)
@@ -79,10 +136,21 @@ class VehicleAgent:
             for call in calls:
                 arguments = json.loads(call.arguments)
                 try:
-                    result = execute_read_tool(call.name, arguments)
+                    result = execute_read_tool(
+                        call.name,
+                        arguments,
+                        telemetry_context=telemetry_context,
+                    )
                 except Exception as error:
                     result = {"error": str(error)}
-                trace.append({"tool": call.name, "arguments": arguments, "result": result})
+                trace_item = {
+                    "tool": call.name,
+                    "arguments": arguments,
+                    "result": result,
+                }
+                if call.name == "get_external_environment_context":
+                    trace_item["resolved_location"] = current_location
+                trace.append(trace_item)
                 input_items.append(
                     {
                         "type": "function_call_output",
@@ -93,20 +161,44 @@ class VehicleAgent:
         raise RuntimeError("Agent exceeded the tool-call turn limit")
 
     def create_incident(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        telemetry_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         existing = store.get_open_incident(sample.vehicle_id)
         if existing:
             return existing
 
+        if telemetry_context is None:
+            telemetry_context = {
+                "schema_version": 1,
+                "batch_id": None,
+                "vehicle_id": sample.vehicle_id,
+                "source": "single_telemetry_request",
+                "record_count": 1,
+                "current_location": {
+                    "latitude": sample.latitude,
+                    "longitude": sample.longitude,
+                },
+                "records": [sample.model_dump(mode="json")],
+            }
+
         if os.getenv("OPENAI_API_KEY"):
             try:
-                diagnosis, trace = self._openai_analysis(sample, prediction, decision)
+                diagnosis, trace = self._openai_analysis(
+                    sample, prediction, decision, telemetry_context
+                )
             except Exception as error:
-                diagnosis, trace = self._fallback_analysis(sample, prediction, decision)
+                diagnosis, trace = self._fallback_analysis(
+                    sample, prediction, decision, telemetry_context
+                )
                 trace.append({"tool": "openai_agent", "error": str(error), "fallback": True})
         else:
-            diagnosis, trace = self._fallback_analysis(sample, prediction, decision)
+            diagnosis, trace = self._fallback_analysis(
+                sample, prediction, decision, telemetry_context
+            )
             trace.append({"tool": "openai_agent", "skipped": "OPENAI_API_KEY is not configured"})
 
         recommendations = ["Xem garage gần nhất", "Chọn lịch sửa xe", "Nhắc lại vào thời điểm khác"]
@@ -137,7 +229,10 @@ class VehicleAgent:
             return {
                 "status": "completed",
                 "requires_confirmation": False,
-                "result": search_garages(action.latitude or 16.0544, action.longitude or 108.2022),
+                "result": search_garages(
+                    action.latitude or 16.0544,
+                    action.longitude or 108.2022,
+                ),
             }
         if action.action == ActionType.BOOK_APPOINTMENT:
             slots = get_garage_slots(action.garage_id)
