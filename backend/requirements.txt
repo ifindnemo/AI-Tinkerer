@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+pydantic>=2.10,<3
+python-dotenv>=1.0,<2
+openai>=1.68,<3
+numpy>=2.0,<3
+scikit-learn>=1.5,<2
+joblib>=1.4,<2
+pytest>=8.0,<9
+httpx>=0.28,<1
+google-auth>=2.0,<3
+google-auth-oauthlib>=1.2,<2
