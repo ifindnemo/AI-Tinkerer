@@ -7,9 +7,9 @@ description: Chẩn đoán và định hướng sửa chữa hỗn hợp giàu/n
 
 ## Phạm vi và cơ sở chẩn đoán
 
-Chuyên môn nạp khí, nhiên liệu, đốt cháy, làm mát và bôi trơn của động cơ xăng. Các thông số đo, điều kiện vận hành và kết quả đánh giá trạng thái đã sẵn sàng để chẩn đoán.
+Chuyên môn nạp khí, nhiên liệu, đốt cháy, làm mát và bôi trơn của động cơ xăng. Dữ liệu đầu vào là toàn bộ batch ECU đã được backend kiểm tra schema và đưa thẳng vào agent; không có bước dự đoán ML trung gian.
 
-Dùng các ngưỡng tham chiếu dưới đây để diễn giải số đo và chỉ số đã có. Các chỉ số dẫn xuất, quy đổi đơn vị, đánh giá xu hướng và thời gian duy trì do tool tính; sử dụng kết quả được trả về, không tự tính lại hoặc tự đặt thêm ngưỡng. Các mô tả “ổn định”, “dao động bất thường” và “kéo dài” theo kết quả đánh giá đúng động cơ và điều kiện đo.
+Đọc các record theo thứ tự thời gian và đối chiếu trực tiếp các trường có mặt. Không tái tạo trường `Fault`, không tự bịa đơn vị hoặc thông số còn thiếu, và không coi giá trị dẫn xuất là phép đo độc lập với các đầu vào tạo ra nó. Dùng các ngưỡng tham chiếu dưới đây để diễn giải số đo, xu hướng và tương quan; không tự đặt thêm ngưỡng ngoài skill hoặc hard safety guardrail của backend. Các mô tả “ổn định”, “dao động bất thường” và “kéo dài” phải dựa trên nhiều record trong batch và đúng điều kiện vận hành.
 
 Phân biệt trạng thái hỗn hợp với lỗi: hỗn hợp giàu hoặc nghèo chỉ trở thành dấu hiệu hư hỏng khi không phù hợp với chế độ vận hành. Kết luận linh kiện hỏng cần phép kiểm tra xác nhận.
 
