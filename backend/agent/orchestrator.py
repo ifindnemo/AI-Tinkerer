@@ -47,15 +47,23 @@ class VehicleAgent:
         )
 
     def _openai_analysis(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        telemetry_context: dict[str, Any] | None = None,
     ) -> tuple[VehicleAnalysis, list[dict[str, Any]]]:
+        current_location = (telemetry_context or {}).get("current_location", {})
+        latitude = current_location.get("latitude", sample.latitude)
+        longitude = current_location.get("longitude", sample.longitude)
         context = VehicleToolContext(
             vehicle_id=sample.vehicle_id,
-            latitude=sample.latitude,
-            longitude=sample.longitude,
+            latitude=latitude,
+            longitude=longitude,
         )
         input_data = {
             "telemetry": sample.model_dump(mode="json"),
+            "telemetry_context": telemetry_context,
             "prediction": prediction.model_dump(mode="json"),
             "policy": decision.model_dump(mode="json"),
         }
@@ -70,13 +78,22 @@ class VehicleAgent:
         return result.final_output, context.trace
 
     def create_incident(
-        self, sample: TelemetryInput, prediction: PredictionResult, decision: PolicyDecision
+        self,
+        sample: TelemetryInput,
+        prediction: PredictionResult,
+        decision: PolicyDecision,
+        telemetry_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         existing = store.get_open_incident(sample.vehicle_id)
         if existing:
             return existing
 
-        analysis, trace = self._openai_analysis(sample, prediction, decision)
+        analysis, trace = self._openai_analysis(
+            sample,
+            prediction,
+            decision,
+            telemetry_context,
+        )
 
         return store.create_incident(
             vehicle_id=sample.vehicle_id,
