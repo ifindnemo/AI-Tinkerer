@@ -1,5 +1,5 @@
 {
-  "vehicle_id": "VF-DEMO-001",
+  "vehicle_id": "bmw-m2",
   "generated_at": "2026-09-12T04:44:34.750573",
   "source_note": "Dữ liệu MÔ PHỎNG lịch sử bảo trì cho mục đích demo/hackathon. Mỗi bản ghi là một lần xe thực sự được đưa đến garage (kiểm tra định kỳ hoặc sửa chữa).",
   "fault_taxonomy": {

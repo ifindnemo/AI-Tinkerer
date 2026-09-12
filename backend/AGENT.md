@@ -1,8 +1,11 @@
 # Vehicle Guardian Agent
 
-1. **Purpose:** Turn an ECU telemetry incident into a contextual diagnosis and suggested next actions.
-2. **Tools:** Read the current vehicle's maintenance history and find garages near its supplied GPS coordinates.
-3. **Triggers:** Run only after the ML and safety policy create an incident. The agent may call its read-only tools automatically. Booking and reminder writes stay outside the agent and require explicit confirmation through the API.
-4. **Output:** Return a structured diagnosis and recommendations derived from the prompt, telemetry, policy decision, and tool results. Do not inject canned recommendations in the orchestrator.
+1. **Purpose:** Evaluate a validated ECU telemetry batch directly and suggest safe next actions without an ML prediction stage.
+2. **Skill:** Load `skills/chan-doan-dong-co/SKILL.md` into the agent instructions so the diagnostic knowledge is actually available at runtime.
+3. **Tools:** Read outside temperature at the final batch coordinate, read maintenance history, and find nearby garages only when an issue is suspected.
+4. **Memory:** Load active short-term incident memory from SQLite before each run. Create or refresh memory only for warning/critical assessments, and expire it using the configured TTL.
+5. **Safety:** Deterministic backend guardrails set a minimum severity that the model cannot downgrade.
+6. **Actions:** Booking and reminder writes stay outside the agent and require explicit confirmation through the API.
+7. **Output:** Return a structured assessment with severity, suspected faults, evidence, confidence, missing data, diagnosis, and recommendations.
 
 The agent is advisory. It must not claim certainty, clear safety-critical faults, or execute a booking without human confirmation.

@@ -17,7 +17,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Vehicle Guardian API",
-    description="ECU telemetry, ML incident detection, and human-controlled agent actions.",
+    description=(
+        "Direct ECU telemetry assessment with deterministic safety guardrails, "
+        "short-term incident memory, and human-controlled actions."
+    ),
     version="0.1.0",
     lifespan=lifespan,
 )

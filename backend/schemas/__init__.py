@@ -3,39 +3,35 @@ from schemas.api import (
     BlackboxLocation,
     BlackboxTelemetryRecord,
     ConfirmAction,
-    DemoRunRequest,
     IncidentAction,
     IncidentResponse,
-    PolicyDecision,
-    PredictionResult,
     Severity,
     TelemetryBatchInput,
-    TelemetryInput,
 )
+from schemas.assessment import VehicleAssessment
 from schemas.environment import (
     EnvironmentContextData,
     EnvironmentContextResponse,
     EnvironmentToolContext,
 )
 from schemas.tool_common import ToolError, ToolErrorCode, ToolResponse
+from schemas.safety import SafetyGuardrailResult
 
 __all__ = [
     "ActionType",
     "BlackboxLocation",
     "BlackboxTelemetryRecord",
     "ConfirmAction",
-    "DemoRunRequest",
     "EnvironmentContextData",
     "EnvironmentContextResponse",
     "EnvironmentToolContext",
     "IncidentAction",
     "IncidentResponse",
-    "PolicyDecision",
-    "PredictionResult",
     "Severity",
+    "SafetyGuardrailResult",
     "TelemetryBatchInput",
-    "TelemetryInput",
     "ToolError",
     "ToolErrorCode",
     "ToolResponse",
+    "VehicleAssessment",
 ]
