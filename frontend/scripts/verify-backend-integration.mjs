@@ -5,7 +5,7 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:1080}});const errors=[],batches=[];
  page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(/hydration|server rendered HTML/i.test(m.text()))errors.push(m.text());});
  page.on('request',r=>{if(r.url().endsWith('/api/vehicle/telemetry'))batches.push(r.postDataJSON());});
- await page.goto('http://localhost:3000');
+ await page.goto('http://localhost:3000/garage');
  await page.getByTestId('backend-response').waitFor({timeout:65000});
  assert.equal(batches[0].records.length,15);assert.equal(batches[0].records[0].units.speed,'raw');
  assert.match(await page.locator('.backend-agent').getAttribute('class'),/severity-normal/);
@@ -13,7 +13,7 @@ try{
  const id=await page.getByTestId('backend-response').getAttribute('data-batch-id');await page.waitForTimeout(1800);
  assert.equal(await page.getByTestId('backend-response').getAttribute('data-batch-id'),id);
  await page.screenshot({path:'docs/screenshots/backend-normal.png',fullPage:true});
- await page.getByRole('button',{name:'Inject Overheating',exact:true}).click();
+ await page.getByRole('button',{name:'Mô phỏng quá nhiệt',exact:true}).click();
  await page.waitForFunction(previous=>document.querySelector('[data-testid="backend-response"]')?.getAttribute('data-batch-id')!==previous,id,{timeout:145000});
  await page.getByTestId('backend-incident').waitFor({timeout:145000});
  assert.match(await page.getByTestId('backend-incident').innerText(),/Sự cố:/);

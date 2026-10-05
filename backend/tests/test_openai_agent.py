@@ -138,6 +138,7 @@ def test_agent_receives_batch_safety_and_short_term_memory(monkeypatch) -> None:
 
 
 def test_hard_safety_guardrail_cannot_be_downgraded(monkeypatch) -> None:
+    monkeypatch.setenv("EXTERNAL_TOOLS", "on")  # search_nearby_garages is stubbed below
     garage_calls = []
     monkeypatch.setattr(
         orchestrator.Runner,

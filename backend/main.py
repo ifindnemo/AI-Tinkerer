@@ -7,11 +7,15 @@ load_dotenv()
 
 from routes import router  # noqa: E402
 from store import store  # noqa: E402
+from telemetry.db import telemetry_store  # noqa: E402
+from telemetry.routes import get_worker, router as telemetry_router  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     store.initialize()
+    telemetry_store.initialize()
+    get_worker().start()
     yield
 
 
@@ -25,6 +29,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router, prefix="/api")
+app.include_router(telemetry_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

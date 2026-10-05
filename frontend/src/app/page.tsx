@@ -1,4 +1,4 @@
-import Garage from "@/components/garage";
+import HomePage from "@/components/home/home-page";
 export default function Home() {
-  return <Garage />;
+  return <HomePage />;
 }

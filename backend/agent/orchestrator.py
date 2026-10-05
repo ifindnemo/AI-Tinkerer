@@ -13,7 +13,13 @@ from agent.tools import (
     VehicleToolContext,
     create_google_calendar_event,
 )
-from schemas import ActionType, IncidentAction, Severity, VehicleAssessment
+from schemas import (
+    ActionType,
+    IncidentAction,
+    SafetyGuardrailResult,
+    Severity,
+    VehicleAssessment,
+)
 from store import store
 
 
@@ -71,11 +77,12 @@ class VehicleAgent:
             }
         )
 
-    def _run_analysis(
+    def model_assessment(
         self,
         telemetry_context: dict[str, Any],
         short_term_memory: dict[str, Any] | None,
-    ) -> tuple[VehicleAssessment, list[dict[str, Any]], dict[str, Any]]:
+    ) -> tuple[VehicleAssessment, list[dict[str, Any]]]:
+        """Run the LLM agent only. Returns its raw assessment and tool trace."""
         vehicle_id = str(telemetry_context["vehicle_id"])
         current_location = telemetry_context.get("current_location") or {}
         context = VehicleToolContext(
@@ -97,14 +104,83 @@ class VehicleAgent:
         )
         if not isinstance(result.final_output, VehicleAssessment):
             raise RuntimeError("OpenAI agent returned an invalid vehicle assessment")
-        assessment = self._enforce_safety_floor(result.final_output, safety)
+        return result.final_output, context.trace
+
+    def finalize(
+        self,
+        raw: VehicleAssessment,
+        telemetry_context: dict[str, Any],
+        trace: list[dict[str, Any]],
+        policy: dict[str, Any] | None = None,
+    ) -> tuple[VehicleAssessment, dict[str, Any]]:
+        """Deterministic floors and ceilings, then the garage lookup for alerts."""
+        safety = evaluate_hard_safety(telemetry_context)
+        assessment = self._enforce_safety_floor(raw, safety)
         assessment = self._enforce_simulated_nominal_profile(
             assessment,
             telemetry_context,
             safety.triggered,
         )
-        self._ensure_nearby_garages(assessment, telemetry_context, context.trace)
-        return assessment, context.trace, safety.model_dump(mode="json")
+        if policy:
+            assessment = self._apply_detector_policy(assessment, telemetry_context, safety, policy)
+        self._ensure_nearby_garages(assessment, telemetry_context, trace)
+        return assessment, safety.model_dump(mode="json")
+
+    def _run_analysis(
+        self,
+        telemetry_context: dict[str, Any],
+        short_term_memory: dict[str, Any] | None,
+        policy: dict[str, Any] | None = None,
+    ) -> tuple[VehicleAssessment, list[dict[str, Any]], dict[str, Any]]:
+        raw, trace = self.model_assessment(telemetry_context, short_term_memory)
+        assessment, safety = self.finalize(raw, telemetry_context, trace, policy)
+        return assessment, trace, safety
+
+    @classmethod
+    def _apply_detector_policy(
+        cls,
+        assessment: VehicleAssessment,
+        telemetry_context: dict[str, Any],
+        safety,
+        policy: dict[str, Any],
+    ) -> VehicleAssessment:
+        """Device data: rules set a minimum severity, and with no rule, no DTC and no
+        guardrail the model alone cannot raise an alert (ceiling = normal)."""
+        floor = Severity(policy.get("minimum_severity", "normal"))
+        if SEVERITY_RANK[floor] > SEVERITY_RANK[Severity.NORMAL]:
+            assessment = cls._enforce_safety_floor(
+                assessment,
+                SafetyGuardrailResult(
+                    triggered=True,
+                    minimum_severity=floor,
+                    reasons=list(policy.get("reasons", [])),
+                ),
+            )
+        if (
+            policy.get("ceiling_normal")
+            and not safety.triggered
+            and assessment.severity != Severity.NORMAL
+        ):
+            records = telemetry_context.get("records") or []
+            coolant = [r["coolant_temp_c"] for r in records if r.get("coolant_temp_c") is not None]
+            evidence = (
+                [f"Nhiệt độ nước làm mát {min(coolant):.1f}–{max(coolant):.1f}°C, chưa chạm ngưỡng cảnh báo."]
+                if coolant
+                else []
+            )
+            assessment = VehicleAssessment(
+                severity=Severity.NORMAL,
+                diagnosis=(
+                    f"Trong {len(records)} mẫu gần nhất, các chỉ số chưa vượt ngưỡng cảnh báo của hệ thống "
+                    "và xe không báo mã lỗi."
+                ),
+                suspected_faults=[],
+                evidence=[*evidence, "Không có mã lỗi DTC và đèn check engine tắt."],
+                confidence=0.8,
+                missing_data=list(assessment.missing_data),
+                recommendations=["Tiếp tục theo dõi xe trong các chuyến tiếp theo."],
+            )
+        return assessment
 
     @staticmethod
     def _enforce_simulated_nominal_profile(
@@ -183,6 +259,8 @@ class VehicleAgent:
             item.get("tool") == "search_nearby_garages" for item in trace
         ):
             return
+        if os.getenv("EXTERNAL_TOOLS", "on").lower() == "off":
+            return  # offline demo / tests: never call LocationIQ
 
         location = telemetry_context.get("current_location") or {}
         latitude = location.get("latitude")
@@ -220,6 +298,21 @@ class VehicleAgent:
             telemetry_context,
             previous_memory,
         )
+        return self.persist_assessment(
+            telemetry_context, assessment, trace, safety, previous_memory
+        )
+
+    @staticmethod
+    def persist_assessment(
+        telemetry_context: dict[str, Any],
+        assessment: VehicleAssessment,
+        trace: list[dict[str, Any]],
+        safety: dict[str, Any],
+        previous_memory: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Open or update the incident and its short-term memory for an alert.
+        Called exactly once per analysis, after the final assessment is chosen."""
+        vehicle_id = str(telemetry_context["vehicle_id"])
         assessment_data = assessment.model_dump(mode="json")
 
         result: dict[str, Any] = {

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import {thermalLevel, thermalLabels} from "@/lib/thermal-status";
 import type { Analysis, Telemetry } from "@/lib/telemetry";
 import type { Vehicle } from "@/lib/vehicles";
+import { useLang } from "@/hooks/use-preferences";
+import { pick } from "@/lib/preferences";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -28,12 +30,15 @@ export default function CarViewer({
   scanning,
   telemetry,
   analysis,
+  source = "simulated",
 }: {
   vehicle: Vehicle;
   color: string;
   scanning: boolean;
   telemetry: Telemetry;
   analysis: Analysis | null;
+  // "obd": live data from the car (device mode); labels must not say "simulated".
+  source?: "simulated" | "obd";
 }) {
   const host = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -45,9 +50,11 @@ export default function CarViewer({
     rotate: (value: boolean) => void;
     paint: (color: string) => void;
   } | null>(null);
+  const {t, lang} = useLang();
   const [progress, setProgress] = useState(0);
   const [ready, setReady] = useState(false);
-  const [error, setError] = useState("");
+  // Error codes are set inside the WebGL effect and translated at render time.
+  const [error, setError] = useState<"" | "webgl" | "load" | "context" | "fullscreen">("");
   const [retry, setRetry] = useState(0);
   const [rotating, setRotating] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState(true);
@@ -62,6 +69,9 @@ export default function CarViewer({
   const status = scanning ? "scanning" : report?.severity ?? "unknown";
   const hot = thermalLevel(telemetry,"engine") === "danger" || thermalLevel(telemetry,"cooling") === "danger";
   const initialColor = useRef(color);
+  const obd = source === "obd";
+  // Device mode leaves unsupported sensors as NaN; never print "NaN°C".
+  const degrees = (value: number) => Number.isFinite(value) ? `${value}°C` : "—";
 
   useEffect(() => {
     const el = host.current;
@@ -96,9 +106,7 @@ export default function CarViewer({
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       queueMicrotask(() =>
-        setError(
-          "Trình duyệt chưa hỗ trợ WebGL. Hãy bật tăng tốc phần cứng để xem xe 3D.",
-        ),
+        setError("webgl"),
       );
       return;
     }
@@ -303,7 +311,7 @@ export default function CarViewer({
           setProgress(Math.round((event.loaded / event.total) * 100));
       },
       () => {
-        if (!disposed) setError("Không tải được model 3D. Hãy thử tải lại.");
+        if (!disposed) setError("load");
       },
     );
     api.current = {
@@ -379,7 +387,7 @@ export default function CarViewer({
     render();
     const lost = (event: Event) => {
       event.preventDefault();
-      setError("WebGL đã bị gián đoạn. Tải lại model để tiếp tục.");
+      setError("context");
     };
     renderer.domElement.addEventListener("webglcontextlost", lost);
     return () => {
@@ -411,7 +419,7 @@ export default function CarViewer({
       if (document.fullscreenElement) await document.exitFullscreen();
       else await root.current?.requestFullscreen();
     } catch {
-      setError("Trình duyệt không hỗ trợ toàn màn hình.");
+      setError("fullscreen");
     }
   };
   return (
@@ -431,13 +439,18 @@ export default function CarViewer({
       {!ready && !error && (
         <div className="viewer-loading" role="status">
           <LoaderCircle className="spin" size={24} />
-          <span>Đang đưa xe vào garage… {progress}%</span>
+          <span>{t("Đang đưa xe vào garage…", "Bringing the car into the garage…")} {progress}%</span>
         </div>
       )}
       {error && (
         <div className="viewer-loading error" role="alert">
           <AlertTriangle />
-          <span>{error}</span>
+          <span>{{
+            webgl: t("Trình duyệt chưa hỗ trợ WebGL. Hãy bật tăng tốc phần cứng để xem xe 3D.", "This browser has no WebGL. Enable hardware acceleration to view the 3D car."),
+            load: t("Không tải được model 3D. Hãy thử tải lại.", "Could not load the 3D model. Try again."),
+            context: t("WebGL đã bị gián đoạn. Tải lại model để tiếp tục.", "WebGL was interrupted. Reload the model to continue."),
+            fullscreen: t("Trình duyệt không hỗ trợ toàn màn hình.", "Fullscreen is not supported in this browser."),
+          }[error]}</span>
           <button
             onClick={() => {
               setError("");
@@ -447,80 +460,80 @@ export default function CarViewer({
               setRetry((v) => v + 1);
             }}
           >
-            Tải lại model
+            {t("Tải lại model", "Reload model")}
           </button>
         </div>
       )}
       {ready && !error && <button className="driving-toggle" aria-pressed={motionEnabled}
         onClick={() => setMotionEnabled(value => !value)}
-        title="Chuyển động minh họa theo telemetry; tự dừng khi mất kết nối hoặc bật giảm chuyển động">
+        title={t("Chuyển động minh họa theo telemetry; tự dừng khi mất kết nối hoặc bật giảm chuyển động", "Illustrative motion from telemetry; stops when offline or with reduced motion")}>
         {motionEnabled ? <Pause size={13} /> : <Play size={13} />}
-        {motionEnabled ? "Tạm dừng hiệu ứng" : "Bật hiệu ứng xe chạy"}
+        {motionEnabled ? t("Tạm dừng hiệu ứng", "Pause motion") : t("Bật hiệu ứng xe chạy", "Play driving motion")}
       </button>}
-      <div className="camera-presets" aria-label="Góc nhìn nhanh">
-        {[["perspective", "Góc 3/4"], ["front", "Trước"], ["rear", "Sau"], ["side", "Bên hông"], ["top", "Từ trên"]].map(([id, label]) => (
+      <div className="camera-presets" aria-label={t("Góc nhìn nhanh", "Quick views")}>
+        {[["perspective", t("Góc 3/4", "3/4 view")], ["front", t("Trước", "Front")], ["rear", t("Sau", "Rear")], ["side", t("Bên hông", "Side")], ["top", t("Từ trên", "Top")]].map(([id, label]) => (
           <button key={id} disabled={!ready || !!error} aria-pressed={view === id}
             onClick={() => { api.current?.view(id); setView(id); setRotating(false); }}>
             {label}
           </button>
         ))}
       </div>
-      {ready && markers && !error && (vehicle.hotspots ?? []).map(point => (
+      {ready && markers && !error && (vehicle.hotspots ?? []).map(hotspot => ({...hotspot, label: hotspot.id === "engine" ? t("Động cơ", "Engine") : t("Làm mát", "Cooling")})).map(point => (
         <button key={point.id} ref={el => { tags.current[point.id] = el; }}
           className={`engine-marker sensor-${point.id} heat-${thermalLevel(telemetry,point.id)}`}
-          aria-label={`Xem ${point.label}`} title={`${point.label} · ${thermalLabels[thermalLevel(telemetry,point.id)]}`} aria-expanded={detail === point.id}
+          aria-label={`${t("Xem", "View")} ${point.label}`} title={`${point.label} · ${pick(thermalLabels[thermalLevel(telemetry,point.id)], lang)}`} aria-expanded={detail === point.id}
           aria-controls="sensor-detail"
           onClick={() => setDetail(detail === point.id ? null : point.id)}>
           <span className="marker-point" />
           <span className="marker-label">{point.label}
-            {thermalLevel(telemetry,point.id) === "danger" && <AlertTriangle size={13} aria-label="Cảnh báo quá nhiệt" />}
-            <b>{telemetry.connected ? `${point.id === "engine" ? telemetry.oil : telemetry.coolant}°C` : "—"}</b>
+            {thermalLevel(telemetry,point.id) === "danger" && <AlertTriangle size={13} aria-label={t("Cảnh báo quá nhiệt", "Overheating warning")} />}
+            <b>{telemetry.connected ? degrees(point.id === "engine" ? telemetry.oil : telemetry.coolant) : "—"}</b>
           </span>
         </button>
       ))}
-      {ready && !error && hot && <div className="thermal-legend"><AlertTriangle size={13} /> Vùng cảnh báo nhiệt · mô phỏng</div>}
+      {ready && !error && hot && <div className="thermal-legend"><AlertTriangle size={13} /> {obd ? t("Vùng cảnh báo nhiệt", "Heat warning zone") : t("Vùng cảnh báo nhiệt · mô phỏng", "Heat warning zone · simulated")}</div>}
       {ready && !error && <div className={`viewer-assessment ${hot ? "critical" : status}`} role="status">
         <span className="tiny-dot" />
-        {scanning ? "Đang đối chiếu cảm biến…" : report ? report.title : telemetry.connected ? "Chọn Analysis để đánh giá · dữ liệu mô phỏng" : "Mất kết nối · chưa thể đánh giá"}
+        {scanning ? t("Đang đối chiếu cảm biến…", "Cross-checking sensors…") : report ? report.title : telemetry.connected ? obd ? t("Chờ đánh giá · dữ liệu OBD", "Awaiting assessment · OBD data") : t("Chờ đánh giá · dữ liệu mô phỏng", "Awaiting assessment · simulated data") : t("Mất kết nối · chưa thể đánh giá", "Disconnected · cannot assess")}
       </div>}
       {detail && ready && markers && !error && (
-        <div className="hotspot-detail" id="sensor-detail" role="region" aria-label="Chi tiết cảm biến">
-          <b>{detail === "engine" ? "Vùng động cơ · nhiệt độ dầu" : "Vùng két nước · nước làm mát"}</b>
-          <p>Vị trí minh họa trên model · OBD mô phỏng</p>
+        <div className="hotspot-detail" id="sensor-detail" role="region" aria-label={t("Chi tiết cảm biến", "Sensor details")}>
+          <b>{detail === "engine" ? t("Vùng động cơ · nhiệt độ dầu", "Engine area · oil temperature") : t("Vùng két nước · nước làm mát", "Radiator area · coolant")}</b>
+          <p>{obd ? t("Vị trí minh họa trên model · dữ liệu OBD", "Illustrative position on the model · OBD data") : t("Vị trí minh họa trên model · OBD mô phỏng", "Illustrative position on the model · simulated OBD")}</p>
           {telemetry.connected ? <dl>
-            <div><dt>{detail === "engine" ? "Dầu động cơ" : "Nước làm mát"}</dt><dd>{detail === "engine" ? telemetry.oil : telemetry.coolant}°C</dd></div>
-            <div><dt>Ngoài trời</dt><dd>{telemetry.ambient}°C</dd></div>
-            <div><dt>Xu hướng nước làm mát</dt><dd>{telemetry.coolantTrend > 0 ? "+" : ""}{telemetry.coolantTrend}°C/phút</dd></div>
-          </dl> : <p>Không có dữ liệu kết nối hiện tại.</p>}
+            <div><dt>{detail === "engine" ? t("Dầu động cơ", "Engine oil") : t("Nước làm mát", "Coolant")}</dt><dd>{degrees(detail === "engine" ? telemetry.oil : telemetry.coolant)}</dd></div>
+            <div><dt>{t("Ngoài trời", "Outside")}</dt><dd>{degrees(telemetry.ambient)}</dd></div>
+            <div><dt>{t("Xu hướng nước làm mát", "Coolant trend")}</dt><dd>{telemetry.coolantTrend > 0 ? "+" : ""}{telemetry.coolantTrend}{t("°C/phút", "°C/min")}</dd></div>
+          </dl> : <p>{t("Không có dữ liệu kết nối hiện tại.", "No live connection data.")}</p>}
           {report ? <><strong>{report.title}</strong><p>{report.summary}</p>
             <p>{report.recommendations[0]}</p>
-            {detail === "cooling" && <p>Chưa có cảm biến riêng để kết luận két nước hoặc quạt bị hỏng.</p>}
-          </> : <p>{scanning ? "Đang phân tích…" : "Chưa có kết quả Analysis cho dữ liệu hiện tại."}</p>}
-          <button onClick={() => setDetail(null)}>Đóng</button>
+            {detail === "cooling" && <p>{t("Chưa có cảm biến riêng để kết luận két nước hoặc quạt bị hỏng.", "No dedicated sensor to conclude the radiator or fan has failed.")}</p>}
+          </> : <p>{scanning ? t("Đang phân tích…", "Analysing…") : t("Chưa có kết quả đánh giá cho dữ liệu hiện tại.", "No assessment for the current data yet.")}</p>}
+          <button onClick={() => setDetail(null)}>{t("Đóng", "Close")}</button>
         </div>
       )}
       {scanning && <div className="scan-beam" />}
       <div className="viewer-bottom">
         <span className="drag-hint">
-          <Rotate3D size={16} /> Kéo để xoay · Cuộn để thu phóng
+          <Rotate3D size={16} /> {t("Kéo để xoay · Cuộn để thu phóng", "Drag to rotate · Scroll to zoom")}
         </span>
         <div className="viewer-tools">
           <button
-            aria-label="Thu nhỏ"
+            aria-label={t("Thu nhỏ", "Zoom out")}
             onClick={() => api.current?.zoom(1.15)}
             disabled={!ready}
           >
             <ZoomOut size={17} />
           </button>
           <button
-            aria-label="Phóng to"
+            aria-label={t("Phóng to", "Zoom in")}
             onClick={() => api.current?.zoom(0.85)}
             disabled={!ready}
           >
             <ZoomIn size={17} />
           </button>
           <button
-            aria-label="Tự xoay xe"
+            aria-label={t("Tự xoay xe", "Auto-rotate")}
             aria-pressed={rotating}
             onClick={() => {
               api.current?.rotate(!rotating);
@@ -532,14 +545,14 @@ export default function CarViewer({
             <Rotate3D size={17} />
           </button>
           <button
-            aria-label="Hiện cảm biến"
+            aria-label={t("Hiện cảm biến", "Show sensors")}
             aria-pressed={markers}
             onClick={() => setMarkers((v) => !v)}
           >
             <ScanLine size={17} />
           </button>
           <button
-            aria-label="Đặt lại góc nhìn"
+            aria-label={t("Đặt lại góc nhìn", "Reset view")}
             onClick={() => {
               api.current?.reset();
               setView("perspective");
@@ -550,7 +563,7 @@ export default function CarViewer({
           >
             <RotateCcw size={17} />
           </button>
-          <button aria-label="Toàn màn hình" onClick={fullscreen}>
+          <button aria-label={t("Toàn màn hình", "Fullscreen")} onClick={fullscreen}>
             <Expand size={17} />
           </button>
         </div>

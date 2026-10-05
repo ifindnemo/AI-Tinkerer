@@ -5,7 +5,7 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  page.on('console',m=>{if(/hydrat|server rendered HTML/i.test(m.text()))errors.push(m.text());});
- await page.goto(process.env.BASE_URL||'http://localhost:3000');
+ await page.goto((process.env.BASE_URL||'http://localhost:3000')+'/garage');
  await page.waitForSelector('canvas[data-loaded="true"]',{timeout:60000});
  assert.equal(await page.locator('.metric-card.danger').count(),0);
  await page.getByLabel('Kịch bản mô phỏng').selectOption('environment');

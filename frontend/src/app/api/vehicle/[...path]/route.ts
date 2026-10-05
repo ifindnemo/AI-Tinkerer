@@ -3,13 +3,19 @@ export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 async function handle(request:Request,context:Context){
   const path=(await context.params).path.join('/');
-  const allowed=request.method==='GET'&&/^(health|incidents\/inc_[\w-]+(?:\/memory)?)$/.test(path);
+  const allowed=request.method==='GET'?/^(health|incidents\/inc_[\w-]+(?:\/memory)?|vehicles\/[\w-]{1,64}\/(?:profile|dtc))$/.test(path):/^vehicles\/[\w-]{1,64}\/profile$/.test(path);
   if(!allowed)return Response.json({error:'Endpoint không được hỗ trợ.'},{status:404});
   if(!sameOrigin(request))return Response.json({error:'Origin không hợp lệ.'},{status:403});
+  let body:unknown;
+  if(request.method==='POST'){
+    const text=await request.text();
+    if(text.length>10000)return Response.json({error:'Yêu cầu quá lớn.'},{status:413});
+    try{body=JSON.parse(text);}catch{return Response.json({error:'JSON không hợp lệ.'},{status:400});}
+  }
   try{
-    const response=await upstream(path==='health'?'/health':`/api/${path}`);
+    const response=await upstream(path==='health'?'/health':`/api/${path}`,body);
     if(!response.ok)return Response.json({error:safeApiError(response.status)},{status:response.status});
     return Response.json(publicPayload(await response.json()));
   }catch{return Response.json({error:'Không kết nối được backend hoặc yêu cầu đã hết thời gian.'},{status:502});}
 }
-export const GET=handle;
+export const GET=handle;export const POST=handle;

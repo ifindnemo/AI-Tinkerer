@@ -2,28 +2,32 @@ import { AlertTriangle, Fuel, Gauge, Thermometer, Zap } from "lucide-react";
 import {operatingUnit, type OperatingChannel} from "@/lib/telemetry-profile";
 import {thermalLevel, thermalLabels, type ThermalLevel} from "@/lib/thermal-status";
 import type { Telemetry } from "@/lib/telemetry";
-function Sparkline({values, warm = false}: {values: number[]; warm?: boolean}) {
-  if (values.length < 2) return <span className="sparkline-pending">Đang lấy mẫu</span>;
+import { useLang } from "@/hooks/use-preferences";
+import { pick } from "@/lib/preferences";
+export function Sparkline({values, warm = false}: {values: number[]; warm?: boolean}) {
+  const {t} = useLang();
+  if (values.length < 2) return <span className="sparkline-pending">{t("Đang lấy mẫu", "Sampling")}</span>;
   const low = Math.min(...values) - 0.2;
   const range = Math.max(...values) + 0.2 - low;
   const path = values.map((value, index) => `${index === 0 ? "M" : "L"}${index / (values.length - 1) * 110} ${32 - (value - low) / range * 26}`).join(" ");
-  return <svg className={`sparkline ${warm ? "warm" : ""}`} viewBox="0 0 110 38" aria-label={`Xu hướng ${values.length} mẫu gần nhất`} role="img"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.7" /></svg>;
+  return <svg className={`sparkline ${warm ? "warm" : ""}`} viewBox="0 0 110 38" aria-label={t(`Xu hướng ${values.length} mẫu gần nhất`, `Trend of the last ${values.length} samples`)} role="img"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.7" /></svg>;
 }
 
 
 export function OperatingMetrics({telemetry: t, samples}: {telemetry: Telemetry; samples: Telemetry[]}) {
+  const {t: tx} = useLang();
   const excel = t.operatingSource === "excel-range";
   const channels: {key: OperatingChannel | "engineLoad"; label: string}[] = [
-    {key:"rpm", label:"Vòng tua"}, {key:"map", label:"MAP"}, {key:"tps", label:"TPS"},
-    {key:"speed", label:"Tốc độ"}, {key:"consumption", label:"Tiêu thụ"}, {key:"engineLoad", label:"Tải động cơ"},
+    {key:"rpm", label:tx("Vòng tua","Engine speed")}, {key:"map", label:"MAP"}, {key:"tps", label:"TPS"},
+    {key:"speed", label:tx("Tốc độ","Speed")}, {key:"consumption", label:tx("Tiêu thụ","Fuel use")}, {key:"engineLoad", label:tx("Tải động cơ","Engine load")},
   ];
   return <>
     <div className="telemetry-source-note">
-      <span>{excel ? "Mô phỏng theo khoảng dữ liệu thật - Chưa hiệu chuẩn" : "Mô phỏng theo kịch bản vận hành"}</span>
-      <span>{t.connected ? "Cập nhật mỗi 1 giây" : "Đang chờ kết nối"}</span>
+      <span>{excel ? tx("Mô phỏng theo khoảng dữ liệu thật - Chưa hiệu chuẩn","Simulated from real data ranges - Not calibrated") : tx("Mô phỏng theo kịch bản vận hành","Simulated from the driving scenario")}</span>
+      <span>{t.connected ? tx("Cập nhật mỗi 1 giây","Updated every second") : tx("Đang chờ kết nối","Waiting for connection")}</span>
     </div>
-    {excel && <details className="telemetry-source-details"><summary>Về dữ liệu mô phỏng</summary><p>RPM, MAP, TPS, tốc độ và tiêu thụ tham khảo khoảng đã lọc từ Excel. MAP, TPS và tốc độ giữ thang gốc (raw), chưa xác định đơn vị. Tải động cơ, nhiệt độ, điện áp và mức nhiên liệu dùng mô phỏng riêng. Đây không phải số đo hay ngưỡng an toàn đã hiệu chuẩn cho xe.</p></details>}
-    <div className="live-driving-metrics" aria-label="Thông số vận hành hiện tại">
+    {excel && <details className="telemetry-source-details"><summary>{tx("Về dữ liệu mô phỏng","About the simulated data")}</summary><p>{tx("RPM, MAP, TPS, tốc độ và tiêu thụ tham khảo khoảng đã lọc từ Excel. MAP, TPS và tốc độ giữ thang gốc (raw), chưa xác định đơn vị. Tải động cơ, nhiệt độ, điện áp và mức nhiên liệu dùng mô phỏng riêng. Đây không phải số đo hay ngưỡng an toàn đã hiệu chuẩn cho xe.","RPM, MAP, TPS, speed and fuel use follow ranges filtered from the Excel workbook. MAP, TPS and speed keep their raw scale; units are unknown. Engine load, temperatures, voltage and fuel level are simulated separately. These are not calibrated measurements or safety limits for the car.")}</p></details>}
+    <div className="live-driving-metrics" aria-label={tx("Thông số vận hành hiện tại","Current operating readings")}>
       {channels.map(({key,label}) => {
         const unit = key === "engineLoad" ? "%" : operatingUnit(t,key);
         return <div key={key} data-channel={key}>
@@ -57,6 +61,7 @@ function Metric({
   values?: number[];
   connected: boolean;
 }) {
+  const {t} = useLang();
   return (
     <article className={`metric-card ${connected ? level : "unknown"} ${connected && warm ? "warm" : ""}`}>
       <div className="metric-label">
@@ -72,13 +77,14 @@ function Metric({
       </div>
       <div className="metric-sub">
         <span className={`tiny-dot ${connected ? "" : "off"}`} />
-        {connected ? sub : "Không có dữ liệu"}
+        {connected ? sub : t("Không có dữ liệu", "No data")}
       </div>
     </article>
   );
 }
 
 export function VehicleMetrics({ telemetry: t, samples = [] }: { telemetry: Telemetry; samples?: Telemetry[] }) {
+  const {t: tx, lang} = useLang();
   const ev = t.powertrain === "ev";
   const display = (value: number | undefined) =>
     t.connected && value !== undefined ? String(value) : "—";
@@ -87,42 +93,42 @@ export function VehicleMetrics({ telemetry: t, samples = [] }: { telemetry: Tele
   return (
     <div className="metrics-grid">
       <Metric
-        label={ev ? "Nhiệt độ pin" : "Nước làm mát"}
+        label={ev ? tx("Nhiệt độ pin","Battery temp") : tx("Nước làm mát","Coolant")}
         value={display(temperature)}
         unit="°C"
         icon={<Thermometer size={18} />}
-        sub={thermalLabels[thermalLevel(t,"cooling")]}
+        sub={pick(thermalLabels[thermalLevel(t,"cooling")], lang)}
         level={thermalLevel(t,"cooling")}
         warm={["watch","danger"].includes(thermalLevel(t,"cooling"))}
         values={samples.map(s => ev ? s.traction?.batteryTemp ?? 0 : s.coolant)}
         connected={t.connected}
       />
       <Metric
-        label={ev ? "Nhiệt độ motor" : "Nhiệt độ dầu"}
+        label={ev ? tx("Nhiệt độ motor","Motor temp") : tx("Nhiệt độ dầu","Oil temp")}
         value={display(secondary)}
         unit="°C"
         icon={<Gauge size={18} />}
-        sub={thermalLabels[thermalLevel(t,"engine")]}
+        sub={pick(thermalLabels[thermalLevel(t,"engine")], lang)}
         level={thermalLevel(t,"engine")}
         warm={["watch","danger"].includes(thermalLevel(t,"engine"))}
         values={samples.map(s => ev ? s.traction?.motorTemp ?? 0 : s.oil)}
         connected={t.connected}
       />
       <Metric
-        label="Điện áp ắc quy 12V"
+        label={tx("Điện áp ắc quy 12V","12V battery voltage")}
         value={display(t.battery)}
         unit="V"
         icon={<Zap size={18} />}
-        sub="Hệ thống điện phụ trợ"
+        sub={tx("Hệ thống điện phụ trợ","Auxiliary electrical system")}
         values={samples.map(s => s.battery)}
         connected={t.connected}
       />
       <Metric
-        label={ev ? "Dung lượng pin (SOC)" : "Nhiên liệu"}
+        label={ev ? tx("Dung lượng pin (SOC)","Battery charge (SOC)") : tx("Nhiên liệu","Fuel")}
         value={display(ev ? t.traction?.soc : t.fuel)}
         unit="%"
         icon={ev ? <Zap size={18} /> : <Fuel size={18} />}
-        sub="Dung lượng còn lại"
+        sub={tx("Dung lượng còn lại","Remaining")}
         values={samples.map(s => ev ? s.traction?.soc ?? 0 : s.fuel)}
         connected={t.connected}
       />
@@ -130,89 +136,69 @@ export function VehicleMetrics({ telemetry: t, samples = [] }: { telemetry: Tele
   );
 }
 export function TelemetryReadings({ telemetry: t }: { telemetry: Telemetry }) {
+  const {t: tx} = useLang();
   const ev = t.powertrain === "ev";
   const display = (value: number | undefined, unit: string) =>
     t.connected && value !== undefined ? `${value}${unit}` : "—";
-  const rangeSource = t.operatingSource === "excel-range" ? "Khoảng Excel đã lọc · chưa hiệu chuẩn" : "Kịch bản mock";
-  const rows = ev
+  const perMinute = tx(" °C/phút", " °C/min");
+  const none = tx("Không có", "None");
+  const rangeSource = t.operatingSource === "excel-range" ? tx("Khoảng Excel đã lọc · chưa hiệu chuẩn", "Filtered Excel range · uncalibrated") : tx("Kịch bản mock", "Mock scenario");
+  // `thermal` ties a row to the matching sensor highlight, independent of the label language.
+  type Row = {label: string; value: string; source: string; thermal?: "cooling" | "engine"};
+  const rows: Row[] = ev
     ? [
-        ["Nhiệt độ pin", display(t.traction?.batteryTemp, " °C"), "BMS mock"],
-        ["Nhiệt độ motor", display(t.traction?.motorTemp, " °C"), "MCU mock"],
-        ["Dung lượng pin (SOC)", display(t.traction?.soc, " %"), "BMS mock"],
-        ["Sức khỏe pin (SOH)", display(t.traction?.soh, " %"), "BMS mock"],
-        [
-          "Xu hướng nhiệt pin",
-          display(t.traction?.batteryTrend, " °C/phút"),
-          "Chuỗi BMS mock",
-        ],
-        [
-          "Nhiệt độ môi trường",
-          display(t.ambient, " °C"),
-          "Weather mock / GPS",
-        ],
-        ["Điện áp ắc quy 12V", display(t.battery, " V"), "CAN mock"],
-        ["Quạt làm mát", display(t.fan, " %"), "CAN mock"],
-        ["Vận tốc", display(t.speed, " km/h"), "GPS mock"],
-        [
-          "Cảnh báo BMS",
-          t.connected ? t.dtc.join(", ") || "Không có" : "—",
-          "BMS mock",
-        ],
+        {label: tx("Nhiệt độ pin", "Battery temperature"), value: display(t.traction?.batteryTemp, " °C"), source: "BMS mock", thermal: "cooling"},
+        {label: tx("Nhiệt độ motor", "Motor temperature"), value: display(t.traction?.motorTemp, " °C"), source: "MCU mock", thermal: "engine"},
+        {label: tx("Dung lượng pin (SOC)", "Battery charge (SOC)"), value: display(t.traction?.soc, " %"), source: "BMS mock"},
+        {label: tx("Sức khỏe pin (SOH)", "Battery health (SOH)"), value: display(t.traction?.soh, " %"), source: "BMS mock"},
+        {label: tx("Xu hướng nhiệt pin", "Battery temperature trend"), value: display(t.traction?.batteryTrend, perMinute), source: tx("Chuỗi BMS mock", "BMS mock series")},
+        {label: tx("Nhiệt độ môi trường", "Ambient temperature"), value: display(t.ambient, " °C"), source: "Weather mock / GPS"},
+        {label: tx("Điện áp ắc quy 12V", "12V battery voltage"), value: display(t.battery, " V"), source: "CAN mock"},
+        {label: tx("Quạt làm mát", "Cooling fan"), value: display(t.fan, " %"), source: "CAN mock"},
+        {label: tx("Vận tốc", "Vehicle speed"), value: display(t.speed, " km/h"), source: "GPS mock"},
+        {label: tx("Cảnh báo BMS", "BMS warnings"), value: t.connected ? t.dtc.join(", ") || none : "—", source: "BMS mock"},
       ]
     : [
-        ["Trạng thái Fault", t.connected && t.fault !== undefined ? `${t.fault} · ${t.fault === 0 ? "Không lỗi" : "Có lỗi"}` : "—", "Blackbox mock"],
-        ["Áp suất đường nạp (MAP)", display(t.map, ` ${operatingUnit(t,"map")}`), rangeSource],
-        ["Vị trí bướm ga (TPS)", display(t.tps, ` ${operatingUnit(t,"tps")}`), rangeSource],
-        ["Tải động cơ", display(t.engineLoad, " %"), "Blackbox mock"],
-        ["Tiêu thụ nhiên liệu", display(t.consumption, " L/h"), rangeSource],
-        ["Nước làm mát", display(t.coolant, " °C"), "OBD-II mock"],
-        ["Nhiệt độ dầu", display(t.oil, " °C"), "OBD-II"],
-        ["Nhiệt độ khí nạp", display(t.intake, " °C"), "OBD-II"],
-        [
-          "Nhiệt độ môi trường",
-          display(t.ambient, " °C"),
-          "Weather mock / GPS",
-        ],
-        [
-          "Tốc độ tăng nhiệt",
-          display(t.coolantTrend, " °C/phút"),
-          "Chuỗi cảm biến mô phỏng",
-        ],
-        ["Quạt làm mát", display(t.fan, " %"), "CAN"],
-        ["Vòng tua động cơ", display(t.rpm, " rpm"), rangeSource],
-        ["Vận tốc", display(t.speed, ` ${operatingUnit(t,"speed")}`), rangeSource],
-        ["Điện áp ắc quy", display(t.battery, " V"), "OBD-II"],
-        ["Nhiên liệu", display(t.fuel, " %"), "OBD-II"],
-        [
-          "Mã lỗi DTC",
-          t.connected ? t.dtc.join(", ") || "Không có" : "—",
-          "OBD-II",
-        ],
+        {label: tx("Trạng thái Fault", "Fault status"), value: t.connected && t.fault !== undefined ? `${t.fault} · ${t.fault === 0 ? tx("Không lỗi", "No fault") : tx("Có lỗi", "Fault")}` : "—", source: "Blackbox mock"},
+        {label: tx("Áp suất đường nạp (MAP)", "Manifold pressure (MAP)"), value: display(t.map, ` ${operatingUnit(t,"map")}`), source: rangeSource},
+        {label: tx("Vị trí bướm ga (TPS)", "Throttle position (TPS)"), value: display(t.tps, ` ${operatingUnit(t,"tps")}`), source: rangeSource},
+        {label: tx("Tải động cơ", "Engine load"), value: display(t.engineLoad, " %"), source: "Blackbox mock"},
+        {label: tx("Tiêu thụ nhiên liệu", "Fuel consumption"), value: display(t.consumption, " L/h"), source: rangeSource},
+        {label: tx("Nước làm mát", "Coolant"), value: display(t.coolant, " °C"), source: "OBD-II mock", thermal: "cooling"},
+        {label: tx("Nhiệt độ dầu", "Oil temperature"), value: display(t.oil, " °C"), source: "OBD-II", thermal: "engine"},
+        {label: tx("Nhiệt độ khí nạp", "Intake air temperature"), value: display(t.intake, " °C"), source: "OBD-II"},
+        {label: tx("Nhiệt độ môi trường", "Ambient temperature"), value: display(t.ambient, " °C"), source: "Weather mock / GPS"},
+        {label: tx("Tốc độ tăng nhiệt", "Heating rate"), value: display(t.coolantTrend, perMinute), source: tx("Chuỗi cảm biến mô phỏng", "Simulated sensor series")},
+        {label: tx("Quạt làm mát", "Cooling fan"), value: display(t.fan, " %"), source: "CAN"},
+        {label: tx("Vòng tua động cơ", "Engine speed"), value: display(t.rpm, " rpm"), source: rangeSource},
+        {label: tx("Vận tốc", "Vehicle speed"), value: display(t.speed, ` ${operatingUnit(t,"speed")}`), source: rangeSource},
+        {label: tx("Điện áp ắc quy", "Battery voltage"), value: display(t.battery, " V"), source: "OBD-II"},
+        {label: tx("Nhiên liệu", "Fuel"), value: display(t.fuel, " %"), source: "OBD-II"},
+        {label: tx("Mã lỗi DTC", "DTC codes"), value: t.connected ? t.dtc.join(", ") || none : "—", source: "OBD-II"},
       ];
   return (
     <>
       <table>
         <thead>
           <tr>
-            <th>Cảm biến</th>
-            <th>Giá trị</th>
-            <th>Nguồn</th>
+            <th>{tx("Cảm biến", "Sensor")}</th>
+            <th>{tx("Giá trị", "Value")}</th>
+            <th>{tx("Nguồn", "Source")}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row[0]} className={["Nước làm mát","Nhiệt độ pin"].includes(row[0]) ? `thermal-row ${thermalLevel(t,"cooling")}` : ["Nhiệt độ dầu","Nhiệt độ motor"].includes(row[0]) ? `thermal-row ${thermalLevel(t,"engine")}` : undefined}>
-              {row.map((value, i) => (
-                <td key={i}>{value}</td>
-              ))}
+            <tr key={row.label} className={row.thermal ? `thermal-row ${thermalLevel(t,row.thermal)}` : undefined}>
+              <td>{row.label}</td>
+              <td>{row.value}</td>
+              <td>{row.source}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {t.powertrain === "hybrid" && (
         <p className="data-timestamp">
-          Bản mock hybrid hiện chỉ mô phỏng nhóm cảm biến động cơ xăng; chưa
-          đánh giá pin hybrid.
+          {tx("Bản mock hybrid hiện chỉ mô phỏng nhóm cảm biến động cơ xăng; chưa đánh giá pin hybrid.", "The hybrid mock only simulates petrol-engine sensors; the hybrid battery is not assessed.")}
         </p>
       )}
     </>

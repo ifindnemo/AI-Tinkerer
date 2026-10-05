@@ -52,3 +52,27 @@ test("filtered workbook ranges bound a smooth per-car stream without assigning u
  assert.equal(operatingUnit(incidentPacket,"map"),"kPa");
  assert.equal(operatingUnit(incidentPacket,"speed"),"km/h");
 });
+
+test("connected overheating demo climbs 95 → 105 → 115°C with the fan off and a flat load before the 120°C hard rule", async () => {
+ const {OVERHEAT_DTC_AT} = await import("../src/lib/live-telemetry");
+ const at = (tick:number) => liveSample("engine","bmw-m2",tick);
+ assert.equal(at(0).coolant,95);assert.equal(at(15).coolant,105);assert.equal(at(30).coolant,115);
+ const ramp = Array.from({length:60},(_,tick)=>at(tick));
+ for(let i=1;i<=42;i++)assert(ramp[i].coolant>=ramp[i-1].coolant,"coolant never drops while overheating");
+ assert(ramp.slice(0,38).every(p=>p.coolant<120),"first warning batches stay below the backend hard rule");
+ assert(ramp.slice(42).every(p=>p.coolant>=120),"the scenario eventually crosses the hard rule");
+ for(const p of ramp){
+  assert.equal(p.fan,0);assert(p.speed>50,"car keeps driving");
+  assert(p.engineLoad!>=35&&p.engineLoad!<=37,"load stays flat");assert(p.battery>=14&&p.battery<=14.2);
+  assert.deepEqual(p.dtc,p.coolant>=OVERHEAT_DTC_AT?["P0217"]:[]);
+ }
+ assert.notDeepEqual(at(0).location,at(10).location,"GPS follows the moving car");
+});
+
+test("overheatSecondAt locates thresholds on the ramp used by the landing chart and film", async () => {
+ const {overheatSecondAt} = await import("../src/lib/live-telemetry");
+ assert.equal(overheatSecondAt(95), 0);
+ assert.equal(overheatSecondAt(105), 15);
+ assert(overheatSecondAt(120) > 38 && overheatSecondAt(120) < 39);
+ assert.equal(overheatSecondAt(130), Infinity);
+});

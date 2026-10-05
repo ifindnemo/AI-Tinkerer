@@ -4,7 +4,7 @@ const browser = await chromium.launch({args:['--no-sandbox','--enable-gpu','--us
 try {
  const page = await browser.newPage({viewport:{width:1440,height:1000}});
  const errors=[]; page.on('pageerror', e=>errors.push(e.message));
- await page.goto('http://localhost:3000');
+ await page.goto('http://localhost:3000/garage');
  const canvas = page.locator('canvas[data-loaded="true"]');
  await canvas.waitFor({timeout:60000});
  assert.equal(await canvas.getAttribute('data-wheel-count'),'4');

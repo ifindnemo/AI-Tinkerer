@@ -14,7 +14,7 @@ export class BatchGateway{
     const response=await this.send('/api/telemetry/batch',batch);
     if(!response.ok)return {status:response.status,body:{error:safeApiError(response.status)}};
     const data=publicPayload(await response.json());
-    if(!isAgentReply(data,batch.vehicleId,batch.batchId))throw new Error();
+    if(!isAgentReply(data,batch.vehicleId,batch.batchId,batch.recordCount))throw new Error();
     return {status:200,body:{batchId:batch.batchId,vehicleId:batch.vehicleId,accepted:data.accepted_records,completedAt:new Date().toISOString(),latest:data,incident:data.incident??null}};
    }catch{return {status:502,body:{error:'Chưa nhận được kết quả hợp lệ từ backend. Không tự gửi lại gói này.'}};}
   })();

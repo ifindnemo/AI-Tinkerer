@@ -62,3 +62,27 @@ The user now requests simulated agent submission and a canned normal reply every
 ### Backend integration — current user scope
 
 The user explicitly authorizes connecting the real API and wants a single-user local MVP. Backend has been refreshed from main `396e3da`; see [backend MVP integration](docs/backend-mvp-integration.md). This supersedes older no-network/ML integration notes. The default adapter sends 15 sensor records once to `/api/telemetry/batch` through Next.js, and renders the agent assessment on every successful response. The new backend accepts the frontend raw units, strips Fault labels, reads external weather and uses short-term memory; it no longer has an ML stage. Service keys stay exclusively in Python. The user removed booking and reminders from the frontend MVP, so do not render those controls or expose backend action/confirm routes through Next.js. Keep the backend team implementation unchanged and do not reapply the superseded local backend patches saved in Git stash. Avoid production infrastructure.
+
+### Demo improvements (2026-10-03)
+
+The user requested: a gradual connected overheating ramp (95 → 105 → 115°C, fan 0%, flat load, moving car) so the agent warns before the backend 120°C rule; an early 5-sample first batch after a scenario change; a service-history card and tool-step list from `tool_trace`, with evidence opened on warning/critical; a runtime API/Mock toggle as an offline fallback; `./dev.sh` at the repo root; and a VI/EN interface toggle. See [backend MVP integration](docs/backend-mvp-integration.md). These are frontend-only; the backend is unchanged. UI strings use `useLang().t(vi, en)` in components and `tr(vi, en)` for text generated outside React.
+
+### UI rework, landing page and intro film (2026-10-04)
+
+The user chose a light, minimalist direction and asked for a reworked dashboard layout plus a landing page and a motion-graphic page. Routes: `/` landing (`components/home`), `/garage` dashboard (`components/garage.tsx`), `/film` intro film (`components/film`). See [design notes](docs/design-notes.md).
+
+- Dashboard: no sidebar; sticky app bar (tabs, film link, API/Mock, VI/EN, settings, help), a vehicle bar with live status and the scenario select, then car + telemetry on the left and the agent panel on the right. Keep the class names and `data-testid`s used by `scripts/*.mjs`. All colours are tokens in `globals.css`; Studio/Midnight/Blueprint themes only override tokens. The illustrative fixed-coordinate map was removed. The vehicle library renders only when more than one car ships.
+- Landing and film use CSS Modules and the shared tokens. Their numbers come from `overheatCoolant` / `overheatSecondAt` in `lib/live-telemetry.ts`; keep them labelled as an illustration of the demo scenario, never as guaranteed agent timing. Do not show booking or consent-to-book in either page.
+- The film is a pure function of time (`components/film/timeline.ts`, tested in `tests/film-timeline.test.ts`): scenes render from their local second on a 1920 × 1080 stage. `?t=` opens paused at a second, `?clean` hides chrome for recording.
+- The BMW renders in `public/brand/` derive from the CC BY-NC model; keep the Outlaw Games credit visible on pages that use them.
+
+### Live OBD device mode and CEO demo (2026-10-04)
+
+This section supersedes earlier scope notes where they conflict. The user now builds a production demo for 18/10/2026 (plan: [../docs/ke-hoach-demo-18-10.md](../docs/ke-hoach-demo-18-10.md)), works on frontend and backend alone, and allows changes to both. Booking is back in scope (to be rebuilt; the old confirm flow locked forever after any error).
+
+- `AgentMode` has a third value, `"device"`. `components/garage.tsx` renders `components/live/live-garage.tsx` for it and the unchanged classic dashboard for `backend`/`mock`; never pass `"device"` to `createVehicleSessionAdapter`.
+- Device data comes from an SSE store (`lib/device/stream.ts`, pure reducers in `lib/device/state.ts`) through `app/api/vehicle/stream/[id]`. A `snapshot` event replaces the state; samples are queued and played out at 1 Hz; slow PIDs use the newest value within 60 s (`latestValues`).
+- Signals a car does not report stay `NaN`/absent and render as "—". Never fill them with plausible defaults (OBD has no fan PID; `thermalLevel` treats `fan === 0` as overheating evidence).
+- Label simulated device data (`trip.simulated`) everywhere; the 3D BMW is illustrative and must not name the connected car.
+- The gateway only reads the car: its allowlist blocks Mode 04 (clear DTCs). Do not add a clear-codes control.
+- `?presenter=1` hides the data-source switch.

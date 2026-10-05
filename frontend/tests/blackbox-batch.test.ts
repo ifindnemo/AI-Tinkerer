@@ -34,3 +34,17 @@ test("duplicates, wrong vehicles, invalid samples and gaps cannot create fabrica
  stream.dispose();stream.push(packet(11));assert.equal(state.buffered,0);
  stream.start();assert.equal(snapshot().lastBatch,null);stream.dispose();
 });
+test("after a scenario change the first batch closes early, later batches are full size",async()=>{
+ const {BLACKBOX_EARLY_BATCH_SIZE}=await import("../src/lib/blackbox/types");
+ let state=initialTransfer();const stream=new BlackboxBatchStream("bmw-m2",s=>{state=s;});stream.start();
+ stream.push(packet(1));stream.breakSequence(BLACKBOX_EARLY_BATCH_SIZE);
+ assert.equal(state.buffered,0);assert.equal(state.target,BLACKBOX_EARLY_BATCH_SIZE);
+ for(let second=2;second<2+BLACKBOX_EARLY_BATCH_SIZE;second++)stream.push(packet(second));
+ const early=state.lastBatch!;assert.equal(early.recordCount,BLACKBOX_EARLY_BATCH_SIZE);assert.equal(early.records.length,BLACKBOX_EARLY_BATCH_SIZE);
+ assert.equal(state.target,15);
+ for(let second=7;second<7+14;second++)stream.push(packet(second));
+ assert.equal(state.lastBatch?.batchId,early.batchId,"next batch waits for 15 samples");
+ stream.push(packet(21));assert.equal(state.lastBatch?.recordCount,15);
+ stream.push({...packet(22),rpm:NaN});stream.breakSequence();assert.equal(state.target,15,"default break keeps full batches");
+ stream.dispose();
+});

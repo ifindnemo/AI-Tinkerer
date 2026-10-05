@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-const base = process.env.BASE_URL || "http://localhost:3000";
+const base = (process.env.BASE_URL || "http://localhost:3000") + "/garage";
 const browser = await chromium.launch({ args: ["--no-sandbox", "--enable-gpu", "--use-gl=angle", "--use-angle=gl"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

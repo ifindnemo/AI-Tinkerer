@@ -2,12 +2,17 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import Image from "next/image";
 import { useVehicleSession } from "@/hooks/use-vehicle-session";
+import { useAgentMode, useLang } from "@/hooks/use-preferences";
+import { pick, type AgentMode } from "@/lib/preferences";
+import { usePresenter } from "@/hooks/use-presenter";
+import LiveGarage from "./live/live-garage";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
 import BackendAgentPanel from "./backend-agent-panel";
 import VehicleLibrary from "./vehicle-library";
+import Brand from "./site/brand";
+import LangSwitch from "./site/lang-switch";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
 import { useEffect, useRef, useState } from "react";
@@ -15,23 +20,24 @@ import {
   Activity,
   ArrowDownToLine,
   ArrowRight,
-  ArrowUpRight,
   Check,
   ChevronDown,
-  ChevronRight,
   CircleHelp,
+  Clapperboard,
   Cpu,
-  Gauge,
+  FlaskConical,
   History,
   LayoutDashboard,
   LoaderCircle,
   MapPin,
   Radio,
+  Server,
   Settings2,
   ShieldCheck,
   Sparkles,
   Sun,
   Thermometer,
+  TriangleAlert,
   Unplug,
   X,
 } from "lucide-react";
@@ -42,21 +48,27 @@ import {
 } from "@/lib/telemetry";
 // This interactive panel follows a browser-owned live stream. Keep its initial
 // HTML deterministic; mount connection-dependent controls only on the client.
+function AgentLoading() {
+  const {t} = useLang();
+  return (
+    <section className="safety-agent-panel agent-loading" aria-label="Vehicle Safety Agent" aria-busy="true">
+      <span className="section-kicker">{t("ĐỒNG HÀNH CÙNG CHIẾC XE", "YOUR CAR COMPANION")}</span>
+      <h2>Car Neuron Agent</h2>
+      <p role="status">{t("Đang chuẩn bị giao diện agent…", "Preparing the agent…")}</p>
+    </section>
+  );
+}
+function ViewerLoading() {
+  const {t} = useLang();
+  return <div className="viewer viewer-loading">{t("Chuẩn bị garage 3D…", "Preparing the 3D garage…")}</div>;
+}
 const SafetyAgentPanel = dynamic(() => import("./vehicle-agent-panel"), {
   ssr: false,
-  loading: () => (
-    <section className="safety-agent-panel agent-loading" aria-label="Vehicle Safety Agent" aria-busy="true">
-      <span className="section-kicker">ĐỒNG HÀNH CÙNG CHIẾC XE</span>
-      <h2>Car Neuron Agent</h2>
-      <p role="status">Đang chuẩn bị giao diện agent…</p>
-    </section>
-  ),
+  loading: () => <AgentLoading />,
 });
 const CarViewer = dynamic(() => import("./car-viewer"), {
   ssr: false,
-  loading: () => (
-    <div className="viewer viewer-loading">Chuẩn bị garage 3D…</div>
-  ),
+  loading: () => <ViewerLoading />,
 });
 const paints = [
   { name: "Alpine White", color: "#e9eded" },
@@ -65,18 +77,26 @@ const paints = [
   { name: "Black Sapphire", color: "#22282c" },
 ];
 type Tab = "overview" | "telemetry" | "history";
-const timeLabel = (iso: string) =>
-  iso ? new Date(iso).toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }) : "—";
 
+// Live OBD data ("device") has its own dashboard; API and Mock share the classic one.
+// Separate components keep each mode's hooks independent when the user switches.
 export default function Garage() {
+  const [mode, setMode] = useAgentMode();
+  return mode === "device" ? <LiveGarage mode={mode} setMode={setMode} /> : <ClassicGarage mode={mode} setMode={setMode} />;
+}
+
+function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mode: AgentMode) => void}) {
+  const presenter = usePresenter();
   const [vehicle, setVehicle] = useState<Vehicle>(vehicles[0]);
   const [tab, setTab] = useState<Tab>("overview");
-  const {snapshot, adapter} = useVehicleSession(vehicle);
-  const {scenario, telemetry, samples, result, history, incident, failNext, restoring, recoveryNotice, storageError} = snapshot;
+  const {t, lang, time: timeLabel, setLang} = useLang();
+  const {snapshot, adapter} = useVehicleSession(vehicle, mode);
+  const {scenario, telemetry, samples, result: rawResult, history: rawHistory, incident, failNext, restoring, recoveryNotice, storageError} = snapshot;
+  // Backend titles derive from severity, so render them in the current language instead of the one at receipt.
+  const localize = (item: Analysis): Analysis => item.source !== "backend" ? item : {...item,
+    title: item.severity === "good" ? t("Agent chưa ghi nhận bất thường", "No anomaly found by the agent") : item.severity === "watch" ? t("Agent đề xuất kiểm tra xe", "The agent recommends an inspection") : t("Cảnh báo an toàn từ agent", "Safety alert from the agent")};
+  const result = rawResult && localize(rawResult);
+  const history = rawHistory.map(localize);
   const [paint, setPaint] = useState(0);
   const [error, setError] = useState("");
   const [modal, setModal] = useState<"settings" | "help" | null>(null);
@@ -108,9 +128,10 @@ export default function Garage() {
     setError("");
   };
   const runAnalysis = () => {
-    if (backend) {setTab("overview");setNotice(`Tự gửi mỗi 15 mẫu · Đang gom ${snapshot.blackbox.buffered}/15 mẫu.`);return;}
-    try {adapter.check();setError("");setNotice("Đã kiểm tra gói dữ liệu mới nhất của xe.");}
-    catch(error){setError(error instanceof Error?error.message:"Chưa thể phân tích.");}
+    const {buffered, target} = snapshot.blackbox;
+    if (backend) {setTab("overview");setNotice(t(`Tự gửi theo gói · Đang gom ${buffered}/${target} mẫu.`, `Sent automatically per batch · Collecting ${buffered}/${target} samples.`));return;}
+    try {adapter.check();setError("");setNotice(t("Đã kiểm tra gói dữ liệu mới nhất của xe.", "Checked the latest data batch."));}
+    catch(error){setError(error instanceof Error?error.message:t("Chưa thể phân tích.", "Cannot analyse yet."));}
   };
   const exportReport = () => {
     if (!result) return;
@@ -142,505 +163,260 @@ export default function Garage() {
     link.download = `car-neuron-${result.id.slice(0, 8)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice("Đã xuất báo cáo JSON.");
+    setNotice(t("Đã xuất báo cáo JSON.", "JSON report exported."));
   };
   const display = (value: number, suffix = "") =>
     telemetry.connected ? `${value}${suffix}` : "—";
   const visibleHistory = history.filter(item => item.vehicleId === vehicle.id);
+  const tabs: {id: Tab; label: string; icon: React.ReactNode}[] = [
+    {id: "overview", label: t("Tổng quan", "Overview"), icon: <LayoutDashboard size={16} />},
+    {id: "telemetry", label: t("Dữ liệu blackbox", "Blackbox data"), icon: <Activity size={16} />},
+    {id: "history", label: t("Lịch sử phân tích", "Analysis history"), icon: <History size={16} />},
+  ];
+  const healthClass = !backend && thermalDanger ? "critical" : result?.severity ?? "pending";
   return (
     <div className={`app theme-${theme}`}>
-      <aside className="sidebar">
-        <Link className="brand" href="/" aria-label="Car Neuron trang chủ">
-          <span className="brand-symbol brand-logo">
-            <Image src="/brand/car-neuron-logo.png" alt="" width={36} height={36} priority />
-          </span>
-          <span>
-            Car Neuron<span className="brand-period">.</span>
-          </span>
-        </Link>
-        <div className="workspace-label">
-          WORKSPACE <span>01</span>
-        </div>
-        <nav aria-label="Điều hướng chính">
-          <button
-            className={tab === "overview" ? "nav-item active" : "nav-item"}
-            onClick={() => setTab("overview")}
-          >
-            <LayoutDashboard size={19} />
-            Tổng quan
-            <ChevronRight className="nav-arrow" size={16} />
-          </button>
-          <button
-            className={tab === "telemetry" ? "nav-item active" : "nav-item"}
-            onClick={() => setTab("telemetry")}
-          >
-            <Activity size={19} />
-            Dữ liệu blackbox
-          </button>
-          <button
-            className={tab === "history" ? "nav-item active" : "nav-item"}
-            onClick={() => setTab("history")}
-          >
-            <History size={19} />
-            Lịch sử phân tích
-            {visibleHistory.length > 0 && (
-              <span className="nav-count">{visibleHistory.length}</span>
-            )}
-          </button>
-        </nav>
-        <div className="sidebar-vehicle">
-          <div className="sidebar-car-symbol">
-            <Gauge size={21} />
-          </div>
-          <div>
-            <strong>
-              {vehicle.brand} {vehicle.name}
-            </strong>
-            <span>
-              {vehicles.length} xe · {powertrainLabels[vehicle.powertrain]}
-            </span>
-          </div>
-          <span className="tiny-dot" />
-        </div>
-        <div className="sidebar-bottom">
-          <div className="agent-mini">
-            <span className="agent-orb">
-              <Sparkles size={16} />
-            </span>
-            <div>
-              <b>Car Neuron Agent</b>
-              <span>Sẵn sàng phân tích</span>
-            </div>
-            <span className="tiny-dot" />
-          </div>
-          <button className="nav-item" onClick={() => setModal("settings")}>
-            <Settings2 size={18} />
-            Cài đặt demo
-          </button>
-          <button className="nav-item" onClick={() => setModal("help")}>
-            <CircleHelp size={18} />
-            Hướng dẫn
-          </button>
-          <div className="profile">
-            <span className="avatar">N</span>
-            <div>
-              <strong>My garage</strong>
-              <span>Không gian cá nhân</span>
-            </div>
-            <span className="profile-tag">DEMO</span>
+      <header className="app-bar">
+        <div className="app-bar-inner">
+          <Brand label={t("Car Neuron trang chủ", "Car Neuron home")} />
+          <nav className="app-tabs" aria-label={t("Điều hướng garage", "Garage navigation")}>
+            {tabs.map(item => (
+              <button key={item.id} className="app-tab" aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>
+                {item.icon}
+                {item.label}
+                {item.id === "history" && visibleHistory.length > 0 && <span className="nav-count">{visibleHistory.length}</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="app-bar-tools">
+            <Link className="app-bar-link" href="/film"><Clapperboard size={15} />{t("Phim giới thiệu", "Intro film")}</Link>
+            {!presenter && <div className="segmented" role="group" aria-label={t("Nguồn agent", "Agent source")}>
+              <button onClick={() => setMode("device")} title={t("Dữ liệu trực tiếp từ thiết bị OBD qua backend", "Live data from the OBD device via the backend")}><Radio size={12} />OBD</button>
+              <button aria-pressed={mode === "backend"} onClick={() => setMode("backend")} title={t("Gửi telemetry tới backend và agent AI thật", "Send telemetry to the backend and the real AI agent")}><Server size={12} />API</button>
+              <button aria-pressed={mode === "mock"} onClick={() => setMode("mock")} title={t("Chạy hoàn toàn trong trình duyệt, không cần mạng", "Runs entirely in the browser, no network needed")}><FlaskConical size={12} />{t("Mô phỏng", "Mock")}</button>
+            </div>}
+            <LangSwitch />
+            <button className="icon-button" onClick={() => setModal("settings")} aria-label={t("Cài đặt demo", "Demo settings")} title={t("Cài đặt demo", "Demo settings")}><Settings2 size={17} /></button>
+            <button className="icon-button" onClick={() => setModal("help")} aria-label={t("Hướng dẫn", "Guide")} title={t("Hướng dẫn", "Guide")}><CircleHelp size={17} /></button>
           </div>
         </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            My garage <ChevronRight size={14} />
-            <b>
-              {tab === "overview"
-                ? "Tổng quan"
-                : tab === "telemetry"
-                  ? "Dữ liệu blackbox"
-                  : "Lịch sử phân tích"}
-            </b>
-          </div>
-          <div className="topbar-right">
-            <span className="demo-pill">DEMO MODE</span>
-            <span className="topbar-divider" />
-            <span className="system-status">
-              <span
-                className={`tiny-dot ${telemetry.connected ? "" : "off"}`}
-              />
-              {telemetry.connected
-                ? "Hệ thống sẵn sàng"
-                : "Blackbox ngoại tuyến"}
-            </span>
-          </div>
-        </header>
-        <main>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">YOUR CAR. UNDERSTOOD.</div>
-              <h1>
-                {tab === "history"
-                  ? "Lịch sử phân tích"
-                  : tab === "telemetry"
-                    ? "Dữ liệu chiếc xe"
-                    : "Hiểu xe hơn. An tâm hơn."}
-              </h1>
-              <p>
-                Một góc nhìn toàn diện về chiếc xe, từ dữ liệu đến hành trình.
-              </p>
+      </header>
+      <main className="dash">
+        <section className="vehicle-bar" aria-label={t("Xe đang theo dõi", "Monitored car")}>
+          <div className="vehicle-bar-id">
+            <span className="section-kicker">{t("XE CỦA BẠN", "YOUR CAR")}</span>
+            <h1>{vehicle.brand} <span>{vehicle.name}</span></h1>
+            <div className="vehicle-meta">
+              <span>{vehicle.year ?? t("Đời xe chưa xác minh", "Year unverified")}</span>
+              <span>{pick(powertrainLabels[vehicle.powertrain], lang)}</span>
+              <span>{vehicle.description}</span>
             </div>
-            <button
-              className="outline-button"
-              onClick={() => setModal("settings")}
+          </div>
+          <div className="live-vehicle-strip" aria-label={t("Trạng thái luồng dữ liệu", "Data stream status")}>
+            <span className={`live-chip ${telemetry.connected ? "" : "off"}`}><span className={`status-dot ${telemetry.connected ? "" : "off"}`} />{telemetry.connected ? t("LIVE · mô phỏng", "LIVE · simulated") : t("Mất kết nối", "Disconnected")}</span>
+            <span className="live-item"><small>{t("Thiết bị", "Device")}</small><b>AL–{vehicle.id.toUpperCase()}</b></span>
+            <span className="live-item"><small>{t("Gói cuối", "Last packet")}</small><b data-testid="live-timestamp">{timeLabel(telemetry.capturedAt)}</b></span>
+            <span className="live-item"><small>{t("Mã lỗi", "Fault")}</small><b>{!telemetry.connected ? "Fault —" : telemetry.fault === undefined ? t("Đang nhận…", "Receiving…") : telemetry.fault === 0 ? t("Fault 0 · không lỗi", "Fault 0 · none") : t(`Fault ${telemetry.fault} · có lỗi`, `Fault ${telemetry.fault} · present`)}</b></span>
+          </div>
+          <label className="scenario-select">
+            <span>{t("Kịch bản", "Scenario")}</span>
+            <select
+              aria-label={t("Kịch bản mô phỏng", "Simulation scenario")}
+              value={scenario}
+              onChange={(e) => switchScenario(e.target.value as ScenarioId)}
             >
-              <Settings2 size={16} />
-              <span>Tùy chỉnh mô phỏng</span>
-            </button>
-          </div>
-          <VehicleLibrary selected={vehicle} onSelect={switchVehicle} />
-          {restoring && <div className="session-notice" role="status">Đang khôi phục phiên theo dõi của xe…</div>}
-          {recoveryNotice && <div className="session-notice" role="status"><span>{recoveryNotice}</span><button aria-label="Ẩn thông báo khôi phục" onClick={adapter.dismissRecovery}><X size={15} /></button></div>}
-          {storageError && <div className="session-notice session-error" role="alert">{storageError}</div>}
-          <div className="demo-strip">
-            <div>
-              <span className="demo-icon">
-                <Radio size={15} />
-              </span>
-              <span>
-                Blackbox realtime · mô phỏng <span className="strip-separator">/</span>
-                <b> Dữ liệu riêng của xe · cập nhật mỗi 1 giây.</b>
-              </span>
-            </div>
-            <label className="scenario-select">
-              <select
-                aria-label="Kịch bản mô phỏng"
-                value={scenario}
-                onChange={(e) => switchScenario(e.target.value as ScenarioId)}
-              >
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {vehicle.powertrain === "ev" && s.id === "engine"
-                      ? "Pin / motor quá nhiệt"
-                      : s.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={15} />
-            </label>
-          </div>
-          {tab === "overview" && (
-            <>
-              <section className={`health-overview ${thermalDanger ? "critical" : busy ? "pending" : result?.severity ?? "pending"}`} aria-label="Tình trạng xe">
-                <div className="health-overview-icon"><ShieldCheck size={26} /></div>
-                <div className="health-overview-copy"><span className="section-kicker">TÌNH TRẠNG XE · TỰ ĐỘNG THEO DÕI</span>
-                  <h2>{busy ? "Đang kiểm tra chiếc xe…" : !telemetry.connected ? "Chưa có dữ liệu kết nối" : result?.title ?? "Xe có cần kiểm tra không?"}</h2>
-                  <p>{result ? result.summary : "Đối chiếu nhiều cảm biến để đánh giá trước khi đề xuất garage."}</p>
-                  <small>{backend ? "Agent đánh giá từ dữ liệu mô phỏng · Cần kiểm tra kỹ thuật để xác nhận" : result ? "Quy tắc demo · chưa có xác suất tin cậy được hiệu chuẩn" : "Chưa có kết luận chẩn đoán"}</small>
-                </div>
-                <div className="health-actions">
-                  <button className="outline-button" disabled={busy} onClick={runAnalysis}>Kiểm tra xe <ArrowRight size={16} /></button>
-                </div>
-              </section>
-              <div className="live-vehicle-strip" aria-label="Trạng thái luồng dữ liệu">
-                <span><span className={`status-dot ${telemetry.connected ? "" : "off"}`} />{telemetry.connected ? "LIVE · mô phỏng" : "Mất kết nối"}</span>
-                <span>{vehicle.brand} {vehicle.name} · AL–{vehicle.id.toUpperCase()}</span>
-                <span data-testid="live-timestamp">Gói cuối: {timeLabel(telemetry.capturedAt)}</span>
-                <strong>{!telemetry.connected ? "Fault —" : telemetry.fault === undefined ? "Đang nhận dữ liệu…" : telemetry.fault === 0 ? "Fault 0 · không ghi nhận lỗi" : `Fault ${telemetry.fault} · có lỗi`}</strong>
+              {scenarios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {vehicle.powertrain === "ev" && s.id === "engine"
+                    ? t("Pin / motor quá nhiệt", "Battery / motor overheating")
+                    : pick(s.label, lang)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={15} />
+          </label>
+        </section>
+        {vehicles.length > 1 && <VehicleLibrary selected={vehicle} onSelect={switchVehicle} />}
+        {restoring && <div className="session-notice" role="status">{t("Đang khôi phục phiên theo dõi của xe…", "Restoring the monitoring session…")}</div>}
+        {recoveryNotice && <div className="session-notice" role="status"><span>{recoveryNotice}</span><button aria-label={t("Ẩn thông báo khôi phục", "Dismiss recovery notice")} onClick={adapter.dismissRecovery}><X size={15} /></button></div>}
+        {storageError && <div className="session-notice session-error" role="alert">{storageError}</div>}
+        {tab === "overview" && (
+          <>
+            {/* With the backend, overall status follows the agent verdict; sensor cards still show local heat levels. */}
+            <section className={`health-overview ${healthClass}`} aria-label={t("Tình trạng xe", "Vehicle status")}>
+              <div className="health-overview-icon">{healthClass === "watch" || healthClass === "critical" ? <TriangleAlert size={22} /> : <ShieldCheck size={22} />}</div>
+              <div className="health-overview-copy">
+                <span className="section-kicker">{t("TÌNH TRẠNG XE · TỰ ĐỘNG THEO DÕI", "VEHICLE STATUS · AUTO-MONITORED")}</span>
+                <h2>{!telemetry.connected ? t("Chưa có dữ liệu kết nối", "No connected data") : result?.title ?? (busy ? t("Đang kiểm tra chiếc xe…", "Checking your car…") : t("Xe có cần kiểm tra không?", "Does your car need a check?"))}</h2>
+                <p>{result ? result.summary : t("Đối chiếu nhiều cảm biến để đánh giá trước khi đề xuất garage.", "Cross-checks several sensors before suggesting a garage.")}</p>
+                <small>{backend ? `${t("Agent đánh giá từ dữ liệu mô phỏng · Cần kiểm tra kỹ thuật để xác nhận", "Agent assessment of simulated data · Needs a technical check to confirm")}${busy && result ? t(" · đang cập nhật…", " · updating…") : ""}` : result ? t("Quy tắc demo · chưa có xác suất tin cậy được hiệu chuẩn", "Demo rules · no calibrated confidence") : t("Chưa có kết luận chẩn đoán", "No diagnosis yet")}</small>
               </div>
-              <div className="overview-grid">
+              <button className="outline-button" disabled={busy} onClick={runAnalysis}>{t("Kiểm tra xe", "Check car")} <ArrowRight size={16} /></button>
+            </section>
+            <div className="overview-grid">
+              <div className="overview-main">
                 <section className="vehicle-card" aria-label="Garage 3D">
-                  <div className="vehicle-heading">
-                    <div>
-                      <span className="section-kicker">XE CỦA BẠN</span>
-                      <h2>
-                        {vehicle.brand} <span>{vehicle.name}</span>
-                      </h2>
-                      <div className="vehicle-meta">
-                        <span>{vehicle.year ?? "Đời xe chưa xác minh"}</span>
-                        <span className="meta-dot">·</span>
-                        <span>{powertrainLabels[vehicle.powertrain]}</span>
-                        <span className="meta-dot">·</span>
-                        <span>{vehicle.description}</span>
-                      </div>
-                    </div>
-                    <span className="vehicle-badge">
-                      <ShieldCheck size={14} /> Digital garage
-                    </span>
-                  </div>
                   <CarViewer
-                      key={vehicle.id}
-                      vehicle={vehicle}
-                      color={paints[paint].color}
-                      scanning={busy}
-                      telemetry={telemetry}
-                      analysis={result}
-                    />
-
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    color={paints[paint].color}
+                    scanning={busy}
+                    telemetry={telemetry}
+                    analysis={result}
+                  />
                   <div className="vehicle-footer">
                     <div className="paint-selector">
-                        <span>MÀU NGOẠI THẤT</span>
-                        <div className="paint-options">
-                          {paints.map((p, i) => (
-                            <button
-                              key={p.name}
-                              title={p.name}
-                              aria-label={`Màu ${p.name}`}
-                              aria-pressed={paint === i}
-                              className={paint === i ? "paint active" : "paint"}
-                              style={
-                                { "--paint": p.color } as React.CSSProperties
-                              }
-                              onClick={() => setPaint(i)}
-                            >
-                              {paint === i && (
-                                <Check
-                                  size={12}
-                                  style={{ color: i > 1 ? "white" : "#293630" }}
-                                />
-                              )}
-                            </button>
-                          ))}
-                          <b>{paints[paint].name}</b>
-                        </div>
+                      <span>{t("Màu ngoại thất", "Paint")}</span>
+                      <div className="paint-options">
+                        {paints.map((p, i) => (
+                          <button
+                            key={p.name}
+                            title={p.name}
+                            aria-label={`${t("Màu", "Paint")} ${p.name}`}
+                            aria-pressed={paint === i}
+                            className={paint === i ? "paint active" : "paint"}
+                            style={{ "--paint": p.color } as React.CSSProperties}
+                            onClick={() => setPaint(i)}
+                          >
+                            {paint === i && <Check size={12} style={{ color: i > 1 ? "white" : "#293630" }} />}
+                          </button>
+                        ))}
+                        <b>{paints[paint].name}</b>
                       </div>
+                    </div>
                     <div className="model-credit">
-                      <a href={vehicle.source} target="_blank" rel="noreferrer">
-                        {vehicle.author} ↗
-                      </a>
+                      <a href={vehicle.source} target="_blank" rel="noreferrer">{vehicle.author} ↗</a>
                       <span>{vehicle.license}</span>
                     </div>
                   </div>
                 </section>
-                <aside className="insights-column">
-                  {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
-                  <details className="vehicle-context"><summary>Kết nối & bối cảnh môi trường</summary>
-                  <section className="connection-card">
-                    <div className="card-top">
-                      <h3>Kết nối blackbox</h3>
-                      <Radio size={18} />
-                    </div>
-                    <div className="connection-status">
-                      <span
-                        className={`status-dot ${telemetry.connected ? "" : "off"}`}
-                      />
-                      <strong>
-                        {telemetry.connected ? "Đã kết nối" : "Mất kết nối"}
-                      </strong>
-                      <span>MOCK</span>
-                    </div>
-                    <div className="device-line">
-                      <span>Thiết bị</span>
-                      <b>AL–{vehicle.id.toUpperCase()}</b>
-                    </div>
-                    <div className="device-line">
-                      <span>Giao thức</span>
-                      <b>
-                        {vehicle.powertrain === "ev"
-                          ? "BMS / MCU / CAN"
-                          : "OBD-II / CAN"}
-                      </b>
-                    </div>
-                    <div className="connection-foot">
-                      <span className="tiny-dot" />{" "}
-                      {telemetry.connected
-                        ? "Gói dữ liệu mẫu sẵn sàng"
-                        : "Đang chờ dữ liệu từ thiết bị"}
-                    </div>
-                  </section>
-                  <section className="location-card">
-                    <div className="card-top">
-                      <h3>Bối cảnh môi trường</h3>
-                      <ArrowUpRight size={17} />
-                    </div>
-                    <div className="weather-line">
-                      <div>
-                        <span className="weather-value">
-                          {backend ? liveWeather?.outside_temperature_c ?? "—" : display(telemetry.ambient)}
-                          <small>°C</small>
-                        </span>
+                <section className="dash-section telemetry-section" aria-label={t("Thông số vận hành", "Operating data")}>
+                  <div className="section-heading">
+                    <h2>{t("Thông số vận hành", "Operating data")} <span>TELEMETRY</span></h2>
+                    <button className="text-button" onClick={() => setTab("telemetry")}>{t("Bảng dữ liệu đầy đủ", "Full data table")} <ArrowRight size={15} /></button>
+                  </div>
+                  <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />
+                  <OperatingMetrics telemetry={telemetry} samples={samples} />
+                  <VehicleMetrics telemetry={telemetry} samples={samples} />
+                </section>
+              </div>
+              <aside className="insights-column">
+                {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
+                <details className="vehicle-context">
+                  <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
+                  <div className="context-grid">
+                    <section className="connection-card">
+                      <h3><Radio size={15} />{t("Kết nối blackbox", "Blackbox connection")}</h3>
+                      <dl>
+                        <div><dt>{t("Trạng thái", "Status")}</dt><dd><span className={`status-dot ${telemetry.connected ? "" : "off"}`} />{telemetry.connected ? t("Đã kết nối · mô phỏng", "Connected · simulated") : t("Mất kết nối", "Disconnected")}</dd></div>
+                        <div><dt>{t("Thiết bị", "Device")}</dt><dd>AL–{vehicle.id.toUpperCase()}</dd></div>
+                        <div><dt>{t("Giao thức", "Protocol")}</dt><dd>{vehicle.powertrain === "ev" ? "BMS / MCU / CAN" : "OBD-II / CAN"}</dd></div>
+                      </dl>
+                    </section>
+                    <section className="location-card">
+                      <h3><Sun size={15} />{t("Bối cảnh môi trường", "Environment")}</h3>
+                      <div className="weather-line">
+                        <span className="weather-value">{backend ? liveWeather?.outside_temperature_c ?? "—" : display(telemetry.ambient)}<small>°C</small></span>
                         <p>
-                          {backend ? liveWeather ? "Nhiệt độ tại vị trí xe" : "Chưa nhận được thời tiết" : scenario === "environment" ? "Nắng nóng" : "Trời nắng nhẹ"}{" "}
-                          <span>{backend ? "· Open-Meteo qua backend" : "· Mô phỏng"}</span>
+                          {backend ? liveWeather ? t("Nhiệt độ tại vị trí xe", "Temperature at the car") : t("Chưa nhận được thời tiết", "No weather yet") : scenario === "environment" ? t("Nắng nóng", "Hot and sunny") : t("Trời nắng nhẹ", "Mild sunshine")}
+                          <span>{backend ? t("Open-Meteo qua backend", "Open-Meteo via backend") : t("Mô phỏng", "Simulated")}</span>
                         </p>
                       </div>
-                      <Sun className="sun-icon" size={43} strokeWidth={1.3} />
-                    </div>
-                    <div className="location-line">
-                      <MapPin size={15} />
-                      <span>{telemetry.location.name}</span>
-                    </div>
-                    <div
-                      className="map-art"
-                      aria-label="Sơ đồ vị trí minh họa, không phải bản đồ trực tiếp"
-                    >
-                      <div className="map-river" />
-                      <div className="map-road road-one" />
-                      <div className="map-road road-two" />
-                      <div className="map-road road-three" />
-                      <span className="map-place">THẢO ĐIỀN</span>
-                      <span className="map-pin">
-                        <span />
-                      </span>
-                      <span className="map-coordinate">
-                        10.8023° N · 106.7328° E
-                      </span>
-                    </div>
-                  </section>
-                  </details>
-                </aside>
-              </div>
+                      <div className="location-line"><MapPin size={14} /><span>{telemetry.location.name}</span></div>
+                    </section>
+                  </div>
+                </details>
+              </aside>
+            </div>
+            <section className="analysis-section dash-section" aria-label={t("Báo cáo đánh giá", "Assessment report")}>
               <div className="section-heading">
-                <h3>
-                  Thông số vận hành <span>TELEMETRY</span>
-                </h3>
-                <button onClick={() => setTab("telemetry")}>
-                  Dữ liệu của xe <ArrowRight size={15} />
+                <h2>{t("Báo cáo đánh giá", "Assessment report")} <span>{backend ? "BACKEND" : "DEMO"}</span></h2>
+                <button className="primary-button small" onClick={runAnalysis} disabled={busy}>
+                  {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+                  <span>{busy ? t("Đang phân tích…", "Analysing…") : backend ? t("Theo dõi kết quả API", "Follow API results") : result ? t("Phân tích lại", "Analyse again") : t("Phân tích", "Analyse")}</span>
                 </button>
               </div>
-              <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />
-              <OperatingMetrics telemetry={telemetry} samples={samples} />
-              <VehicleMetrics telemetry={telemetry} samples={samples} />
-              <section
-                className="analysis-section"
-                aria-label="Phân tích chiếc xe"
-              >
-                <div className="analysis-intro">
-                  <span className="analysis-symbol">
-                    <Sparkles size={23} />
-                  </span>
+              {error && (
+                <div className="analysis-error" role="alert">
+                  <Unplug size={20} />
                   <div>
-                    <div className="analysis-kicker">
-                      CAR NEURON INTELLIGENCE <span>{backend ? "BACKEND" : "DEMO"}</span>
-                    </div>
-                    <h2>Dữ liệu kể gì về chiếc xe của bạn?</h2>
-                    <p>
-                      {backend ? "Nhận đánh giá và đề xuất trực tiếp từ agent theo từng gói 15 mẫu." : "Đối chiếu cảm biến, thời tiết và điều kiện vận hành để tìm nguyên nhân."}
-                    </p>
+                    <b>{t("Chưa thể phân tích", "Cannot analyse yet")}</b>
+                    <p>{error}</p>
                   </div>
-                  <button
-                    className="primary-button"
-                    onClick={runAnalysis}
-                    disabled={busy}
-                  >
-                    {busy ? (
-                      <LoaderCircle className="spin" size={18} />
-                    ) : (
-                      <Sparkles size={18} />
-                    )}
-                    <span>
-                      {busy
-                        ? "Đang phân tích…"
-                        : backend ? "Theo dõi kết quả API" : result
-                          ? "Analysis lại"
-                          : "Analysis"}
-                    </span>
-                    {!busy && <ArrowUpRight size={17} />}
-                  </button>
+                  <button className="outline-button" onClick={runAnalysis}>{t("Thử lại", "Retry")}</button>
                 </div>
-                {error && (
-                  <div className="analysis-error" role="alert">
-                    <Unplug size={20} />
-                    <div>
-                      <b>Chưa thể phân tích</b>
-                      <p>{error}</p>
-                    </div>
-                    <button onClick={runAnalysis}>Thử lại</button>
-                  </div>
-                )}
-                {result && (
-                  <AnalysisResult result={result} onExport={exportReport} />
-                )}
-                {!busy && !result && !error && (
-                  <div className="analysis-idle">
-                    <span>
-                      <ShieldCheck size={14} /> Phân tích theo bối cảnh
-                    </span>
-                    <span>
-                      <Thermometer size={14} /> Phân biệt nguồn nhiệt
-                    </span>
-                    <span>
-                      <Check size={14} /> Đề xuất có cơ sở
-                    </span>
-                    <small>{backend ? "Đang chờ backend xử lý gói dữ liệu đầu tiên." : "Dữ liệu & quy tắc đánh giá được mô phỏng."}</small>
-                  </div>
-                )}
-              </section>
-            </>
-          )}
-          {tab === "telemetry" && (
-            <section className="data-panel">
-              <div className="data-heading">
-                <div>
-                  <h2>Gói dữ liệu blackbox</h2>
-                  <p>
-                    Dữ liệu trực tiếp của {vehicle.brand} {vehicle.name}, cập nhật mỗi 1 giây. Nguồn blackbox và môi trường đang được mô phỏng.
-                  </p>
+              )}
+              {result && <AnalysisResult result={result} onExport={exportReport} />}
+              {!busy && !result && !error && (
+                <div className="analysis-idle">
+                  <span><ShieldCheck size={14} /> {t("Phân tích theo bối cảnh", "Context-aware analysis")}</span>
+                  <span><Thermometer size={14} /> {t("Phân biệt nguồn nhiệt", "Separates heat sources")}</span>
+                  <span><Check size={14} /> {t("Đề xuất có cơ sở", "Evidence-based advice")}</span>
+                  <small>{backend ? t("Đang chờ backend xử lý gói dữ liệu đầu tiên.", "Waiting for the backend to process the first batch.") : t("Dữ liệu & quy tắc đánh giá được mô phỏng.", "Data and assessment rules are simulated.")}</small>
                 </div>
-                <button
-                  className="outline-button"
-                  onClick={() => {
-                    runAnalysis();
-                  }}
-                >
-                  Kiểm tra gói hiện tại
-                </button>
-              </div>
-              <TelemetryReadings telemetry={telemetry} />
-              <p className="data-timestamp">
-                Cập nhật: {timeLabel(telemetry.capturedAt)} · Không phải dữ liệu
-                xe thực.
-              </p>
+              )}
             </section>
-          )}
-          {tab === "history" && (
-            <section className="history-panel">
-              <div className="data-heading">
-                <div>
-                  <h2>Các lần phân tích</h2>
-                  <p>Lưu trên trình duyệt theo từng xe · khôi phục sau khi tải lại trang.</p>
-                </div>
-                <span className="history-total">{visibleHistory.length} báo cáo</span>
+          </>
+        )}
+        {tab === "telemetry" && (
+          <section className="data-panel dash-section">
+            <div className="data-heading">
+              <div>
+                <h2>{t("Gói dữ liệu blackbox", "Blackbox data batch")}</h2>
+                <p>{t(`Dữ liệu trực tiếp của ${vehicle.brand} ${vehicle.name}, cập nhật mỗi 1 giây. Nguồn blackbox và môi trường đang được mô phỏng.`, `Live data from the ${vehicle.brand} ${vehicle.name}, updated every second. The blackbox and environment are simulated.`)}</p>
               </div>
-              {visibleHistory.length === 0 ? (
-                <div className="empty-state">
-                  <History size={35} />
-                  <h3>Mỗi hành trình bắt đầu bằng sự thấu hiểu.</h3>
-                  <p>{backend ? "Kết quả sẽ được lưu trong phiên sau mỗi gói 15 mẫu được backend xử lý." : "Bấm Analysis ở trang Tổng quan để tạo báo cáo đầu tiên."}</p>
-                  <button
-                    className="primary-button"
-                    onClick={() => setTab("overview")}
-                  >
-                    Về garage <ArrowRight size={16} />
-                  </button>
-                </div>
-              ) : (
-                visibleHistory.map((h) => (
+              <button className="outline-button" onClick={runAnalysis}>{t("Kiểm tra gói hiện tại", "Check current batch")}</button>
+            </div>
+            <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />
+            <div className="table-wrap"><TelemetryReadings telemetry={telemetry} /></div>
+            <p className="data-timestamp">{t("Cập nhật", "Updated")}: {timeLabel(telemetry.capturedAt)} · {t("Không phải dữ liệu xe thực.", "Not real vehicle data.")}</p>
+          </section>
+        )}
+        {tab === "history" && (
+          <section className="history-panel dash-section">
+            <div className="data-heading">
+              <div>
+                <h2>{t("Các lần phân tích", "Past analyses")}</h2>
+                <p>{t("Lưu trên trình duyệt theo từng xe · khôi phục sau khi tải lại trang.", "Stored in this browser per car · restored after reload.")}</p>
+              </div>
+              <span className="history-total">{visibleHistory.length} {t("báo cáo", "reports")}</span>
+            </div>
+            {visibleHistory.length === 0 ? (
+              <div className="empty-state">
+                <History size={32} />
+                <h3>{t("Mỗi hành trình bắt đầu bằng sự thấu hiểu.", "Every journey starts with understanding.")}</h3>
+                <p>{backend ? t("Kết quả sẽ được lưu trong phiên sau mỗi gói dữ liệu được backend xử lý.", "Results are kept in this session after each batch the backend processes.") : t("Bấm Phân tích ở trang Tổng quan để tạo báo cáo đầu tiên.", "Press Analyse on the Overview page to create the first report.")}</p>
+                <button className="primary-button" onClick={() => setTab("overview")}>{t("Về tổng quan", "Back to overview")} <ArrowRight size={16} /></button>
+              </div>
+            ) : (
+              <div className="history-list">
+                {visibleHistory.map((h) => (
                   <article className={`history-row ${h.severity}`} key={h.id}>
-                    <span className="history-score">
-                      {h.score ?? "—"}
-                      <small>{h.source === "backend" ? "API" : "/100"}</small>
-                    </span>
+                    <span className="history-score">{h.score ?? "—"}<small>{h.source === "backend" ? "API" : "/100"}</small></span>
                     <div>
                       <h3>{h.title}</h3>
                       <p>
                         {h.vehicleName} · {timeLabel(h.createdAt)} ·{" "}
-                        {h.cause === "traction"
-                          ? "Pin / motor"
-                          : h.cause === "engine"
-                            ? "Động cơ"
-                            : h.cause === "environment"
-                              ? "Môi trường"
-                              : h.cause === "unclassified" ? "Nhận định backend" : "Bình thường"}
+                        {h.cause === "traction" ? t("Pin / motor", "Battery / motor") : h.cause === "engine" ? t("Động cơ", "Engine") : h.cause === "environment" ? t("Môi trường", "Environment") : h.cause === "unclassified" ? t("Nhận định backend", "Backend assessment") : t("Bình thường", "Normal")}
                       </p>
                       <details>
-                        <summary>Xem nhận định & đề xuất</summary>
+                        <summary>{t("Xem nhận định & đề xuất", "View assessment & advice")}</summary>
                         <p>{h.summary}</p>
-                        <ul>
-                          {h.recommendations.map((r) => (
-                            <li key={r}>{r}</li>
-                          ))}
-                        </ul>
+                        <ul>{h.recommendations.map((r) => <li key={r}>{r}</li>)}</ul>
                       </details>
                     </div>
-                    <span className="demo-pill">MOCK</span>
+                    <span className="demo-pill">{h.source === "backend" ? "API" : "MOCK"}</span>
                   </article>
-                ))
-              )}
-            </section>
-          )}
-          <footer className="page-footer">
-            <span>
-              <span className="brand-small">Car Neuron.</span> Kết nối dữ liệu.
-              Thấu hiểu hành trình.
-            </span>
-            <span>
-              Frontend concept <span className="footer-dot">·</span> v0.1
-            </span>
-          </footer>
-        </main>
-      </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+        <footer className="page-footer">
+          <span><b>Car Neuron.</b> {t("Kết nối dữ liệu. Thấu hiểu hành trình.", "Connected data. Understood journeys.")}</span>
+          <span>{t("Dữ liệu ECU mô phỏng", "Simulated ECU data")} · Frontend v0.2</span>
+        </footer>
+      </main>
       <dialog
         ref={modalRef}
         className="modal"
@@ -650,89 +426,80 @@ export default function Garage() {
         }}
       >
         <div className="modal-content">
-          <button
-            className="modal-close"
-            aria-label="Đóng"
-            onClick={() => setModal(null)}
-          >
-            <X size={21} />
+          <button className="modal-close icon-button" aria-label={t("Đóng", "Close")} onClick={() => setModal(null)}>
+            <X size={19} />
           </button>
           {modal === "settings" ? (
             <>
               <span className="section-kicker">YOUR WORKSPACE</span>
-              <h2>Cài đặt demo</h2>
-              <p>Tùy chỉnh không gian garage và dữ liệu mô phỏng.</p>
+              <h2>{t("Cài đặt demo", "Demo settings")}</h2>
+              <p>{t("Tùy chỉnh không gian garage và dữ liệu mô phỏng.", "Customise the garage and simulated data.")}</p>
               <label className="field-label">
-                Giao diện
-                <select
-                  aria-label="Giao diện"
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
-                >
-                  <option value="studio">Studio — Trắng & xanh rêu</option>
-                  <option value="midnight">Midnight — Garage tối</option>
-                  <option value="blueprint">Blueprint — Xanh kỹ thuật</option>
+                {t("Giao diện", "Theme")}
+                <select aria-label={t("Giao diện", "Theme")} value={theme} onChange={(e) => setTheme(e.target.value)}>
+                  <option value="studio">{t("Studio — Trắng & xanh rêu", "Studio — White & moss green")}</option>
+                  <option value="midnight">{t("Midnight — Garage tối", "Midnight — Dark garage")}</option>
+                  <option value="blueprint">{t("Blueprint — Xanh kỹ thuật", "Blueprint — Technical blue")}</option>
                 </select>
               </label>
               <label className="field-label">
-                Tình huống mô phỏng
-                <select
-                  value={scenario}
-                  onChange={(e) => switchScenario(e.target.value as ScenarioId)}
-                >
+                {t("Nguồn agent", "Agent source")}
+                <select value={mode} onChange={(e) => setMode(e.target.value === "mock" ? "mock" : e.target.value === "device" ? "device" : "backend")}>
+                  <option value="device">{t("OBD — dữ liệu trực tiếp từ thiết bị", "OBD — live data from the device")}</option>
+                  <option value="backend">{t("API — backend & AI thật", "API — backend & real AI")}</option>
+                  <option value="mock">{t("Mô phỏng — chạy trong trình duyệt", "Mock — runs in the browser")}</option>
+                </select>
+              </label>
+              <label className="field-label">
+                {t("Ngôn ngữ", "Language")}
+                <select value={lang} onChange={(e) => setLang(e.target.value === "en" ? "en" : "vi")}>
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label className="field-label">
+                {t("Tình huống mô phỏng", "Simulated situation")}
+                <select value={scenario} onChange={(e) => switchScenario(e.target.value as ScenarioId)}>
                   {scenarios.map((s) => (
                     <option value={s.id} key={s.id}>
-                      {vehicle.powertrain === "ev" && s.id === "engine"
-                        ? "Pin / motor quá nhiệt"
-                        : s.label}
+                      {vehicle.powertrain === "ev" && s.id === "engine" ? t("Pin / motor quá nhiệt", "Battery / motor overheating") : pick(s.label, lang)}
                     </option>
                   ))}
                 </select>
               </label>
               <div className="modal-note">
                 <Cpu size={18} />
-                <span>
-                  {backend ? "Telemetry mô phỏng được gửi đến backend mỗi 15 mẫu. Khóa API chỉ được cấu hình ở backend." : "Chế độ local mock. Không gửi dữ liệu đến máy chủ."}
-                </span>
+                <span>{backend ? t("Telemetry mô phỏng được gửi đến backend theo từng gói. Khóa API chỉ được cấu hình ở backend.", "Simulated telemetry is sent to the backend per batch. API keys live only in the backend.") : t("Chế độ local mock. Không gửi dữ liệu đến máy chủ.", "Local mock mode. No data is sent to a server.")}</span>
               </div>
-              <button className="primary-button" onClick={() => setModal(null)}>
-                Hoàn tất <Check size={16} />
-              </button>
+              <button className="primary-button" onClick={() => setModal(null)}>{t("Hoàn tất", "Done")} <Check size={16} /></button>
             </>
           ) : (
             <>
               <span className="section-kicker">QUICK START</span>
-              <h2>Làm quen với Car Neuron</h2>
+              <h2>{t("Làm quen với Car Neuron", "Getting started with Car Neuron")}</h2>
               <ol className="help-steps">
                 <li>
-                  <b>Khám phá chiếc xe</b>
-                  <p>
-                    Kéo để xoay model 3D, cuộn để thu phóng. Dùng các nút bên
-                    dưới để tự xoay, đặt lại góc nhìn hoặc mở toàn màn hình.
-                  </p>
+                  <b>{t("Khám phá chiếc xe", "Explore the car")}</b>
+                  <p>{t("Kéo để xoay model 3D, cuộn để thu phóng. Chọn góc nhìn ở phía trên khung xe; thu phóng, tự xoay và toàn màn hình ở góc dưới bên phải.", "Drag to rotate the 3D model and scroll to zoom. Pick a view above the car; zoom, auto-rotate and fullscreen sit in the bottom-right corner.")}</p>
                 </li>
                 <li>
-                  <b>Chọn tình huống</b>
-                  <p>
-                    Chuyển giữa bình thường, nắng nóng, quá nhiệt động cơ và mất
-                    kết nối ở thanh mô phỏng.
-                  </p>
+                  <b>{t("Chọn kịch bản", "Pick a scenario")}</b>
+                  <p>{t("Đổi giữa bình thường, nắng nóng, quá nhiệt động cơ và mất kết nối ở ô Kịch bản cạnh tên xe, hoặc bấm Mô phỏng quá nhiệt trong panel agent.", "Switch between normal, hot weather, engine overheating and disconnected in the Scenario box next to the car name, or press Inject overheating in the agent panel.")}</p>
                 </li>
                 <li>
-                  <b>Chạy Analysis</b>
-                  <p>
-                    Xem nguyên nhân, bằng chứng và đề xuất. Xuất báo cáo JSON
-                    hoặc xem lại trong Lịch sử phân tích.
-                  </p>
+                  <b>{t("Xem agent phân tích", "Watch the agent")}</b>
+                  <p>{t("Panel bên phải hiển thị nhận định, bằng chứng và các bước agent đã làm. Báo cáo chi tiết và file JSON nằm ở mục Báo cáo đánh giá; các lần trước nằm ở tab Lịch sử phân tích.", "The right-hand panel shows the assessment, evidence and the steps the agent took. The detailed report and JSON export live under Assessment report; earlier runs are in the Analysis history tab.")}</p>
+                </li>
+                <li>
+                  <b>{t("Nguồn agent & ngôn ngữ", "Agent source & language")}</b>
+                  <p>{t("Nút API / Mô phỏng trên thanh trên cùng chuyển giữa backend thật và agent chạy trong trình duyệt (dùng khi mất mạng). VI / EN đổi ngôn ngữ giao diện.", "The API / Mock switch in the top bar toggles between the real backend and the in-browser agent (useful offline). VI / EN changes the interface language.")}</p>
                 </li>
               </ol>
               <p className="attribution">
-                Xe đang chọn:{" "}
-                <a href={vehicle.source} target="_blank" rel="noreferrer">
-                  {vehicle.brand} {vehicle.name} — {vehicle.author}
-                </a>
-                . {vehicle.license}. Model GLB được lưu và tải từ ứng dụng.
-                {backend ? "Dữ liệu cảm biến mô phỏng; kết quả phân tích lấy từ backend." : "Dữ liệu và ngưỡng chẩn đoán chỉ là mô phỏng."}
+                {t("Xe đang chọn", "Selected car")}:{" "}
+                <a href={vehicle.source} target="_blank" rel="noreferrer">{vehicle.brand} {vehicle.name} — {vehicle.author}</a>
+                . {vehicle.license}. {t("Model GLB được lưu và tải từ ứng dụng.", "The GLB model ships with the app.")}{" "}
+                {backend ? t("Dữ liệu cảm biến mô phỏng; kết quả phân tích lấy từ backend.", "Sensor data is simulated; analysis comes from the backend.") : t("Dữ liệu và ngưỡng chẩn đoán chỉ là mô phỏng.", "Data and diagnostic thresholds are simulated.")}
               </p>
             </>
           )}
@@ -755,53 +522,35 @@ function AnalysisResult({
   result: Analysis;
   onExport: () => void;
 }) {
+  const {t} = useLang();
   return (
     <div className={`analysis-result ${result.severity}`} role="status">
       <div className="result-heading">
         <div className="health-score">
           <b>{result.score ?? "—"}</b>
-          <span>{result.source === "backend" ? "Chưa chấm điểm" : "/ 100"}</span>
+          <span>{result.source === "backend" ? t("Chưa chấm điểm", "Not scored") : "/ 100"}</span>
         </div>
         <div>
-          <span className="section-kicker">{result.source === "backend" ? "KẾT QUẢ TỪ BACKEND" : "ĐÁNH GIÁ MÔ PHỎNG"}</span>
+          <span className="section-kicker">{result.source === "backend" ? t("KẾT QUẢ TỪ BACKEND", "BACKEND RESULT") : t("ĐÁNH GIÁ MÔ PHỎNG", "SIMULATED ASSESSMENT")}</span>
           <h3>{result.title}</h3>
           <p>{result.summary}</p>
         </div>
-        <button
-          className="icon-button"
-          onClick={onExport}
-          aria-label="Xuất báo cáo JSON"
-          title="Xuất báo cáo JSON"
-        >
-          <ArrowDownToLine size={19} />
+        <button className="icon-button" onClick={onExport} aria-label={t("Xuất báo cáo JSON", "Export JSON report")} title={t("Xuất báo cáo JSON", "Export JSON report")}>
+          <ArrowDownToLine size={18} />
         </button>
       </div>
       <div className="result-columns">
         <div>
-          <h4>Cơ sở nhận định</h4>
-          <ul>
-            {result.evidence.map((e) => (
-              <li key={e}>
-                <Activity size={14} />
-                {e}
-              </li>
-            ))}
-          </ul>
+          <h4>{t("Cơ sở nhận định", "Evidence")}</h4>
+          <ul>{result.evidence.map((e) => <li key={e}><Activity size={14} />{e}</li>)}</ul>
         </div>
         <div>
-          <h4>Đề xuất cho bạn</h4>
-          <ul>
-            {result.recommendations.map((r) => (
-              <li key={r}>
-                <Check size={15} />
-                {r}
-              </li>
-            ))}
-          </ul>
+          <h4>{t("Đề xuất cho bạn", "Recommendations")}</h4>
+          <ul>{result.recommendations.map((r) => <li key={r}><Check size={15} />{r}</li>)}</ul>
         </div>
       </div>
       <p className="result-disclaimer">
-        {result.source === "backend" ? "Nguồn cảm biến được mô phỏng. Kết quả từ agent và quy tắc an toàn backend, cần kiểm tra kỹ thuật để xác nhận." : "Kết quả dựa trên quy tắc demo, cần backend và dữ liệu thực để xác thực chẩn đoán."}
+        {result.source === "backend" ? t("Nguồn cảm biến được mô phỏng. Kết quả từ agent và quy tắc an toàn backend, cần kiểm tra kỹ thuật để xác nhận.", "Sensor source is simulated. Result from the agent and backend safety rules; confirm with a technical check.") : t("Kết quả dựa trên quy tắc demo, cần backend và dữ liệu thực để xác thực chẩn đoán.", "Based on demo rules; a backend and real data are needed to validate the diagnosis.")}
       </p>
     </div>
   );

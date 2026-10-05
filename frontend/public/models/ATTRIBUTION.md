@@ -10,3 +10,7 @@
 - File unmodified. Runtime changes: normalized scale and position, selectable paint material color/roughness/metalness, custom studio lighting, batching opaque geometry by material to reduce draw calls.
 
 This asset is for noncommercial demonstration. Obtain a suitably licensed replacement before commercial use. The model is the G87 M2, not the F87 M2 Competition. BMW is a trademark of its respective owner; this prototype is not affiliated with BMW.
+
+## Still renders
+
+`public/brand/m2-hero.webp` (3/4 view) and `public/brand/m2-side.webp` (side profile) are renders of this same model with Brooklyn-Grey-like paint and transparent background, made with three.js for the landing page and the intro film. They are derivatives under the same CC BY-NC 4.0 licence; both pages show the credit.

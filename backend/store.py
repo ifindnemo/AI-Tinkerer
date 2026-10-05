@@ -1,6 +1,8 @@
 import json
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
@@ -19,15 +21,35 @@ class Store:
         if not self.path.is_absolute():
             self.path = Path(__file__).parent / self.path
         self._lock = Lock()
+        self._initialized = False
 
-    def connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        """Commit on success, roll back on error, and always close the connection."""
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Serialize writers: hold the store lock for the whole transaction."""
+        with self._lock, self.connect() as connection:
+            yield connection
 
     def initialize(self) -> None:
+        # Every public method calls this; the schema work runs once per Store.
+        if self._initialized:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, self.connect() as connection:
+            if self._initialized:
+                return
+            # WAL lets the SSE/analysis readers run while ingest writes.
+            connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS incidents (
@@ -101,6 +123,7 @@ class Store:
                     "ALTER TABLE incidents "
                     "ADD COLUMN assessment_json TEXT NOT NULL DEFAULT '{}'"
                 )
+        self._initialized = True
 
     @staticmethod
     def _incident_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:

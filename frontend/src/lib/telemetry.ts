@@ -1,4 +1,5 @@
 import { getVehicle, type Powertrain } from "./vehicles";
+import { tr, type Text } from "./preferences";
 export type ScenarioId = "normal" | "environment" | "engine" | "offline";
 export type Telemetry = {
   scenario: ScenarioId;
@@ -47,11 +48,11 @@ export type Analysis = {
   evidence: string[];
   recommendations: string[];
 };
-export const scenarios: { id: ScenarioId; label: string }[] = [
-  { id: "normal", label: "Vận hành bình thường" },
-  { id: "environment", label: "Thời tiết nắng nóng" },
-  { id: "engine", label: "Động cơ quá nhiệt" },
-  { id: "offline", label: "Mất kết nối blackbox" },
+export const scenarios: { id: ScenarioId; label: Text }[] = [
+  { id: "normal", label: {vi: "Vận hành bình thường", en: "Normal driving"} },
+  { id: "environment", label: {vi: "Thời tiết nắng nóng", en: "Hot weather"} },
+  { id: "engine", label: {vi: "Động cơ quá nhiệt", en: "Engine overheating"} },
+  { id: "offline", label: {vi: "Mất kết nối blackbox", en: "Blackbox disconnected"} },
 ];
 export function getMockTelemetry(
   scenario: ScenarioId,
@@ -154,11 +155,11 @@ export function getMockTelemetry(
 export function analyzeTelemetry(t: Telemetry): Analysis {
   if (!t.connected)
     throw new Error(
-      "Không nhận được dữ liệu blackbox. Hãy chọn kịch bản có kết nối và thử lại.",
+      tr("Không nhận được dữ liệu blackbox. Hãy chọn kịch bản có kết nối và thử lại.", "No blackbox data received. Pick a connected scenario and try again."),
     );
   const time = Date.parse(t.capturedAt);
   if (!Number.isFinite(time) || Date.now() - time > 60_000)
-    throw new Error("Dữ liệu đã cũ. Hãy đồng bộ blackbox và thử lại.");
+    throw new Error(tr("Dữ liệu đã cũ. Hãy đồng bộ blackbox và thử lại.", "The data is stale. Sync the blackbox and try again."));
   const values = [
     t.coolant,
     t.oil,
@@ -169,7 +170,7 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
     t.fan,
   ];
   if (values.some((v) => !Number.isFinite(v)))
-    throw new Error("Dữ liệu cảm biến không hợp lệ.");
+    throw new Error(tr("Dữ liệu cảm biến không hợp lệ.", "Invalid sensor data."));
   const common = {
     id: crypto.randomUUID(),
     vehicleId: t.vehicleId,
@@ -181,7 +182,7 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
     const pack = t.traction;
     if (!pack || Object.values(pack).some((value) => !Number.isFinite(value)))
       throw new Error(
-        "Thiếu hoặc sai dữ liệu pin/motor. Không thể đánh giá xe điện.",
+        tr("Thiếu hoặc sai dữ liệu pin/motor. Không thể đánh giá xe điện.", "Battery/motor data is missing or invalid. Cannot assess the EV."),
       );
     if (pack.batteryTemp >= 50 || pack.motorTemp >= 90 || pack.batteryTrend > 2)
       return {
@@ -189,18 +190,19 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
         severity: "critical",
         score: 40,
         cause: "traction",
-        title: "Dấu hiệu quá nhiệt pin / motor",
-        summary:
+        title: tr("Dấu hiệu quá nhiệt pin / motor", "Battery / motor overheating signs"),
+        summary: tr(
           "Nhiệt độ hệ truyền động điện vượt ngưỡng mô phỏng và tăng nhanh. Mức nhiệt môi trường chưa giải thích được tình trạng này.",
+          "Electric drivetrain temperature exceeds the simulated limit and is rising fast. Ambient temperature does not explain it."),
         evidence: [
-          `Pin ${pack.batteryTemp}°C · tăng ${pack.batteryTrend}°C/phút`,
-          `Motor ${pack.motorTemp}°C · môi trường ${t.ambient}°C`,
-          `Quạt ${t.fan}% · cảnh báo BMS mô phỏng`,
+          tr(`Pin ${pack.batteryTemp}°C · tăng ${pack.batteryTrend}°C/phút`, `Battery ${pack.batteryTemp}°C · rising ${pack.batteryTrend}°C/min`),
+          tr(`Motor ${pack.motorTemp}°C · môi trường ${t.ambient}°C`, `Motor ${pack.motorTemp}°C · ambient ${t.ambient}°C`),
+          tr(`Quạt ${t.fan}% · cảnh báo BMS mô phỏng`, `Fan ${t.fan}% · simulated BMS warning`),
         ],
         recommendations: [
-          "Dừng xe ở vị trí an toàn và kết thúc phiên sạc nếu đang sạc.",
-          "Không tự tháo, chạm hoặc sửa các bộ phận điện cao áp.",
-          "Liên hệ trung tâm dịch vụ để kiểm tra pin và hệ thống làm mát.",
+          tr("Dừng xe ở vị trí an toàn và kết thúc phiên sạc nếu đang sạc.", "Stop in a safe place and end any charging session."),
+          tr("Không tự tháo, chạm hoặc sửa các bộ phận điện cao áp.", "Do not open, touch or repair high-voltage parts."),
+          tr("Liên hệ trung tâm dịch vụ để kiểm tra pin và hệ thống làm mát.", "Contact a service centre to inspect the battery and cooling system."),
         ],
       };
     if (t.ambient >= 35 && pack.batteryTemp >= 38)
@@ -209,17 +211,18 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
         severity: "watch",
         score: 85,
         cause: "environment",
-        title: "Pin ấm hơn do môi trường",
-        summary:
+        title: tr("Pin ấm hơn do môi trường", "Battery warmer due to weather"),
+        summary: tr(
           "Pin ấm lên cùng thời tiết, nhưng xu hướng nhiệt đang ổn định. Chưa có dấu hiệu tăng nhiệt bất thường trong dữ liệu mô phỏng.",
+          "The battery warms with the weather, but the trend is stable. No abnormal heating in the simulated data."),
         evidence: [
-          `Ngoài trời ${t.ambient}°C · pin ${pack.batteryTemp}°C`,
-          `Xu hướng pin ${pack.batteryTrend}°C/phút · motor ${pack.motorTemp}°C`,
-          `SOC ${pack.soc}% · không ghi nhận cảnh báo BMS`,
+          tr(`Ngoài trời ${t.ambient}°C · pin ${pack.batteryTemp}°C`, `Outside ${t.ambient}°C · battery ${pack.batteryTemp}°C`),
+          tr(`Xu hướng pin ${pack.batteryTrend}°C/phút · motor ${pack.motorTemp}°C`, `Battery trend ${pack.batteryTrend}°C/min · motor ${pack.motorTemp}°C`),
+          tr(`SOC ${pack.soc}% · không ghi nhận cảnh báo BMS`, `SOC ${pack.soc}% · no BMS warning`),
         ],
         recommendations: [
-          "Đỗ xe nơi thoáng và có bóng râm khi phù hợp.",
-          "Theo dõi nhiệt độ pin trong hành trình và phiên sạc tiếp theo.",
+          tr("Đỗ xe nơi thoáng và có bóng râm khi phù hợp.", "Park in a ventilated, shaded spot when possible."),
+          tr("Theo dõi nhiệt độ pin trong hành trình và phiên sạc tiếp theo.", "Watch battery temperature on the next drive and charge."),
         ],
       };
     return {
@@ -227,17 +230,18 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
       severity: "good",
       score: 98,
       cause: "normal",
-      title: "Hệ truyền động điện đang ổn định",
-      summary:
+      title: tr("Hệ truyền động điện đang ổn định", "Electric drivetrain is stable"),
+      summary: tr(
         "Nhiệt độ pin và motor ổn định trong kịch bản mô phỏng hiện tại. Xe điện được đánh giá bằng cảm biến pin/motor, không sử dụng dầu máy hoặc nhiên liệu.",
+        "Battery and motor temperatures are stable in this simulated scenario. EVs are assessed from battery/motor sensors, not oil or fuel."),
       evidence: [
-        `Pin ${pack.batteryTemp}°C · motor ${pack.motorTemp}°C`,
-        `SOC ${pack.soc}% · SOH mô phỏng ${pack.soh}%`,
-        `Ngoài trời ${t.ambient}°C · không ghi nhận cảnh báo BMS`,
+        tr(`Pin ${pack.batteryTemp}°C · motor ${pack.motorTemp}°C`, `Battery ${pack.batteryTemp}°C · motor ${pack.motorTemp}°C`),
+        tr(`SOC ${pack.soc}% · SOH mô phỏng ${pack.soh}%`, `SOC ${pack.soc}% · simulated SOH ${pack.soh}%`),
+        tr(`Ngoài trời ${t.ambient}°C · không ghi nhận cảnh báo BMS`, `Outside ${t.ambient}°C · no BMS warning`),
       ],
       recommendations: [
-        "Theo dõi tình trạng pin và bảo dưỡng theo hướng dẫn của hãng.",
-        "Kiểm tra dữ liệu trước chuyến đi và khi sạc xe.",
+        tr("Theo dõi tình trạng pin và bảo dưỡng theo hướng dẫn của hãng.", "Monitor battery health and follow the manufacturer service plan."),
+        tr("Kiểm tra dữ liệu trước chuyến đi và khi sạc xe.", "Check the data before trips and while charging."),
       ],
     };
   }
@@ -247,18 +251,19 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
       severity: "critical",
       score: 42,
       cause: "engine",
-      title: "Dấu hiệu quá nhiệt động cơ",
-      summary:
+      title: tr("Dấu hiệu quá nhiệt động cơ", "Engine overheating signs"),
+      summary: tr(
         "Nhiệt độ nước làm mát tăng nhanh, không phù hợp với mức nhiệt môi trường. Cần kiểm tra hệ thống làm mát.",
+        "Coolant temperature is rising fast and is not explained by the weather. The cooling system needs checking."),
       evidence: [
-        `Nước làm mát ${t.coolant}°C · tăng ${t.coolantTrend}°C/phút`,
-        `Môi trường ${t.ambient}°C chưa giải thích được mức tăng này`,
-        `Quạt làm mát ${t.fan}%${t.dtc.length ? ` · mã lỗi ${t.dtc.join(", ")}` : ""}`,
+        tr(`Nước làm mát ${t.coolant}°C · tăng ${t.coolantTrend}°C/phút`, `Coolant ${t.coolant}°C · rising ${t.coolantTrend}°C/min`),
+        tr(`Môi trường ${t.ambient}°C chưa giải thích được mức tăng này`, `Ambient ${t.ambient}°C does not explain this rise`),
+        tr(`Quạt làm mát ${t.fan}%${t.dtc.length ? ` · mã lỗi ${t.dtc.join(", ")}` : ""}`, `Cooling fan ${t.fan}%${t.dtc.length ? ` · DTC ${t.dtc.join(", ")}` : ""}`),
       ],
       recommendations: [
-        "Dừng xe ở vị trí an toàn, tắt động cơ và để xe nguội.",
-        "Không mở nắp bình nước làm mát khi động cơ còn nóng.",
-        "Liên hệ kỹ thuật viên để kiểm tra quạt, bơm nước và rò rỉ.",
+        tr("Dừng xe ở vị trí an toàn, tắt động cơ và để xe nguội.", "Stop in a safe place, switch off the engine and let it cool."),
+        tr("Không mở nắp bình nước làm mát khi động cơ còn nóng.", "Do not open the coolant cap while the engine is hot."),
+        tr("Liên hệ kỹ thuật viên để kiểm tra quạt, bơm nước và rò rỉ.", "Have a technician check the fan, water pump and leaks."),
       ],
     };
   if (t.ambient >= 35 && t.coolant >= 100)
@@ -267,18 +272,19 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
       severity: "watch",
       score: 86,
       cause: "environment",
-      title: "Nhiệt độ cao do môi trường",
-      summary:
+      title: tr("Nhiệt độ cao do môi trường", "High temperature due to weather"),
+      summary: tr(
         "Thời tiết nóng làm tăng nhiệt khoang máy. Nước làm mát đang ổn định, chưa ghi nhận dấu hiệu quá nhiệt động cơ trong dữ liệu mô phỏng.",
+        "Hot weather raises engine bay temperature. Coolant is stable; no engine overheating in the simulated data."),
       evidence: [
-        `Nhiệt độ ngoài trời ${t.ambient}°C · thời tiết mô phỏng theo GPS`,
-        `Nước làm mát ${t.coolant}°C · chỉ tăng ${t.coolantTrend}°C/phút`,
-        `Quạt ${t.fan}% · không ghi nhận mã lỗi OBD`,
+        tr(`Nhiệt độ ngoài trời ${t.ambient}°C · thời tiết mô phỏng theo GPS`, `Outside ${t.ambient}°C · GPS-based simulated weather`),
+        tr(`Nước làm mát ${t.coolant}°C · chỉ tăng ${t.coolantTrend}°C/phút`, `Coolant ${t.coolant}°C · only rising ${t.coolantTrend}°C/min`),
+        tr(`Quạt ${t.fan}% · không ghi nhận mã lỗi OBD`, `Fan ${t.fan}% · no OBD fault codes`),
       ],
       recommendations: [
-        "Ưu tiên đỗ xe ở nơi có bóng râm, thông thoáng.",
-        "Theo dõi xu hướng nhiệt độ khi tiếp tục hành trình.",
-        "Kiểm tra mức nước làm mát khi động cơ đã nguội.",
+        tr("Ưu tiên đỗ xe ở nơi có bóng râm, thông thoáng.", "Prefer shaded, ventilated parking."),
+        tr("Theo dõi xu hướng nhiệt độ khi tiếp tục hành trình.", "Watch the temperature trend as you continue."),
+        tr("Kiểm tra mức nước làm mát khi động cơ đã nguội.", "Check the coolant level once the engine is cold."),
       ],
     };
   return {
@@ -286,17 +292,18 @@ export function analyzeTelemetry(t: Telemetry): Analysis {
     severity: "good",
     score: 98,
     cause: "normal",
-    title: "Chiếc xe đang ở trạng thái tốt",
-    summary:
+    title: tr("Chiếc xe đang ở trạng thái tốt", "Your car is in good shape"),
+    summary: tr(
       "Nhiệt độ động cơ ổn định trong bối cảnh môi trường hiện tại. Không ghi nhận bất thường trong các cảm biến mô phỏng.",
+      "Engine temperature is stable for the current conditions. No anomalies in the simulated sensors."),
     evidence: [
-      `Nước làm mát ${t.coolant}°C · xu hướng ổn định`,
-      `Môi trường ${t.ambient}°C · nhiệt khí nạp ${t.intake}°C`,
-      `Điện áp ${t.battery} V · không có mã lỗi OBD`,
+      tr(`Nước làm mát ${t.coolant}°C · xu hướng ổn định`, `Coolant ${t.coolant}°C · stable trend`),
+      tr(`Môi trường ${t.ambient}°C · nhiệt khí nạp ${t.intake}°C`, `Ambient ${t.ambient}°C · intake air ${t.intake}°C`),
+      tr(`Điện áp ${t.battery} V · không có mã lỗi OBD`, `Voltage ${t.battery} V · no OBD fault codes`),
     ],
     recommendations: [
-      "Duy trì lịch bảo dưỡng định kỳ của xe.",
-      "Tiếp tục theo dõi dữ liệu trước mỗi hành trình.",
+      tr("Duy trì lịch bảo dưỡng định kỳ của xe.", "Keep up with scheduled maintenance."),
+      tr("Tiếp tục theo dõi dữ liệu trước mỗi hành trình.", "Keep checking the data before each trip."),
     ],
   };
 }

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Car Neuron — Hiểu chiếc xe của bạn",
+  title: {
+    default: "Car Neuron — Hiểu chiếc xe của bạn",
+    template: "%s · Car Neuron",
+  },
   description:
-    "Garage 3D và phân tích dữ liệu blackbox. Frontend demo với model xe 3D local.",
+    "Agent sức khỏe xe đọc dữ liệu blackbox mỗi giây, suy luận đa tín hiệu và cảnh báo quá nhiệt kèm bằng chứng.",
 };
 export default function RootLayout({
   children,

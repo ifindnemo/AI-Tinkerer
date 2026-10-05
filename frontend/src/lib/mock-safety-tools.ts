@@ -1,4 +1,5 @@
 import type { AgentAction } from "./safety-agent";
+import { tr } from "./preferences";
 
 // No network, navigation, rescue contact or external data sharing happens here.
 // Replace this adapter with the backend action/confirmation contract.
@@ -10,8 +11,8 @@ export async function executeMockSafetyTool(action: AgentAction, signal: AbortSi
     const timer = setTimeout(() => {signal.removeEventListener("abort", abort); resolve();}, 1500);
     signal.addEventListener("abort", abort, {once: true});
   });
-  if (fail) throw new Error("Dịch vụ mô phỏng tạm thời không phản hồi. Chưa xác nhận thành công.");
+  if (fail) throw new Error(tr("Dịch vụ mô phỏng tạm thời không phản hồi. Chưa xác nhận thành công.", "The simulated service is not responding. Success not confirmed."));
   return action.kind === "NAVIGATE_SAFE_STOP"
-    ? {requestId: `NAV-${action.payload.incidentId.slice(0, 8)}`, message: "Đã chuẩn bị hướng dẫn tới bãi dừng demo. Không mở ứng dụng bản đồ thật."}
-    : {requestId: `RESCUE-${action.payload.incidentId.slice(0, 8)}`, message: "Cứu hộ mô phỏng đã xác nhận · ETA minh họa 18 phút. Không có đơn vị thật nào nhận yêu cầu."};
+    ? {requestId: `NAV-${action.payload.incidentId.slice(0, 8)}`, message: tr("Đã chuẩn bị hướng dẫn tới bãi dừng demo. Không mở ứng dụng bản đồ thật.", "Directions to the demo stopping area are ready. No real map app was opened.")}
+    : {requestId: `RESCUE-${action.payload.incidentId.slice(0, 8)}`, message: tr("Cứu hộ mô phỏng đã xác nhận · ETA minh họa 18 phút. Không có đơn vị thật nào nhận yêu cầu.", "Simulated assistance confirmed · illustrative ETA 18 min. No real provider received the request.")};
 }

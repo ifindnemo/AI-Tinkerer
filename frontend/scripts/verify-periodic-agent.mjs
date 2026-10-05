@@ -6,7 +6,7 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  page.on('console',m=>{if(/hydrat|server rendered HTML/i.test(m.text()))errors.push(m.text());});
  page.on('request',r=>{if(r.method()==='POST')posts.push(r.url());});
- await page.goto(process.env.BASE_URL||'http://localhost:3000');
+ await page.goto((process.env.BASE_URL||'http://localhost:3000')+'/garage');
  await page.getByRole('heading',{name:'Car Neuron Agent',exact:true}).waitFor();
  await page.getByTestId('periodic-agent-phase').waitFor();
  await page.evaluate(()=>{

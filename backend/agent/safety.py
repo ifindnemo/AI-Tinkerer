@@ -27,6 +27,17 @@ def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailRe
             if minimum_severity != Severity.CRITICAL:
                 minimum_severity = Severity.WARNING
 
+    # Device batches carry the car's own DTC read. Only stored (confirmed) codes set a floor.
+    stored = (telemetry_context.get("dtc_snapshot") or {}).get("stored") or []
+    for code in stored:
+        if code == "P0217":
+            reasons.append("ECU báo mã P0217: động cơ quá nhiệt.")
+            minimum_severity = Severity.CRITICAL
+        elif code.startswith("P030") and code[-1] in "012345678":
+            reasons.append(f"ECU báo mã {code}: bỏ máy.")
+            if minimum_severity != Severity.CRITICAL:
+                minimum_severity = Severity.WARNING
+
     return SafetyGuardrailResult(
         triggered=bool(reasons),
         minimum_severity=minimum_severity,

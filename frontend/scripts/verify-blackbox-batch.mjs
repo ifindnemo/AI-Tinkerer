@@ -7,7 +7,7 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  page.on('console',m=>{if(/hydrat|server rendered HTML/i.test(m.text()))errors.push(m.text());});
  page.on('request',r=>{if(r.method()==='POST')posts.push(r.url());});
- await page.goto(process.env.BASE_URL||'http://localhost:3000');
+ await page.goto((process.env.BASE_URL||'http://localhost:3000')+'/garage');
  await page.getByText('Cập nhật mỗi 1 giây',{exact:true}).waitFor();
  const download=page.getByRole('button',{name:'JSON 15 mẫu',exact:true});
  assert.equal(await download.isDisabled(),true);

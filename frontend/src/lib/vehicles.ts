@@ -1,3 +1,4 @@
+import type { Text } from "./preferences";
 export type Powertrain = "ice" | "hybrid" | "ev";
 export type Vehicle = {
   id: string;
@@ -14,10 +15,10 @@ export type Vehicle = {
   source: string;
   thumbnail: `/models/${string}` | null;
 };
-export const powertrainLabels: Record<Powertrain, string> = {
-  ice: "Xăng",
-  hybrid: "Hybrid",
-  ev: "Thuần điện",
+export const powertrainLabels: Record<Powertrain, Text> = {
+  ice: {vi: "Xăng", en: "Petrol"},
+  hybrid: {vi: "Hybrid", en: "Hybrid"},
+  ev: {vi: "Thuần điện", en: "Electric"},
 };
 // Model years are those stated by each asset creator, not model upload dates.
 export const vehicles: Vehicle[] = [

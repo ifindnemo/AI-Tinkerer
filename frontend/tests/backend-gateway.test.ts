@@ -34,3 +34,12 @@ test('local origin check accepts Next internal bind URL and hides vendor credent
  assert(!sameOrigin(new Request('http://0.0.0.0:3000/api/vehicle/telemetry',{headers:{host:'localhost:3000',origin:'https://unrelated.example'}})));
  const clean=JSON.stringify(publicPayload({diagnosis:'See https://vendor.example/?key=private-token&lat=1',tool_trace:[{result:{error:'private failure'}}]}));assert(!clean.includes('private-token'));assert(!clean.includes('private failure'));
 });
+test('gateway accepts an early 5-sample batch and requires the backend to confirm the same count',async()=>{
+ const early=():BlackboxBatch=>{const b=batch();return {...b,recordCount:5,records:b.records.slice(0,5)};};
+ assert.equal(validateBatch(early()).recordCount,5);
+ const ok=new BatchGateway(async()=>Response.json({...normal,accepted_records:5}));const result=await ok.submit(early());
+ assert.equal(result.status,200);assert.equal((result.body as {accepted:number}).accepted,5);
+ const mismatch=new BatchGateway(async()=>Response.json(normal));assert.equal((await mismatch.submit(early())).status,502);
+ const tooSmall=batch();tooSmall.records=tooSmall.records.slice(0,4);tooSmall.recordCount=4;assert.throws(()=>validateBatch(tooSmall));
+ const wrongCount=batch();wrongCount.recordCount=14;assert.throws(()=>validateBatch(wrongCount));
+});

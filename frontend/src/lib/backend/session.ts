@@ -1,12 +1,13 @@
 import {BlackboxBatchStream} from '../blackbox/batch-stream';
-import {initialTransfer,type BlackboxBatch} from '../blackbox/types';
+import {BLACKBOX_BATCH_SIZE,BLACKBOX_EARLY_BATCH_SIZE,initialTransfer,type BlackboxBatch} from '../blackbox/types';
+import {tr} from '../preferences';
 import {initialAgentCycle} from '../periodic-agent/mock';
 import {getMockTelemetry,type Analysis,type ScenarioId} from '../telemetry';
 import {liveSample} from '../live-telemetry';
 import type {Vehicle} from '../vehicles';
 import type {SessionSnapshot,VehicleSessionAdapter} from '../vehicle-session/types';
 import {initialBackendState,isIncident,isAgentReply,type BatchReply,type Incident} from './contract';
-import {vehicleApi} from './client';
+import {apiFailureMessage,vehicleApi} from './client';
 
 export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  readonly mode='backend' as const;
@@ -44,7 +45,8 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   if(!this.running||scenario===this.state.scenario)return;
   this.generation++;this.request?.abort();this.request=null;this.busy=false;this.tick=0;
   this.state={...this.state,scenario,result:null,samples:[],telemetry:{...this.state.telemetry,scenario,connected:false},backend:{...this.state.backend!,phase:scenario==='offline'?'paused':'collecting',error:'',reply:null}};
-  this.stream.breakSequence();this.sample(false);
+  // Send the first batch of the new scenario early so the agent reacts within seconds.
+  this.stream.breakSequence(scenario==='offline'?BLACKBOX_BATCH_SIZE:BLACKBOX_EARLY_BATCH_SIZE);this.sample(false);
  };
  private async checkConnection(){
   this.health?.abort();const controller=new AbortController();this.health=controller;const generation=this.generation;
@@ -52,7 +54,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   catch{if(this.running&&generation===this.generation&&!controller.signal.aborted)this.update({api:'offline'});}
  }
  private saveIncident(incident:Incident){
-  try{localStorage.setItem(`car-neuron.backend-incident.${this.vehicle.id}`,incident.id);}catch{this.state={...this.state,storageError:'Không lưu được mã sự cố để khôi phục khi tải lại.'};}
+  try{localStorage.setItem(`car-neuron.backend-incident.${this.vehicle.id}`,incident.id);}catch{this.state={...this.state,storageError:tr('Không lưu được mã sự cố để khôi phục khi tải lại.','Could not save the incident ID for recovery after reload.')};}
  }
  private async restoreIncident(){
   const generation=this.generation;
@@ -63,7 +65,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
    if(!isIncident(incident,this.vehicle.id))throw new Error();
    // Only restore server-verified incident identity; never replay a confirmation.
    if(!this.state.backend?.incident)this.update({incident});
-  }catch{if(this.running&&generation===this.generation){this.state={...this.state,recoveryNotice:'Chưa khôi phục được sự cố từ backend. Bản ghi đã lưu được giữ nguyên.'};this.emit();}}
+  }catch{if(this.running&&generation===this.generation){this.state={...this.state,recoveryNotice:tr('Chưa khôi phục được sự cố từ backend. Bản ghi đã lưu được giữ nguyên.','Could not restore the incident from the backend. The saved record was kept.')};this.emit();}}
  }
  private async submit(batch:BlackboxBatch){
   if(!this.running||this.state.scenario==='offline')return;
@@ -73,21 +75,21 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   try{
    const reply=await vehicleApi<BatchReply>('telemetry',{body:batch,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(125000)])});
    if(!this.running||controller.signal.aborted||generation!==this.generation)return;
-   if(reply.vehicleId!==this.vehicle.id||reply.batchId!==batch.batchId||reply.accepted!==15||!isAgentReply(reply.latest,this.vehicle.id,batch.batchId)||(reply.incident&&!isIncident(reply.incident,this.vehicle.id)))throw new Error('Phản hồi không khớp gói dữ liệu của xe.');
+   if(reply.vehicleId!==this.vehicle.id||reply.batchId!==batch.batchId||reply.accepted!==batch.records.length||!isAgentReply(reply.latest,this.vehicle.id,batch.batchId,batch.records.length)||(reply.incident&&!isIncident(reply.incident,this.vehicle.id)))throw new Error(tr('Phản hồi không khớp gói dữ liệu của xe.','The reply does not match this vehicle\'s data batch.'));
    const incident=reply.incident??this.state.backend!.incident;
    if(reply.incident)this.saveIncident(reply.incident);
    const report=this.report(reply);
    this.state={...this.state,result:report,history:report?[report,...this.state.history].slice(0,20):this.state.history};
    this.update({phase:'ready',api:'online',reply,incident,history:[reply,...this.state.backend!.history].slice(0,5)});
-  }catch(error){if(this.running&&!controller.signal.aborted&&generation===this.generation)this.update({phase:'error',api:'offline',error:error instanceof Error?error.message:'Chưa nhận được phản hồi backend.'});}
+  }catch(error){if(this.running&&!controller.signal.aborted&&generation===this.generation)this.update({phase:'error',api:'offline',error:apiFailureMessage(error)});}
   finally{if(generation===this.generation){this.busy=false;this.request=null;}}
  }
  private report(reply:BatchReply):Analysis{
   const a=reply.latest.assessment;
-  return {id:reply.batchId,vehicleId:this.vehicle.id,vehicleName:`${this.vehicle.brand} ${this.vehicle.name}`,powertrain:this.vehicle.powertrain,createdAt:reply.completedAt,source:'backend',score:null,cause:'unclassified',severity:a.severity==='normal'?'good':a.severity==='warning'?'watch':'critical',title:a.severity==='normal'?'Agent chưa ghi nhận bất thường':a.severity==='warning'?'Agent đề xuất kiểm tra xe':'Cảnh báo an toàn từ agent',summary:a.diagnosis,evidence:a.evidence,recommendations:a.recommendations};
+  return {id:reply.batchId,vehicleId:this.vehicle.id,vehicleName:`${this.vehicle.brand} ${this.vehicle.name}`,powertrain:this.vehicle.powertrain,createdAt:reply.completedAt,source:'backend',score:null,cause:'unclassified',severity:a.severity==='normal'?'good':a.severity==='warning'?'watch':'critical',title:a.severity==='normal'?tr('Agent chưa ghi nhận bất thường','No anomaly found by the agent'):a.severity==='warning'?tr('Agent đề xuất kiểm tra xe','The agent recommends an inspection'):tr('Cảnh báo an toàn từ agent','Safety alert from the agent'),summary:a.diagnosis,evidence:a.evidence,recommendations:a.recommendations};
  }
 
- check=()=>{if(!this.state.telemetry.connected)throw new Error('Blackbox đang ngoại tuyến.');if(this.busy)throw new Error('Backend đang xử lý gói trước.');throw new Error(`Đang gom ${this.state.blackbox.buffered}/15 mẫu; sẽ tự gửi khi đủ gói.`);};
+ check=()=>{if(!this.state.telemetry.connected)throw new Error(tr('Blackbox đang ngoại tuyến.','The blackbox is offline.'));if(this.busy)throw new Error(tr('Backend đang xử lý gói trước.','The backend is still processing the previous batch.'));const {buffered,target}=this.state.blackbox;throw new Error(tr(`Đang gom ${buffered}/${target} mẫu; sẽ tự gửi khi đủ gói.`,`Collecting ${buffered}/${target} samples; the batch is sent automatically when full.`));};
  command=()=>{};setFailNext=()=>{};
  dismissRecovery=()=>{this.state={...this.state,recoveryNotice:''};this.emit();};
 }

@@ -7,3 +7,4 @@ client_secret_*.json
 token.json
 backend/data/private/
 backend/vehicle_guardian.db
+brag-output/

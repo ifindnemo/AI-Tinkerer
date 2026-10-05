@@ -1,4 +1,5 @@
 import type {Telemetry} from "./telemetry";
+import type {Text} from "./preferences";
 export type ThermalLevel = "normal" | "watch" | "danger" | "unknown";
 
 // Presentation rules for the authored overheating demo, not manufacturer limits.
@@ -13,6 +14,7 @@ export function thermalLevel(t: Telemetry, sensor: "engine" | "cooling"): Therma
   if (value >= (sensor === "engine" ? 125 : 115) || (ongoingOverheat && value >= (sensor === "engine" ? 110 : 105))) return "danger";
   return value >= (sensor === "engine" ? 110 : 100) ? "watch" : "normal";
 }
-export const thermalLabels: Record<ThermalLevel,string> = {
-  normal: "Trong ngưỡng mô phỏng", watch: "Nhiệt độ tăng", danger: "Cảnh báo quá nhiệt", unknown: "Chưa có dữ liệu mới",
+export const thermalLabels: Record<ThermalLevel,Text> = {
+  normal: {vi: "Trong ngưỡng mô phỏng", en: "Within simulated range"}, watch: {vi: "Nhiệt độ tăng", en: "Temperature rising"},
+  danger: {vi: "Cảnh báo quá nhiệt", en: "Overheating warning"}, unknown: {vi: "Chưa có dữ liệu mới", en: "No fresh data"},
 };

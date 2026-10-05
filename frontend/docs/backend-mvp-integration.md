@@ -4,6 +4,8 @@ Current backend: `main` commit `396e3da` (`feat: simplify vehicle agent demo flo
 
 ## Run locally
 
+One command from the repository root: `./dev.sh` (backend + frontend, creates `backend/.venv` on first run) or `./dev.sh --mock` (frontend only). The manual steps below remain valid.
+
 Start Python from `backend/`:
 
 ```sh
@@ -22,7 +24,8 @@ Next.js defaults to `http://127.0.0.1:8000`; optional server-only `BACKEND_URL` 
 
 ## API and cadence
 
-- One sensor sample per second; exactly 15 samples per browser batch.
+- One sensor sample per second; 15 samples per browser batch. After a scenario change (e.g. Inject Overheating) the first batch closes early at 5 samples so the agent reacts within seconds; the gateway accepts 5–15 records and requires `accepted_records` to match.
+- The connected overheating scenario ramps coolant 95 → 105 → 115°C over 30 s (fan 0%, flat ~36% load, ~60 km/h), then crosses 120°C around 39 s so the backend hard rule fires after the agent has already warned. Time is compressed and labelled as test data.
 - Browser POST `/api/vehicle/telemetry` → Next.js forwards **one** POST `/api/telemetry/batch` to Python.
 - The payload remains the sensor-only blackbox schema (`schemaVersion`, `batchId`, `vehicleId`, `source`, `sampleIntervalMs`, `recordCount`, `records`). Raw units stay raw; no unit reinterpretation or frontend weather/diagnosis is inserted.
 - Backend validates records, strips `fault` before agent input, evaluates deterministic safety guardrails, and calls the agent with short-term incident memory. The old ML/sliding-window stage has been removed by the backend team.
@@ -42,3 +45,11 @@ Appointment booking and reminders are intentionally omitted from the frontend MV
 - Frontend tests cover preservation of raw units, sensor whitelisting, invalid records, one native batch request, duplicate handling, visible failures and mismatched reply identities.
 - Run backend tests from `backend/` with `python -m pytest tests -q`.
 - `node scripts/verify-backend-integration.mjs` uses the real local batch/agent API and checks normal and overheating assessments, desktop/mobile layout, offline behavior and hydration.
+
+## Demo controls
+
+The dashboard lives at `/garage` (the landing page is `/`, the intro film `/film`).
+
+- Top bar **API / Mock** switches the agent source at runtime (stored per browser). `NEXT_PUBLIC_AGENT_MODE` only sets the default. When the backend is unreachable, the agent panel offers a one-click switch to Mock.
+- Top bar **VI / EN** switches the interface language (stored per browser). Agent text from the backend stays Vietnamese because the backend prompt requires it.
+- For warning/critical replies the panel opens evidence/confidence, shows a service-history card from `get_maintenance_history` (similar issues are matched by fault family, never from quoted evidence) and a step list of the backend guardrail, tool calls and verdict from `tool_trace`.

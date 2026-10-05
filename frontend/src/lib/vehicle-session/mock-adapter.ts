@@ -3,6 +3,7 @@ import {BlackboxBatchStream} from "../blackbox/batch-stream";
 import {BLACKBOX_SAMPLE_MS, initialTransfer} from "../blackbox/types";
 import { getMockTelemetry, analyzeTelemetry, type ScenarioId } from "../telemetry";
 import type { Vehicle } from "../vehicles";
+import {tr} from "../preferences";
 import {liveSample} from "../live-telemetry";
 import {createIncident, incidentReport, observeIncident, simulateIncidentPacket, transitionIncident} from "../safety-agent";
 import {executeMockSafetyTool} from "../mock-safety-tools";
@@ -45,7 +46,7 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
         this.repository.save({version:1,vehicleId:this.vehicle.id,savedAt:new Date().toISOString(),scenario:this.state.scenario,
           tick:this.tick,episodeId:this.episodeId,telemetry:this.state.telemetry,history:this.state.history,incident:this.state.incident});
         this.state={...this.state,storageError:""};
-      } catch {this.state={...this.state,storageError:"Không lưu được phiên trên trình duyệt. Tiến trình hiện tại có thể mất khi tải lại trang."};}
+      } catch {this.state={...this.state,storageError:tr("Không lưu được phiên trên trình duyệt. Tiến trình hiện tại có thể mất khi tải lại trang.","Could not save the session in this browser. Progress may be lost on reload.")};}
     }
     this.listeners.forEach(listener=>listener());
   }
@@ -60,14 +61,14 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
         this.tick=saved.tick;this.episodeId=saved.episodeId;
         let incident=saved.incident;
         const interrupted=incident?.action?.status==="pending";
-        if(incident?.action?.status==="pending")incident=transitionIncident(incident,{type:"TOOL_FAILURE",actionId:incident.action.id,error:"Tác vụ bị gián đoạn khi tải lại trang. Chưa xác định kết quả; chưa tự gửi lại yêu cầu."});
+        if(incident?.action?.status==="pending")incident=transitionIncident(incident,{type:"TOOL_FAILURE",actionId:incident.action.id,error:tr("Tác vụ bị gián đoạn khi tải lại trang. Chưa xác định kết quả; chưa tự gửi lại yêu cầu.","The action was interrupted by a reload. Outcome unknown; not resent automatically.")});
         this.state={...this.initial,scenario:saved.scenario,telemetry:{...saved.telemetry,connected:false},history:saved.history,incident,
-          restoring:false,recoveryNotice:interrupted ? "Đã khôi phục sự cố. Hành động bị gián đoạn chưa được xác nhận; cần bạn chủ động thử lại trong demo." : saved.incident ? "Đã khôi phục sự cố và tiến trình đã lưu của xe. Đang nhận lại dữ liệu mới." : "Đã khôi phục phiên theo dõi và lịch sử của xe."};
+          restoring:false,recoveryNotice:interrupted ? tr("Đã khôi phục sự cố. Hành động bị gián đoạn chưa được xác nhận; cần bạn chủ động thử lại trong demo.","Incident restored. The interrupted action is unconfirmed; retry it manually in the demo.") : saved.incident ? tr("Đã khôi phục sự cố và tiến trình đã lưu của xe. Đang nhận lại dữ liệu mới.","Incident and saved progress restored. Receiving fresh data.") : tr("Đã khôi phục phiên theo dõi và lịch sử của xe.","Monitoring session and history restored.")};
       }else this.state={...this.initial,restoring:false};
     }catch{
       // Do not overwrite an incompatible/corrupt record with a fresh empty session.
       this.writeBlocked=true;
-      this.state={...this.initial,restoring:false,storageError:"Không đọc được phiên đã lưu hoặc dữ liệu không hợp lệ. Bản lưu được giữ nguyên; phiên này chỉ chạy trong bộ nhớ."};
+      this.state={...this.initial,restoring:false,storageError:tr("Không đọc được phiên đã lưu hoặc dữ liệu không hợp lệ. Bản lưu được giữ nguyên; phiên này chỉ chạy trong bộ nhớ.","Could not read the saved session or it is invalid. It was kept; this session runs in memory only.")};
     }
     this.emit();
     this.handledBatchId=null;
@@ -111,7 +112,7 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
     this.periodicAgent.pause();
     this.blackbox.breakSequence();
     let incident=this.state.incident;
-    if(scenario==="offline" && incident?.action?.status==="pending")incident=transitionIncident(incident,{type:"TOOL_FAILURE",actionId:incident.action.id,error:"Kết nối bị gián đoạn. Chưa xác nhận hành động thành công."});
+    if(scenario==="offline" && incident?.action?.status==="pending")incident=transitionIncident(incident,{type:"TOOL_FAILURE",actionId:incident.action.id,error:tr("Kết nối bị gián đoạn. Chưa xác nhận hành động thành công.","Connection lost. The action is not confirmed.")});
     else if(scenario!=="offline" && !(scenario==="engine" && this.state.scenario==="offline"))incident=null;
     if(scenario!=="offline"){
       this.episodeId=incident?.id??crypto.randomUUID();
@@ -146,11 +147,11 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
     }).catch(error=>{
       const latest=this.state.incident;
       if(!this.running || controller.signal.aborted || latest?.id!==next.id)return;
-      this.state={...this.state,incident:transitionIncident(latest,{type:"TOOL_FAILURE",actionId:action.id,error:error instanceof Error?error.message:"Chưa hoàn tất hành động."})};this.emit();
+      this.state={...this.state,incident:transitionIncident(latest,{type:"TOOL_FAILURE",actionId:action.id,error:error instanceof Error?error.message:tr("Chưa hoàn tất hành động.","The action did not complete.")})};this.emit();
     });
   };
   check = () => {
-    if(!this.state.telemetry.connected)throw new Error("Blackbox đang ngoại tuyến. Chưa thể đánh giá chiếc xe.");
+    if(!this.state.telemetry.connected)throw new Error(tr("Blackbox đang ngoại tuyến. Chưa thể đánh giá chiếc xe.","The blackbox is offline. The car cannot be assessed yet."));
     this.state={...this.state,result:this.state.incident?incidentReport(this.state.telemetry,this.state.incident):{...analyzeTelemetry(this.state.telemetry),id:this.episodeId}};
     this.emit();
   };

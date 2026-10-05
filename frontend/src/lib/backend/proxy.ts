@@ -1,7 +1,7 @@
 // Server-only: browser requests never contain service API keys.
+export const backendBase=()=>(process.env.BACKEND_URL||'http://127.0.0.1:8000').replace(/\/$/,'');
 export async function upstream(path:string,body?:unknown,signal?:AbortSignal):Promise<Response>{
-  const base=process.env.BACKEND_URL||'http://127.0.0.1:8000';
-  return fetch(`${base.replace(/\/$/,'')}${path}`,{method:body===undefined?'GET':'POST',headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:signal??AbortSignal.timeout(120000)});
+  return fetch(`${backendBase()}${path}`,{method:body===undefined?'GET':'POST',headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:signal??AbortSignal.timeout(120000)});
 }
 export function sameOrigin(request:Request){
   const origin=request.headers.get('origin');if(!origin)return true;
