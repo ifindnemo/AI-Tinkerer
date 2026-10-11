@@ -2,6 +2,8 @@ from typing import Any
 
 from schemas import SafetyGuardrailResult, Severity
 
+COOLANT_CRITICAL_C = 120.0  # also the overheat floor of driver/guardian.py
+
 
 def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailResult:
     """Apply deterministic safety floors before accepting the agent assessment."""
@@ -12,7 +14,7 @@ def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailRe
         coolant_temp = record.get("coolant_temp_c", record.get("coolant_temp"))
         battery_voltage = record.get("battery_voltage")
 
-        if coolant_temp is not None and float(coolant_temp) >= 120:
+        if coolant_temp is not None and float(coolant_temp) >= COOLANT_CRITICAL_C:
             reasons.append(
                 "Nhiệt độ nước làm mát đạt ngưỡng nguy hiểm (>= 120°C)."
             )

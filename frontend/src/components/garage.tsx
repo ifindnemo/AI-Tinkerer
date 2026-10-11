@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useVehicleSession } from "@/hooks/use-vehicle-session";
 import { useAgentMode, useLang } from "@/hooks/use-preferences";
 import { pick, type AgentMode } from "@/lib/preferences";
@@ -11,8 +10,7 @@ import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
 import BackendAgentPanel from "./backend-agent-panel";
 import VehicleLibrary from "./vehicle-library";
-import Brand from "./site/brand";
-import LangSwitch from "./site/lang-switch";
+import SiteHeader from "./site/site-header";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
 import { useEffect, useRef, useState } from "react";
@@ -23,7 +21,6 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
-  Clapperboard,
   Cpu,
   FlaskConical,
   History,
@@ -176,9 +173,9 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
   const healthClass = !backend && thermalDanger ? "critical" : result?.severity ?? "pending";
   return (
     <div className={`app theme-${theme}`}>
-      <header className="app-bar">
+      <SiteHeader current="garage">
+      <div className="app-bar">
         <div className="app-bar-inner">
-          <Brand label={t("Car Neuron trang chủ", "Car Neuron home")} />
           <nav className="app-tabs" aria-label={t("Điều hướng garage", "Garage navigation")}>
             {tabs.map(item => (
               <button key={item.id} className="app-tab" aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>
@@ -189,18 +186,17 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
             ))}
           </nav>
           <div className="app-bar-tools">
-            <Link className="app-bar-link" href="/film"><Clapperboard size={15} />{t("Phim giới thiệu", "Intro film")}</Link>
             {!presenter && <div className="segmented" role="group" aria-label={t("Nguồn agent", "Agent source")}>
               <button onClick={() => setMode("device")} title={t("Dữ liệu trực tiếp từ thiết bị OBD qua backend", "Live data from the OBD device via the backend")}><Radio size={12} />OBD</button>
               <button aria-pressed={mode === "backend"} onClick={() => setMode("backend")} title={t("Gửi telemetry tới backend và agent AI thật", "Send telemetry to the backend and the real AI agent")}><Server size={12} />API</button>
               <button aria-pressed={mode === "mock"} onClick={() => setMode("mock")} title={t("Chạy hoàn toàn trong trình duyệt, không cần mạng", "Runs entirely in the browser, no network needed")}><FlaskConical size={12} />{t("Mô phỏng", "Mock")}</button>
             </div>}
-            <LangSwitch />
             <button className="icon-button" onClick={() => setModal("settings")} aria-label={t("Cài đặt demo", "Demo settings")} title={t("Cài đặt demo", "Demo settings")}><Settings2 size={17} /></button>
             <button className="icon-button" onClick={() => setModal("help")} aria-label={t("Hướng dẫn", "Guide")} title={t("Hướng dẫn", "Guide")}><CircleHelp size={17} /></button>
           </div>
         </div>
-      </header>
+      </div>
+      </SiteHeader>
       <main className="dash">
         <section className="vehicle-bar" aria-label={t("Xe đang theo dõi", "Monitored car")}>
           <div className="vehicle-bar-id">

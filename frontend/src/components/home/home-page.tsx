@@ -18,9 +18,16 @@ import styles from "./home.module.css";
 function useHeroTick() {
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => setTick(value => (value + 1) % 31), 1000);
-    return () => clearInterval(timer);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const sync = () => {
+      clearInterval(timer);
+      if (!reduced.matches && !document.hidden) timer = setInterval(() => setTick(value => (value + 1) % 31), 1000);
+    };
+    sync();
+    reduced.addEventListener("change", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {clearInterval(timer); reduced.removeEventListener("change", sync); document.removeEventListener("visibilitychange", sync);};
   }, []);
   return tick;
 }
@@ -51,16 +58,22 @@ export default function HomePage() {
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
             <span className={styles.eyebrow}><span className={styles.eyebrowDot} />{t("Agent sức khỏe xe", "Vehicle health agent")}</span>
-            <h1>{t("Biết xe nóng máy", "Know your engine is overheating")} <em>{t("trước khi đèn báo sáng.", "before the warning light does.")}</em></h1>
+            <h1><span className={styles.heroLine}><span>{t("Biết xe nóng máy", "Know your engine is overheating")}</span></span>{" "}<span className={styles.heroLine}><em>{t("trước khi đèn báo sáng.", "before the warning light does.")}</em></span></h1>
             <p className={styles.lead}>{t("Car Neuron đọc dữ liệu blackbox mỗi giây, đối chiếu nhiều cảm biến với thời tiết và lịch sử bảo dưỡng, rồi giải thích vì sao chiếc xe cần được kiểm tra.", "Car Neuron reads blackbox data every second, cross-checks several sensors against the weather and service history, then explains why the car needs a check.")}</p>
             <div className={styles.heroActions}>
               <Link href="/garage" className="primary-button">{t("Mở garage", "Open the garage")} <ArrowRight size={16} /></Link>
-              <Link href="/film" className="outline-button"><Play size={15} />{t("Xem phim 80 giây", "Watch the 80 s film")}</Link>
+              <Link href="/film" className="outline-button"><Play size={15} />{t("Xem phim 90 giây", "Watch the 90 s film")}</Link>
             </div>
             <p className={styles.heroNote}><FlaskConical size={14} />{t("Nguồn dữ liệu ECU được mô phỏng. Luật an toàn, agent AI và các công cụ là thật khi chạy cùng backend.", "The ECU data source is simulated. The safety rule, AI agent and tools are real when running with the backend.")}</p>
           </div>
           <div className={styles.heroVisual} aria-label={t("Minh họa: chiếc xe đang nóng dần", "Illustration: the car heating up")} role="img">
             <div className={styles.heroGlow} data-level={level} />
+            <svg className={styles.signalFlow} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              {["M25 25 V36 Q25 42 32 42 H44 Q50 42 50 49 V85", "M77 27 V36 Q77 42 70 42 H56 Q50 42 50 49 V85", "M82 44 V54 Q82 60 76 60 H56 Q50 60 50 66 V85"].map((d, i) => (
+                <g key={d}><path d={d} pathLength="1" /><path key={tick} className={styles.signalPacket} style={{animationDelay: `${i * 100}ms`}} d={d} pathLength="1" /></g>
+              ))}
+              <circle cx="50" cy="85" r="1.2" />
+            </svg>
             <Image className={styles.heroCar} src="/brand/m2-hero.webp" alt="" width={1800} height={802} preload sizes="(max-width: 900px) 100vw, 640px" />
             <div className={`${styles.chip} ${styles.chipCoolant}`} data-level={level}>
               <Thermometer size={16} />
@@ -168,8 +181,8 @@ export default function HomePage() {
             <Link href="/film" className={styles.filmCard}>
               <div className={styles.filmCopy}>
                 <span className={styles.kicker}>{t("Phim giới thiệu", "Intro film")}</span>
-                <h2>{t("Toàn bộ câu chuyện trong 80 giây.", "The whole story in 80 seconds.")}</h2>
-                <p>{t("Motion graphic tự chạy, dùng để mở đầu buổi pitch hoặc quay màn hình làm video.", "A self-running motion graphic to open a pitch or to screen-record as a video.")}</p>
+                <h2>{t("Toàn bộ câu chuyện trong 90 giây.", "The whole story in 90 seconds.")}</h2>
+                <p>{t("Dữ liệu xe, agent và camera tài xế trong một phim giới thiệu có thể tải về.", "Vehicle data, the agent and the driver camera in one downloadable intro film.")}</p>
                 <span className={styles.filmPlay}><Play size={16} />{t("Phát phim", "Play the film")}</span>
               </div>
               <div className={styles.filmPoster} aria-hidden="true">

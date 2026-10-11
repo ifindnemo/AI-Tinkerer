@@ -6,6 +6,8 @@ Mục tiêu: trước CEO, Car Neuron chạy như một sản phẩm thật. Thi
 
 Thời gian: 13 ngày làm việc (T2 5/10 → T7 17/10), làm tuần tự vì chỉ có một người code.
 
+**Thay đổi trọng tâm (11/10):** demo tập trung vào **giám sát tài xế bằng camera** (`/driver`); dashboard blackbox/OBD giữ nguyên. Webcam xử lý trong trình duyệt, chỉ gửi chỉ số có cấu trúc; luật backend quyết định mức cảnh báo, agent chỉ diễn đạt. Kiểm tra trước demo: mở `/driver?debug=1` trên đúng camera, quay đầu sang trái và xác nhận hiện "Sang trái"; nếu ngược, đảo dấu `yaw` trong `headPose()` (`frontend/src/lib/driver/features.ts`). Chạy demo bằng `next build && next start` qua `localhost` hoặc HTTPS (địa chỉ LAN `http://` không mở được camera).
+
 **Tiến độ (cập nhật 4/10 tối):** đã xong hạng mục A, B, C, D. Kiểm tra: backend 59 test, gateway 49 test, frontend 70 test, ESLint, `tsc`, `next build`; chạy thật gateway → `/api/ingest` của Next → backend (chế độ `AGENT_MODE=rules`) → SSE → dashboard ở chế độ OBD, chụp màn hình ở các mốc bình thường / ≥105°C / P0217 và kịch bản bỏ máy trên hồ sơ xe tối thiểu. Gateway gửi lô 5 mẫu (`--batch-size`) để dashboard gần như trực tiếp. Chưa chạy với OpenAI thật cho chế độ thiết bị (để tránh tốn phí khi chưa hỏi bạn).
 
 **Ký hiệu chủ việc**

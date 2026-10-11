@@ -86,3 +86,32 @@ This section supersedes earlier scope notes where they conflict. The user now bu
 - Label simulated device data (`trip.simulated`) everywhere; the 3D BMW is illustrative and must not name the connected car.
 - The gateway only reads the car: its allowlist blocks Mode 04 (clear DTCs). Do not add a clear-codes control.
 - `?presenter=1` hides the data-source switch.
+
+### Driver attention camera, `/driver` (2026-10-11)
+
+The user now focuses the demo on a webcam-based driver-attention module; the blackbox/OBD dashboard stays as it is. Design direction: a professional motion-graphic feel, minimal, not "AI-looking".
+
+- Privacy is the product promise: MediaPipe FaceLandmarker runs in the browser from vendored assets in `public/mediapipe/` (no CDN). Only `DriverEvent` JSON (face presence, eye-closure duration and 30 s ratio, head direction, attention state, confidence) is posted to `/api/driver/events`; the backend schema forbids extra fields, so no image can pass. Never send frames, landmarks or blobs, and never draw a face-mesh dot cloud.
+- Pure logic lives in `lib/driver/` (`features.ts` geometry, `attention.ts` tracker, `calibration.ts`, `simulation.ts`), tested in `tests/driver-*.test.ts`. `hooks/use-driver-monitor.ts` orchestrates; frame-rate visuals read `LiveChannel` in `requestAnimationFrame`, React state updates about 5 times per second.
+- Immediate severity and sound also run locally (`lib/driver/safety.ts`), matching `backend/driver/rules.py`; never wait for the API/LLM to warn. The agent may reword the summary, while severity, evidence and safety recommendations remain deterministic. A prolonged closure (≥ 2.5 s) holds the critical alert for 60 s; any reliable drowsy reading holds a warning for 20 s. Show current observation separately from a held alert. Motion now follows the simulated ECU speed (see Vehicle Guardian below).
+- Yaw > 0 means the driver turned toward their own left; the preview and the drawing are mirrored. This sign is reasoned and unit-tested on synthetic landmarks, but not yet checked on a real turned head: confirm it with `/driver?debug=1` on the demo camera. If turning left shows "Sang phải", negate `yaw` in `headPose()` (`lib/driver/features.ts`); labels, compass and drawing all derive from it.
+- Demo from `next build && next start`: in `next dev`, MediaPipe's "INFO … XNNPACK" `console.error` shows a "1 Issue" badge (harmless, dev only).
+- Simulation is labelled everywhere and each scenario starts a new backend session. The camera needs a secure context (HTTPS or localhost).
+- Keep the footer line: prototype, no vehicle control, no emergency calls, no automotive safety certification.
+- Browser regression: `BASE_URL=http://127.0.0.1:3000 node scripts/verify-driver-ui.mjs` against a rules-only backend. See the 11/10 update in `../docs/handover-driver-camera.md` for camera cancellation, frozen-frame handling, and the optional face-video fixture.
+- All four routes share `components/site/site-header.tsx`: Home, Garage, Driver, Intro film, and one language switch. Garage passes its tabs/source/settings as the optional second row; do not recreate page-specific primary navigation. Check `scripts/verify-navigation.mjs` for VI/EN, mobile and both garage modes.
+
+### Vehicle Guardian flow on `/driver` (2026-10-11)
+
+The user now focuses the demo on one flow (brief: README_VEHICLE_GUARDIAN_CAMERA): the camera is an extra sense for the vehicle agent, not a standalone product. Blink → nothing; prolonged closure → `low_attention`; the safety policy sounds at once because the car is moving; the agent explains with ECU + camera + maintenance history and recommends the nearest safe stop instead of a distant garage; the driver opens their eyes and confirms, the response is recorded, and the vehicle warning stays.
+
+- Policy: `backend/driver/guardian.py` (`decide()` is pure) with the browser mirror `lib/guardian/policy.ts`. Both are tested against `backend/driver/guardian_cases.json`; change the table and both sides together. Vehicle thresholds are the existing ones only: warning at `COOLANT_WARN_C` (105 °C default, `analysis.detector.thresholds()`), mandatory stop at 120 °C (`agent/safety.py`). The brief's 103 °C was an example value.
+- ECU data is simulated in the browser (`lib/guardian/ecu.ts`: normal/warm/overheat/parked, default warm) and labelled everywhere; speed ≥ 5 km/h replaces the old manual "Xe đang chạy" switch. Batches carry `context.vehicle` and, after a confirmation, `context.acknowledgedAt` (the `capturedAt` of the confirming event). Without `vehicle` the endpoint behaves exactly as before.
+- Confirmation is a downgrade path, so the backend checks it against the session's own events (open eyes, facing forward, reliable, after a low-attention event, no relapse). It caps the driver alert at warning and stops the horn; it never touches the vehicle level or an overheat stop. An unanswered driver alert escalates to critical after 10 s.
+- The camera chip and lens show the driver's severity; the Guardian board, agent card and mobile banner show the combined one. A warm engine alone is visual only; the horn is for the driver's alertness and for a mandatory stop.
+- Maintenance history is the seeded, simulated file for `bmw-m2`; it is context, never a cause. The agent writes only the explanation (rejected if it tells a driver who must stop to continue); steps always come from the policy, so the flow is complete with `AGENT_MODE=rules`.
+- LLM provider (2026-10-11): with `INWORLD_API_KEY` set, both agents use Inworld Router (OpenAI-compatible Chat Completions, model from `LLMMODEL`) via `backend/llm_provider.py`; otherwise OpenAI as before. Keys stay in Python.
+
+### Intro film update (2026-10-11)
+
+The user requested the original 60-second video from `brag-output`, extended to 90 seconds with the driver camera. This supersedes the old 80-second browser animation described above. `/film` now plays the actual local `public/film/car-neuron-90s.mp4` (1920 × 1080, 30 fps), with native controls and subtitles. Chapter metadata in `components/film/timeline.ts` follows the MP4; never run a separate animation clock. Keep `?t=`, `?clean`, keyboard shortcuts, the shared navigation, model/music credits and demo disclosures. Sound starts on user playback; `?autoplay=1` is muted and respects reduced motion. The old React scenes and unused scene CSS were removed. Source is deterministic HyperFrames HTML; see [film handover](../docs/intro-film-90s.md) and its source ZIP.

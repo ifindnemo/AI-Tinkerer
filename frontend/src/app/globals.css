@@ -69,6 +69,8 @@
   --font: "Be Vietnam Pro", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-fast: 180ms;
+  --motion-enter: 650ms;
   --page: 1400px;
   --gutter: 32px;
 }
@@ -242,7 +244,17 @@ dd {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast) var(--ease);
 }
+.primary-button > svg,
+.outline-button > svg,
+.text-button > svg,
+.agent-inspect-button > svg { transition: translate var(--motion-fast) var(--ease); }
+@media (hover: hover) and (pointer: fine) {
+  :is(.primary-button, .outline-button):hover:not(:disabled) { transform: translateY(-2px); }
+  :is(.primary-button, .text-button, .agent-inspect-button):hover:not(:disabled) > svg:last-child { translate: 3px; }
+}
+:is(.primary-button, .outline-button, .app-tab, .segmented button):active:not(:disabled) { transform: scale(0.97); }
 .primary-button {
   background: var(--accent);
   color: var(--on-accent);
@@ -489,7 +501,7 @@ dd {
   text-decoration: underline;
 }
 
-/* ---------- Site header (landing + film) ---------- */
+/* ---------- Shared site navigation ---------- */
 .site-header {
   position: sticky;
   top: 0;
@@ -502,7 +514,7 @@ dd {
   display: flex;
   align-items: center;
   gap: 28px;
-  max-width: 1200px;
+  max-width: var(--page);
   height: 68px;
   margin: 0 auto;
   padding: 0 var(--gutter);
@@ -512,17 +524,40 @@ dd {
   gap: 4px;
 }
 .site-nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 12px;
   border-radius: 999px;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--muted);
+  white-space: nowrap;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
 .site-nav-link:hover,
 .site-nav-link[aria-current="page"] {
   color: var(--text);
   background: var(--surface-2);
 }
+.site-nav-link::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transition: transform 250ms var(--ease);
+}
+.site-nav-link:hover::after { transform: scaleX(0.45); }
+.site-nav-link[aria-current="page"]::after { transform: scaleX(1); animation: nav-in 350ms var(--ease); }
+@keyframes nav-in { from { transform: scaleX(0.25); } }
+.site-nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.site-header .brand-name { display: inline; }
 .site-header-tools {
   display: flex;
   align-items: center;
@@ -531,18 +566,25 @@ dd {
 }
 
 /* ---------- Dashboard shell ---------- */
+/* Animate mounted panels, never the one-second sensor values or safety messages. */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(12px); }
+}
+.dash > .vehicle-bar { animation: panel-in 500ms var(--ease) both; }
+.overview-main > .vehicle-card { animation: panel-in var(--motion-enter) 80ms var(--ease) both; }
+.overview-main > .telemetry-section { animation: panel-in var(--motion-enter) 160ms var(--ease) both; }
+.dash > :is(.data-panel, .history-panel) { animation: panel-in 400ms var(--ease) both; }
+.modal[open] { animation: panel-in 220ms var(--ease) both; }
+.modal[open]::backdrop { animation: backdrop-in 220ms var(--ease) both; }
+@keyframes backdrop-in { from { opacity: 0; } }
+.health-overview { transition: background 250ms, border-color 250ms; }
 .app {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
 }
 .app-bar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(14px);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
 }
 .app-bar-inner {
   display: flex;
@@ -593,20 +635,6 @@ dd {
   align-items: center;
   gap: 10px;
   margin-left: auto;
-}
-.app-bar-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
-}
-.app-bar-link:hover {
-  color: var(--text);
-  background: var(--surface-2);
 }
 .dash {
   max-width: var(--page);
@@ -765,25 +793,13 @@ dd {
   position: relative;
   overflow: hidden;
 }
-.health-overview::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--accent);
-}
-.health-overview.pending::before {
-  background: var(--border-strong);
-}
-.health-overview.watch::before {
-  background: var(--warn-line);
+.health-overview.watch {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
 }
 .health-overview.critical {
   border-color: var(--danger-line);
-  background: linear-gradient(90deg, var(--danger-soft), var(--surface) 60%);
-}
-.health-overview.critical::before {
-  background: var(--danger);
+  background: var(--danger-soft);
 }
 .health-overview-icon {
   display: grid;
@@ -1639,7 +1655,6 @@ dd {
 .metric-card.danger {
   border-color: var(--danger-line);
   background: var(--danger-soft);
-  box-shadow: inset 0 3px var(--danger);
 }
 .metric-card.danger :is(.metric-label, .metric-label svg, .metric-value, .metric-value small, .metric-sub, .sparkline) {
   color: var(--danger);
@@ -1748,6 +1763,7 @@ td:last-child {
 }
 .periodic-agent-avatar,
 .agent-avatar {
+  position: relative;
   display: grid;
   place-items: center;
   width: 42px;
@@ -1758,6 +1774,19 @@ td:last-child {
   flex-shrink: 0;
   box-shadow: 0 8px 18px -10px var(--accent);
 }
+.backend-agent[data-phase="sending"] .periodic-agent-avatar::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 1.6s linear infinite;
+}
+.backend-agent[data-phase="ready"] .periodic-agent-avatar > svg { animation: agent-ready 420ms var(--ease); }
+@keyframes agent-ready { 0% { scale: 0.8; } 60% { scale: 1.12; } }
+.agent-response:not(.backend-incident) > .agent-diagnosis { animation: assessment-in 240ms var(--ease); }
+@keyframes assessment-in { from { opacity: 0.65; transform: translateY(3px); } }
 .agent-demo-badge {
   margin-left: auto;
   padding: 3px 9px;
@@ -1798,12 +1827,26 @@ td:last-child {
   color: var(--faint);
 }
 .agent-cycle-steps li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
   padding-top: 9px;
   border-top: 2px solid var(--border);
+  transition: color 200ms, border-color 300ms;
 }
+.agent-cycle-steps li[data-state="current"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -2px;
+  width: 100%;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: step-in 420ms var(--ease);
+}
+@keyframes step-in { from { transform: scaleX(0); } }
 .agent-cycle-steps li > span {
   display: grid;
   place-items: center;
@@ -1857,7 +1900,9 @@ td:last-child {
 .agent-sample-segments .filled {
   background: var(--accent);
   box-shadow: none;
+  animation: sample-in 320ms var(--ease);
 }
+@keyframes sample-in { 0% { transform: scaleY(0.4); } 55% { transform: scaleY(1.5); } }
 .agent-batch-progress small {
   font-size: 12px;
   color: var(--faint);
@@ -2427,16 +2472,17 @@ td:last-child {
 }
 .agent-message {
   padding: 14px 16px;
-  border-radius: 4px 14px 14px;
+  border-radius: var(--radius);
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
 .safety-agent-panel.critical .agent-message {
-  border-left: 3px solid var(--danger);
+  border-color: var(--danger-line);
   background: var(--danger-soft);
 }
 .safety-agent-panel.high .agent-message {
-  border-left: 3px solid var(--warn);
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
 }
 .agent-message p {
   font-size: 14.5px;
@@ -3055,9 +3101,6 @@ td:last-child {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1240px) {
-  .app-bar-link {
-    display: none;
-  }
   .live-vehicle-strip .live-item:nth-of-type(2) {
     display: none;
   }
@@ -3284,10 +3327,18 @@ td:last-child {
     padding: 24px 20px;
   }
   .site-nav {
-    display: none;
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    gap: 2px;
   }
+  .site-nav-link { padding: 8px; font-size: 12px; }
   .site-header-inner {
-    gap: 12px;
+    flex-wrap: wrap;
+    height: auto;
+    gap: 8px 12px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
 }
 @media (max-width: 420px) {
@@ -3445,17 +3496,16 @@ td:last-child {
 .dtc-item {
   padding: 16px 18px;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--warn-line);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 .dtc-item.urgency-critical {
-  border-left-color: var(--danger);
+  border-color: var(--danger-line);
   background: var(--danger-soft);
 }
-.dtc-item.urgency-info {
-  border-left-color: var(--border-strong);
+.dtc-item.urgency-warning {
+  border-color: var(--warn-line);
 }
 .dtc-item header {
   display: flex;
@@ -3581,7 +3631,9 @@ td:last-child {
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
   }
 }

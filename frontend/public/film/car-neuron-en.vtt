@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.900
+In this scenario, coolant heats up before the warning light.
+
+2
+00:00:03.900 --> 00:00:07.500
+Car Neuron reads blackbox data every second.
+
+3
+00:00:07.500 --> 00:00:11.000
+Connect to the car. One record every second.
+
+4
+00:00:11.000 --> 00:00:15.831
+RPM, speed, load and temperature, read together.
+
+5
+00:00:15.831 --> 00:00:20.194
+The dashboard monitors signals from one vehicle.
+
+6
+00:00:20.194 --> 00:00:26.739
+The fan stops and heat rises. Group 15 samples into a batch.
+
+7
+00:00:26.739 --> 00:00:31.000
+Check the safety rule, weather and service history.
+
+8
+00:00:31.000 --> 00:00:35.466
+The agent compares signals instead of checking a single threshold.
+
+9
+00:00:35.466 --> 00:00:44.192
+Environment, engine load, or signs of a cooling fault?
+
+10
+00:00:44.192 --> 00:00:50.500
+A verdict with evidence, recommendations and nearby garages.
+
+11
+00:00:50.500 --> 00:00:55.100
+An earlier alert in this illustrative scenario; thresholds vary by car.
+
+12
+00:00:55.100 --> 00:01:02.100
+Understand the car. Understand the driver.
+
+13
+00:01:02.100 --> 00:01:08.400
+Track eyes and head direction, locally in the browser.
+
+14
+00:01:08.400 --> 00:01:11.150
+The counter rises while the eyes stay closed.
+
+15
+00:01:11.150 --> 00:01:14.300
+A local alert without waiting for the agent. Stop safely and rest.
+
+16
+00:01:14.300 --> 00:01:17.100
+Video stays in the tab. No recording or uploads.
+
+17
+00:01:17.100 --> 00:01:21.000
+Only structured JSON events are sent to the agent.
+
+18
+00:01:21.000 --> 00:01:24.980
+Prototype: no vehicle control, no emergency calls, not safety certified.
+
+19
+00:01:24.980 --> 00:01:30.000
+Car Neuron. A companion for every journey.

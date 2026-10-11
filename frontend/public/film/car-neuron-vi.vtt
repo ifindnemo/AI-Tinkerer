@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.900
+Trong kịch bản này, nước làm mát nóng lên trước khi đèn báo sáng.
+
+2
+00:00:03.900 --> 00:00:07.500
+Car Neuron đọc dữ liệu blackbox mỗi giây.
+
+3
+00:00:07.500 --> 00:00:11.000
+Kết nối với xe. Mỗi giây một bản ghi.
+
+4
+00:00:11.000 --> 00:00:15.831
+Vòng tua, tốc độ, tải và nhiệt độ được đọc cùng nhau.
+
+5
+00:00:15.831 --> 00:00:20.194
+Dashboard theo dõi các tín hiệu của một chiếc xe.
+
+6
+00:00:20.194 --> 00:00:26.739
+Quạt dừng, nhiệt tăng. Gom 15 mẫu thành một lô.
+
+7
+00:00:26.739 --> 00:00:31.000
+Kiểm tra luật an toàn, thời tiết và lịch sử bảo dưỡng.
+
+8
+00:00:31.000 --> 00:00:35.466
+Agent đối chiếu dữ liệu, thay vì chỉ nhìn một ngưỡng.
+
+9
+00:00:35.466 --> 00:00:44.192
+Nóng do môi trường, do tải, hay dấu hiệu lỗi làm mát?
+
+10
+00:00:44.192 --> 00:00:50.500
+Kết luận có bằng chứng, đề xuất và garage gần xe.
+
+11
+00:00:50.500 --> 00:00:55.100
+Cảnh báo trước ngưỡng đèn báo trong kịch bản minh họa.
+
+12
+00:00:55.100 --> 00:01:02.100
+Hiểu chiếc xe. Hiểu cả người lái.
+
+13
+00:01:02.100 --> 00:01:08.400
+Theo dõi mắt và hướng đầu ngay trong trình duyệt.
+
+14
+00:01:08.400 --> 00:01:11.150
+Bộ đếm tăng khi mắt nhắm liên tục.
+
+15
+00:01:11.150 --> 00:01:14.300
+Cảnh báo không chờ agent. Hãy dừng và nghỉ ở nơi an toàn.
+
+16
+00:01:14.300 --> 00:01:17.100
+Video ở lại trong tab. Không ghi hay tải lên.
+
+17
+00:01:17.100 --> 00:01:21.000
+Chỉ sự kiện JSON có cấu trúc được gửi cho agent.
+
+18
+00:01:21.000 --> 00:01:24.980
+Bản thử nghiệm: không điều khiển xe, không gọi cứu hộ, chưa chứng nhận an toàn.
+
+19
+00:01:24.980 --> 00:01:30.000
+Car Neuron. Đồng hành mỗi chuyến đi.

@@ -12,6 +12,13 @@ export function useInView<T extends Element>(threshold = 0.2) {
       queueMicrotask(() => setVisible(true));
       return;
     }
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    if (reduced.matches) {
+      queueMicrotask(() => setVisible(true));
+      return;
+    }
+    // Only hide awaiting reveals after hydration; SSR content stays readable without JS.
+    el.setAttribute("data-reveal-ready", "");
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
         setVisible(true);
@@ -19,7 +26,11 @@ export function useInView<T extends Element>(threshold = 0.2) {
       }
     }, {threshold, rootMargin: "0px 0px -8% 0px"});
     observer.observe(el);
-    return () => observer.disconnect();
+    const onMotionChange = () => {
+      if (reduced.matches) {setVisible(true); observer.disconnect();}
+    };
+    reduced.addEventListener("change", onMotionChange);
+    return () => {observer.disconnect(); reduced.removeEventListener("change", onMotionChange);};
   }, [threshold]);
   return [ref, visible] as const;
 }

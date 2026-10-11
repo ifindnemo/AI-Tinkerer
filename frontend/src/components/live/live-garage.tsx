@@ -1,9 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import {useEffect, useMemo, useState} from "react";
-import {Activity, ArrowRight, Clapperboard, FlaskConical, LayoutDashboard, Radio, Server, ShieldCheck, TriangleAlert} from "lucide-react";
+import {Activity, ArrowRight, FlaskConical, LayoutDashboard, Radio, Server, ShieldCheck, TriangleAlert} from "lucide-react";
 import {useDeviceStream} from "@/hooks/use-device-stream";
 import {useLang} from "@/hooks/use-preferences";
 import {usePresenter} from "@/hooks/use-presenter";
@@ -16,8 +15,7 @@ import type {DeviceAnalysis, DeviceState, SignalName} from "@/lib/device/types";
 import type {Analysis} from "@/lib/telemetry";
 import {vehicles} from "@/lib/vehicles";
 import BackendAgentPanel from "../backend-agent-panel";
-import Brand from "../site/brand";
-import LangSwitch from "../site/lang-switch";
+import SiteHeader from "../site/site-header";
 import DtcCard from "./dtc-card";
 import LiveMetrics from "./live-metrics";
 import VehicleProfileCard, {profileName} from "./vehicle-profile";
@@ -94,16 +92,15 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
 
   return (
     <div className="app theme-studio live-garage">
-      <header className="app-bar">
+      <SiteHeader current="garage">
+      <div className="app-bar">
         <div className="app-bar-inner">
-          <Brand label={t("Car Neuron trang chủ", "Car Neuron home")} />
           <nav className="app-tabs" aria-label={t("Điều hướng garage", "Garage navigation")}>
             {tabs.map(item => (
               <button key={item.id} className="app-tab" aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>{item.icon}{item.label}</button>
             ))}
           </nav>
           <div className="app-bar-tools">
-            <Link className="app-bar-link" href="/film"><Clapperboard size={15} />{t("Phim giới thiệu", "Intro film")}</Link>
             {!presenter && (
               <div className="segmented" role="group" aria-label={t("Nguồn dữ liệu", "Data source")}>
                 <button aria-pressed={mode === "device"} onClick={() => setMode("device")} title={t("Dữ liệu trực tiếp từ thiết bị OBD qua backend", "Live data from the OBD device via the backend")}><Radio size={12} />OBD</button>
@@ -111,10 +108,10 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
                 <button aria-pressed={mode === "mock"} onClick={() => setMode("mock")} title={t("Chạy hoàn toàn trong trình duyệt, không cần mạng", "Runs entirely in the browser, no network needed")}><FlaskConical size={12} />{t("Mô phỏng", "Mock")}</button>
               </div>
             )}
-            <LangSwitch />
           </div>
         </div>
-      </header>
+      </div>
+      </SiteHeader>
       <main className="dash">
         <section className="vehicle-bar" aria-label={t("Xe đang theo dõi", "Monitored car")}>
           <div className="vehicle-bar-id">

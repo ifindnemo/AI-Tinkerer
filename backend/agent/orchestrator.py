@@ -3,7 +3,9 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
-from agents import Agent, ModelSettings, Runner
+from agents import Agent, Runner
+
+import llm_provider
 
 from agent.prompt import build_agent_instructions
 from agent.safety import evaluate_hard_safety
@@ -32,15 +34,13 @@ SEVERITY_RANK = {
 
 class VehicleAgent:
     def __init__(self):
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        llm_provider.configure()
+        self.model = llm_provider.model_name()
         self.agent = Agent[VehicleToolContext](
             name="Vehicle Guardian",
             instructions=build_agent_instructions(),
             model=self.model,
-            model_settings=ModelSettings(
-                parallel_tool_calls=True,
-                store=False,
-            ),
+            model_settings=llm_provider.model_settings(parallel_tool_calls=True),
             tools=VEHICLE_READ_TOOLS,
             output_type=VehicleAssessment,
         )

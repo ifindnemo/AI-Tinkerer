@@ -32,7 +32,7 @@ The first run creates `backend/.venv` and installs dependencies. Pages:
 
 - `http://localhost:3000/` — landing page (what the agent does, real vs simulated boundary)
 - `http://localhost:3000/garage` — the dashboard: 3D car, live telemetry and the agent panel
-- `http://localhost:3000/film` — an 80-second self-running motion graphic for pitches or screen recording
+- `http://localhost:3000/film` — a 90-second intro film with vehicle health, the driver camera, chapters and MP4 download
   (`?clean=1` hides the page chrome, `?t=30` opens paused at second 30)
 
 In the dashboard, the top bar switches the agent source (API / Mock) and the interface language (VI / EN).
@@ -55,3 +55,13 @@ Then open `http://localhost:3000/garage` and press **OBD** (`?presenter=1` hides
 The analysis runs at the start of a trip, on detector findings or new DTCs, and every 5 minutes.
 Set `AGENT_MODE=rules` and `EXTERNAL_TOOLS=off` in `backend/.env` for a demo without OpenAI or LocationIQ.
 See [gateway/README.md](gateway/README.md) and [docs/ke-hoach-demo-18-10.md](docs/ke-hoach-demo-18-10.md).
+
+## Driver attention camera (`/driver`)
+
+`http://localhost:3000/driver` watches the driver with the webcam. Face analysis (MediaPipe) runs in the
+browser; only structured events (face presence, eye-closure time, head direction, attention state,
+confidence) are posted to `POST /api/driver/events`. No video or image is sent, stored or given to the agent.
+Rules set the severity (drowsy, distracted, no face); the agent only rewords the alert and falls back to
+the rule text without a valid OpenAI key. "Xem mô phỏng" plays labelled scenarios without a camera, and
+`?debug=1` shows the raw model values for tuning. Browsers only allow the camera on HTTPS or localhost.
+The module does not control the vehicle, call emergency services or claim automotive safety certification.

@@ -4,5 +4,6 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "test-results/**", "next-env.d.ts"]),
+  // public/mediapipe holds the vendored MediaPipe WASM loader (third-party, generated).
+  globalIgnores([".next/**", "test-results/**", "next-env.d.ts", "public/mediapipe/**"]),
 ]);

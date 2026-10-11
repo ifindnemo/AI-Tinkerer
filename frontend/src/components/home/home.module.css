@@ -16,7 +16,7 @@
     opacity 0.7s var(--ease),
     transform 0.7s var(--ease);
 }
-.page [data-reveal]:not([data-visible]) {
+.page [data-reveal][data-reveal-ready]:not([data-visible]) {
   opacity: 0;
   transform: translateY(18px);
 }
@@ -64,6 +64,27 @@
   font-style: normal;
   color: var(--accent);
 }
+.heroLine {
+  display: block;
+  overflow: clip;
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+}
+.heroLine > :is(span, em) {
+  display: block;
+  animation: titleIn 850ms var(--ease) both;
+}
+.heroLine:nth-child(2) > em { animation-delay: 120ms; }
+.heroCopy > .eyebrow { animation: heroIn 600ms var(--ease) both; }
+.heroCopy > .lead { animation: heroIn 650ms 180ms var(--ease) both; }
+.heroCopy > .heroActions { animation: heroIn 650ms 260ms var(--ease) both; }
+.heroCopy > .heroNote { animation: heroIn 650ms 340ms var(--ease) both; }
+@keyframes titleIn {
+  from { transform: translateY(112%); }
+}
+@keyframes heroIn {
+  from { opacity: 0; transform: translateY(14px); }
+}
 .lead {
   max-width: 520px;
   font-size: 17.5px;
@@ -105,6 +126,34 @@
   border: 1px solid var(--border);
   overflow: hidden;
   isolation: isolate;
+  animation: heroIn 900ms 120ms var(--ease) both;
+}
+.signalFlow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--accent);
+  pointer-events: none;
+}
+.signalFlow path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.22;
+}
+.signalFlow .signalPacket {
+  stroke-width: 2;
+  stroke-dasharray: 0.06 0.94;
+  opacity: 0;
+  animation: packet 750ms linear both;
+}
+.signalFlow circle { fill: currentColor; opacity: 0.55; }
+@keyframes packet {
+  0% { stroke-dashoffset: 1; opacity: 0; }
+  12%, 80% { opacity: 0.65; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
 }
 .heroVisual::before {
   content: "";
@@ -144,6 +193,10 @@
   width: 112%;
   height: auto;
   filter: drop-shadow(0 30px 30px rgb(22 33 28 / 16%));
+  animation: carIn 1100ms 180ms var(--ease) both;
+}
+@keyframes carIn {
+  from { opacity: 0; transform: translateX(36px) scale(0.96); }
 }
 .chip {
   position: absolute;
@@ -157,7 +210,7 @@
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   font-size: 13px;
-  animation: float 6s ease-in-out infinite;
+  animation: heroIn 700ms 420ms var(--ease) both;
 }
 .chip svg {
   color: var(--accent);
@@ -202,12 +255,12 @@
 .chipFan {
   top: 12%;
   right: 7%;
-  animation-delay: -2s;
+  animation-delay: 520ms;
 }
 .chipLoad {
   top: 30%;
   right: 4%;
-  animation-delay: -4s;
+  animation-delay: 620ms;
 }
 .chipAgent {
   left: 50%;
@@ -233,12 +286,6 @@
   font-size: 11px;
   color: var(--faint);
 }
-@keyframes float {
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
 /* ---------- Sections ---------- */
 .section {
   padding: 72px 0;
@@ -305,7 +352,7 @@
 }
 .chartWindow {
   fill: var(--accent-soft);
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity 0.8s 1.2s;
 }
 .chartRule {
@@ -325,11 +372,11 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 1;
-  stroke-dashoffset: 1;
+  stroke-dashoffset: 0;
   transition: stroke-dashoffset 2s var(--ease);
 }
 .chartArea {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 1s 1s;
 }
 .chartEarly circle {
@@ -344,7 +391,7 @@
 .chartEarly,
 .chartLate,
 .chartGap {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.6s;
 }
 .chartEarly {
@@ -375,6 +422,8 @@
 .chart[data-visible] .chartWindow {
   opacity: 0.7;
 }
+.chart[data-reveal-ready]:not([data-visible]) .chartLine { stroke-dashoffset: 1; }
+.chart[data-reveal-ready]:not([data-visible]) :is(.chartWindow, .chartArea, .chartEarly, .chartLate, .chartGap) { opacity: 0; }
 .chartLegend {
   display: flex;
   flex-wrap: wrap;
@@ -415,7 +464,22 @@
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--surface);
+  transition: border-color 200ms, box-shadow 200ms;
 }
+.step:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 43px;
+  left: 100%;
+  width: 15px;
+  height: 1px;
+  background: var(--accent);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 500ms 300ms var(--ease);
+}
+.step[data-visible]::after { transform: scaleX(1); }
 .stepIcon {
   display: grid;
   place-items: center;
@@ -693,6 +757,7 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1000px) {
+  .step::after { display: none; }
   .hero {
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
@@ -736,6 +801,8 @@
   .chipLoad {
     display: none;
   }
+  .chipFan { top: 30%; }
+  .signalFlow g:nth-child(3) { display: none; }
   .chipAgent {
     bottom: 38px;
   }
@@ -762,13 +829,16 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .page [data-reveal]:not([data-visible]) {
+  .page [data-reveal][data-reveal-ready]:not([data-visible]) {
     opacity: 1;
     transform: none;
   }
+  .signalPacket { display: none; }
   .chartLine {
     stroke-dashoffset: 0;
   }
+  .chart[data-reveal-ready]:not([data-visible]) .chartLine { stroke-dashoffset: 0; }
+  .chart[data-reveal-ready]:not([data-visible]) :is(.chartWindow, .chartArea, .chartEarly, .chartLate, .chartGap) { opacity: 1; }
   .chartArea,
   .chartEarly,
   .chartLate,
