@@ -10,6 +10,7 @@ from store import store  # noqa: E402
 from telemetry.db import telemetry_store  # noqa: E402
 from telemetry.routes import get_worker, router as telemetry_router  # noqa: E402
 from driver.routes import router as driver_router  # noqa: E402
+from stt import router as stt_router  # noqa: E402
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app = FastAPI(
 app.include_router(router, prefix="/api")
 app.include_router(telemetry_router, prefix="/api")
 app.include_router(driver_router, prefix="/api")
+app.include_router(stt_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

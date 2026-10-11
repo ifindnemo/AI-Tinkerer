@@ -101,6 +101,16 @@ class DriverService:
         }
         if guardian:
             reply["guardian"] = guardian.block
+        if severity in ("warning", "critical"):
+            from voice import announce_alert
+
+            announce_alert(
+                reply["assessment"]["summary"],
+                severity=severity,
+                recommendations=reply["assessment"]["recommendations"],
+                dedupe_key=f"driver:{batch.session_id}:{episode}:{severity}",
+                session_id=batch.session_id,
+            )
         return reply
 
     @staticmethod

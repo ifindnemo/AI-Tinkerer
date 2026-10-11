@@ -3,5 +3,6 @@ token.json
 credentials.json
 client_secret_*.json
 vehicle_guardian.db
+var/
 __pycache__/
 *.py[cod]

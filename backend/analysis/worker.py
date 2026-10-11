@@ -190,6 +190,16 @@ class AnalysisWorker:
                  previous and previous["at"])
         self.broker.publish(job.vehicle_id, "analysis", payload)
         self.broker.publish(job.vehicle_id, "trip", get_trip(self.telemetry, job.trip_id))
+        if severity in ("warning", "critical"):
+            from voice import announce_alert
+
+            announce_alert(
+                assessment.diagnosis,
+                severity=severity,
+                recommendations=assessment.recommendations,
+                dedupe_key=f"{job.vehicle_id}:{severity}",
+                session_id=job.vehicle_id,
+            )
         return payload
 
     def _severity_of_latest(self, trip_id: str) -> str | None:
