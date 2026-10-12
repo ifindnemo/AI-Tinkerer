@@ -178,7 +178,7 @@ try {
   assert.ok(batches.length > 0);
   for (const batch of batches) {
     assert.deepEqual(Object.keys(batch).sort(), ["context", "events", "schemaVersion", "sessionId", "source"]);
-    for (const key of Object.keys(batch.context)) assert.ok(["vehicleMoving", "vehicle", "acknowledgedAt"].includes(key), `context.${key}`);
+    for (const key of Object.keys(batch.context)) assert.ok(["vehicleMoving", "vehicleId", "vehicle", "acknowledgedAt"].includes(key), `context.${key}`);
     if (batch.context.vehicle) assert.deepEqual(Object.keys(batch.context.vehicle).sort(), ["capturedAt", "coolantC", "drivingMinutes", "engineLoadPct", "source", "speedKmh"]);
     for (const event of batch.events) assert.deepEqual(Object.keys(event).sort(), ["absentMs", "capturedAt", "confidence", "eyes", "facePresent", "head", "state"]);
     assert.doesNotMatch(JSON.stringify(batch), /data:|blob:|base64/i);

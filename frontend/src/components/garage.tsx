@@ -9,11 +9,15 @@ import LiveGarage from "./live/live-garage";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
 import BackendAgentPanel from "./backend-agent-panel";
+import GarageCamera from "./driver/garage-camera";
+import AgentDock from "./agent/agent-dock";
+import {useAgentPresence} from "./agent/use-agent-presence";
+import type {VehicleSnapshot} from "@/lib/guardian/types";
 import VehicleLibrary from "./vehicle-library";
 import SiteHeader from "./site/site-header";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -101,10 +105,22 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
   const [theme, setTheme] = useState("studio");
   const modalRef = useRef<HTMLDialogElement>(null);
   const backend = snapshot.backend;
+  const latest = backend?.reply?.latest.assessment;
+  // The robot mirrors the API agent (Mock mode runs without a backend, so no robot there).
+  useAgentPresence(backend ? {
+    phase: backend.api === "offline" || backend.phase === "error" ? "offline" : !telemetry.connected || backend.phase === "paused" ? "nodata" : backend.phase === "sending" ? "analyzing" : "ready",
+    severity: latest?.severity ?? "normal",
+    analysisId: backend.reply?.batchId ?? null,
+    diagnosis: latest?.diagnosis ?? null,
+  } : null);
   const busy = backend?.phase === "sending";
   const weatherResult = backend?.reply?.latest.tool_trace.find(t => t.tool === "get_external_environment_context")?.result;
   const liveWeather = weatherResult?.success ? weatherResult.data : null;
   const thermalDanger = thermalLevel(telemetry,"engine") === "danger" || thermalLevel(telemetry,"cooling") === "danger";
+  // The blackbox values the camera's Guardian policy combines with the driver (browser-simulated stream).
+  const cameraVehicle = useMemo<VehicleSnapshot | null>(() => telemetry.connected && Number.isFinite(telemetry.speed) && Number.isFinite(telemetry.coolant)
+    ? {source: "simulated", capturedAt: telemetry.capturedAt, speedKmh: telemetry.speed, coolantC: telemetry.coolant, engineLoadPct: telemetry.engineLoad ?? null, drivingMinutes: null}
+    : null, [telemetry.connected, telemetry.speed, telemetry.coolant, telemetry.engineLoad, telemetry.capturedAt]);
   useEffect(() => {
     if (modal) modalRef.current?.showModal();
     else modalRef.current?.close();
@@ -297,6 +313,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                 </section>
               </div>
               <aside className="insights-column">
+                {backend && <GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} />}
                 {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                 <details className="vehicle-context">
                   <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
@@ -413,6 +430,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           <span>{t("Dữ liệu ECU mô phỏng", "Simulated ECU data")} · Frontend v0.2</span>
         </footer>
       </main>
+      {backend && <AgentDock session={vehicle.id} anchor="car-agent" />}
       <dialog
         ref={modalRef}
         className="modal"

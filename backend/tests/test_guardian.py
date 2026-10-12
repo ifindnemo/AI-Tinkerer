@@ -225,7 +225,7 @@ def test_endpoint_accepts_the_vehicle_context_and_rejects_unknown_fields() -> No
     body["context"]["vehicle"]["frame"] = "data:image/jpeg;base64,AAAA"
     assert client.post("/api/driver/events", json=body).status_code == 422
     del body["context"]["vehicle"]["frame"]
-    body["context"]["vehicle"]["source"] = "obd"
+    body["context"]["vehicle"]["source"] = "camera"
     assert client.post("/api/driver/events", json=body).status_code == 422
     body["context"]["vehicle"]["source"] = "simulated"
     body["context"]["acknowledgedAt"] = "2026-10-11T02:00:00"

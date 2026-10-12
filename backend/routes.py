@@ -24,7 +24,20 @@ def _run_agent(telemetry_context: dict) -> dict:
 @router.post("/telemetry/batch", tags=["telemetry"])
 def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
     """Validate a frontend black-box batch and send it directly to the agent."""
-    result = _run_agent(batch.to_agent_context())
+    context = batch.to_agent_context()
+    result = _run_agent(context)
+    assessment = result["assessment"]
+    severity = assessment["severity"]  # result["status"] is the incident status, not the severity
+    if severity in ("warning", "critical") and not context.get("driver_policy_raised"):
+        from voice import announce_alert
+
+        announce_alert(
+            assessment["diagnosis"],
+            severity=severity,
+            recommendations=assessment["recommendations"],
+            dedupe_key=f"{batch.vehicle_id}:{severity}",
+            session_id=batch.vehicle_id,
+        )
     return {
         **result,
         "batch_id": batch.batch_id,

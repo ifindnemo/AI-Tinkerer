@@ -1,5 +1,7 @@
 "use client";
 import {useEffect, useMemo, useState} from "react";
+import AgentDock from "../agent/agent-dock";
+import {presence} from "@/lib/agent/presence";
 import {Camera, Check, ShieldCheck, Wifi, WifiOff, ArrowUpRight} from "lucide-react";
 import {useDriverMonitor} from "@/hooks/use-driver-monitor";
 import {useLang} from "@/hooks/use-preferences";
@@ -21,6 +23,8 @@ const SCENARIO_LABEL: Record<SimulationScenario, {vi: string; en: string}> = {
   distracted: {vi: "Quay đầu", en: "Looking away"},
   no_face: {vi: "Mất khuôn mặt", en: "Face out of view"},
 };
+
+const DEMO_VEHICLE = "bmw-m2";
 
 /** The state word slides: the old one leaves upward while the new one rises from below. */
 function StateWord({state}: {state: AttentionState | null}) {
@@ -104,8 +108,10 @@ function AgentCard({assessment, offline}: {assessment: DriverAssessment | null; 
 }
 
 export default function DriverPage() {
+  // The demo car's id: the agent dock plays this vehicle's spoken alerts, as on the garage page.
+  const monitorOptions = useMemo(() => ({vehicleId: DEMO_VEHICLE}), []);
   const {t, lang} = useLang();
-  const {view, live: channel, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn} = useDriverMonitor();
+  const {view, live: channel, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn} = useDriverMonitor(monitorOptions);
   const {phase, source, event, reply, store} = view;
   const active = phase === "calibrating" || phase === "running";
   const live: AttentionState | null = active ? event?.state ?? null : null;
@@ -123,6 +129,24 @@ export default function DriverPage() {
   // Once the driver has confirmed, the Guardian board states the response instead.
   const held = !!live && assessment?.state === "drowsy" && severity !== "normal" && live !== "drowsy" && !guardian?.driver.responded;
   const state: AttentionState | null = live;
+  // What the agent dock shows: the camera, the backend link, and each new alert step in words.
+  const responded = !!guardian?.driver.responded;
+  const sound = store.settings.sound;
+  useEffect(() => {
+    presence.set({
+      camera: {active, sound, severity: active ? severity : "normal", responded},
+      agent: active ? {phase: view.sendError ? "offline" : "ready", severity: overall} : null,
+    });
+  }, [active, sound, severity, responded, view.sendError, overall]);
+  useEffect(() => () => presence.reset(), []);
+  const alertText = active && overall !== "normal" ? assessment?.summary : null;
+  const alertKey = `${guardian?.driver.alertSince ?? guardian?.action ?? ""}:${overall}`;
+  useEffect(() => {
+    if (alertText) presence.say({id: `driver:${alertKey}`, text: alertText, severity: overall});
+    // One message per alert step; rewording of the same step does not re-open the bubble.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertKey, !!alertText]);
+
   const errorText: Record<string, string> = {
     insecure: t("Trình duyệt chỉ cho dùng camera trên HTTPS hoặc localhost. Hãy mở trang qua localhost hoặc đường dẫn HTTPS.", "Browsers only allow the camera on HTTPS or localhost. Open the page through localhost or an HTTPS link."),
     unsupported: t("Trình duyệt này không hỗ trợ camera.", "This browser does not support the camera."),
@@ -276,6 +300,8 @@ export default function DriverPage() {
       {assessment && overall !== "normal" && <aside className={styles.mobileAlert} data-severity={overall} data-testid="driver-mobile-alert" aria-label={t("Cảnh báo tài xế", "Driver alert")}>
         <a href="#driver-agent"><div><b>{pick(SEVERITY_LABEL[overall], lang)}</b><span>{assessment.recommendations[0] ?? assessment.summary}</span></div><span className={styles.mobileAlertLink}>{t("Hướng dẫn", "Advice")} <ArrowUpRight size={16}/></span></a>
       </aside>}
+
+      <AgentDock session={DEMO_VEHICLE} anchor="driver-agent" />
 
       <footer className={styles.footer}>
         {t("Prototype. Không điều khiển xe, không gọi cứu hộ và chưa được chứng nhận an toàn ô tô.", "Prototype. It does not control the vehicle, call emergency services, or claim automotive safety certification.")}

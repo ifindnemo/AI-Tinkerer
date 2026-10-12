@@ -9,6 +9,7 @@ import llm_provider
 
 from agent.prompt import build_agent_instructions
 from agent.safety import evaluate_hard_safety
+from driver.registry import STOP_FOR_DRIVER, attach_driver, suggests_garage_trip, vehicle_moving
 from agent.tools.garage_search import search_nearby_garages
 from agent.tools import (
     VEHICLE_READ_TOOLS,
@@ -123,6 +124,7 @@ class VehicleAgent:
         )
         if policy:
             assessment = self._apply_detector_policy(assessment, telemetry_context, safety, policy)
+        assessment = self._apply_driver_policy(assessment, telemetry_context)
         self._ensure_nearby_garages(assessment, telemetry_context, trace)
         return assessment, safety.model_dump(mode="json")
 
@@ -135,6 +137,47 @@ class VehicleAgent:
         raw, trace = self.model_assessment(telemetry_context, short_term_memory)
         assessment, safety = self.finalize(raw, telemetry_context, trace, policy)
         return assessment, trace, safety
+
+    @staticmethod
+    def _apply_driver_policy(assessment: VehicleAssessment, telemetry_context: dict[str, Any]) -> VehicleAssessment:
+        """Camera + blackbox: a driver with low attention in a moving car must stop at the nearest
+        safe place, so the severity is at least the driver's and a distant garage is never advised.
+        Only a live camera summary counts; an unknown driver never lowers or raises anything."""
+        driver = telemetry_context.get("driver_attention") or {}
+        if driver.get("status") != "live":
+            return assessment
+        evidence = list(assessment.evidence)
+        closed = (driver.get("closed_ms_max_60s") or 0) / 1000
+        if driver.get("attention") == "unknown":
+            line = "Camera tài xế: chưa xác định được trạng thái người lái; đánh giá xe dựa trên dữ liệu ECU."
+            return assessment.model_copy(update={"evidence": list(dict.fromkeys([*evidence, line]))[:8]})
+        if driver.get("attention") != "low_attention" or driver.get("severity") == "normal" or not vehicle_moving(telemetry_context):
+            return assessment
+        state = "buồn ngủ" if driver.get("state") == "drowsy" else "mất tập trung"
+        line = f"Camera tài xế: dấu hiệu {state}" + (f", nhắm mắt lâu nhất {closed:.1f}".replace(".", ",") + " giây trong 60 giây gần nhất" if closed else "")
+        line += "; đã xác nhận cảnh báo." if driver.get("responded") else "."
+        floor = Severity.CRITICAL if driver.get("severity") == "critical" else Severity.WARNING
+        severity = assessment.severity if SEVERITY_RANK[assessment.severity] >= SEVERITY_RANK[floor] else floor
+        # Raised only because of the driver: the camera alert already speaks, so the car agent stays quiet.
+        telemetry_context["driver_policy_raised"] = severity != assessment.severity
+        steps = [step for step in assessment.recommendations if not suggests_garage_trip(step)]
+        if driver.get("state") == "drowsy":
+            first = [s for s in steps if s.startswith("Dừng xe ở vị trí an toàn")]  # an engine-critical stop stays first
+            steps = [*first, STOP_FOR_DRIVER, *[s for s in steps if s not in first and s != STOP_FOR_DRIVER]]
+        else:
+            steps = ["Đưa mắt nhìn lại phía trước ngay; nếu cần thao tác thiết bị, dừng xe an toàn trước.", *steps]
+        diagnosis = assessment.diagnosis
+        if not any(word in diagnosis.lower() for word in ("người lái", "tài xế")):
+            # The reason for the alert must be in the headline text, not only in the evidence.
+            lead = (f"Camera cho thấy người lái có dấu hiệu {state} khi xe đang chạy"
+                    + ("; cần dừng nghỉ ở vị trí an toàn gần nhất." if driver.get("state") == "drowsy" else "; cần nhìn lại đường ngay."))
+            diagnosis = f"{lead} {diagnosis}"[:1500]
+        return assessment.model_copy(update={
+            "severity": severity,
+            "diagnosis": diagnosis,
+            "evidence": list(dict.fromkeys([line, *evidence]))[:8],
+            "recommendations": list(dict.fromkeys(steps))[:5],
+        })
 
     @classmethod
     def _apply_detector_policy(
@@ -293,6 +336,7 @@ class VehicleAgent:
         telemetry_context: dict[str, Any],
     ) -> dict[str, Any]:
         vehicle_id = str(telemetry_context["vehicle_id"])
+        attach_driver(telemetry_context)  # the camera's latest summary for this car, if any
         previous_memory = store.get_active_incident_memory(vehicle_id)
         assessment, trace, safety = self._run_analysis(
             telemetry_context,

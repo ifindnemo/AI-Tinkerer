@@ -9,6 +9,7 @@ backend forgets them. The browser keeps its own history in local storage.
 """
 
 import os
+import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
@@ -18,7 +19,8 @@ from threading import Lock
 from typing import Any
 
 from driver.agent import submit
-from driver.guardian import RESPONSE_TIMEOUT, GuardianResult, acknowledgement_valid, combine, maintenance_context
+from driver.guardian import RESPONSE_TIMEOUT, GuardianResult, acknowledgement_valid, attention_of, combine, maintenance_context
+from driver.registry import DriverRegistry, driver_registry, summary_from
 from driver.rules import RuleResult, assess
 from driver.schemas import DriverBatch, DriverNarrative
 from store import utc_now
@@ -42,7 +44,8 @@ class _Session:
 
 
 class DriverService:
-    def __init__(self, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, clock: Callable[[], float] = time.monotonic, registry: DriverRegistry | None = None):
+        self._registry = registry or driver_registry
         self._sessions: "OrderedDict[str, _Session]" = OrderedDict()
         self._lock = Lock()
         self._clock = clock
@@ -101,17 +104,64 @@ class DriverService:
         }
         if guardian:
             reply["guardian"] = guardian.block
+        if batch.context.vehicle_id:
+            self._registry.update(batch.context.vehicle_id, self._summary(batch, rule, guardian, list(events)))
         if severity in ("warning", "critical"):
-            from voice import announce_alert
-
-            announce_alert(
-                reply["assessment"]["summary"],
-                severity=severity,
-                recommendations=reply["assessment"]["recommendations"],
-                dedupe_key=f"driver:{batch.session_id}:{episode}:{severity}",
-                session_id=batch.session_id,
-            )
+            # The garage page plays clips by vehicle id; the camera page by its own session.
+            voice_session = batch.context.vehicle_id or batch.session_id
+            self._speak(reply["assessment"], session.future, severity, f"driver:{voice_session}:{episode}:{severity}", voice_session, timeout)
         return reply
+
+    @staticmethod
+    def _speak(assessment: dict[str, Any], future: Future | None, severity: str, key: str, voice_session: str, timeout: float) -> None:
+        """Speak the alert once per episode, in the agent's words when they arrive in time.
+
+        With wording already there (or no LLM) it is spoken now. Otherwise the reply of the pending
+        LLM call is spoken, and the rule text after `timeout` if the LLM is slower; the shared
+        dedupe key lets only the first of the two through."""
+        from voice import announce_alert
+
+        text, steps = assessment["summary"], assessment["recommendations"]
+
+        def say(words: str, worded_by_agent: bool = False) -> None:
+            # The agent's sentence already ends with the step; the rule text gets the first step appended.
+            announce_alert(words, severity=severity, recommendations=None if worded_by_agent else steps,
+                           dedupe_key=key, session_id=voice_session)
+
+        if assessment["engine"] == "agent" or future is None:
+            say(text, assessment["engine"] == "agent")
+            return
+
+        def done(finished: Future) -> None:
+            try:
+                narrative, _ = finished.result()
+            except BaseException:
+                narrative = None
+            say(narrative.summary if narrative else text, narrative is not None)
+
+        future.add_done_callback(done)
+        fallback = threading.Timer(timeout, say, (text,))
+        fallback.daemon = True
+        fallback.start()
+
+    @staticmethod
+    def _summary(batch: DriverBatch, rule: RuleResult, guardian: GuardianResult | None, events: list) -> dict[str, Any]:
+        """What the vehicle agent may know about the driver: a few structured values."""
+        latest = events[-1]
+        if guardian:
+            driver = guardian.block["driver"]
+            return summary_from(
+                source=batch.source, attention=driver["attention"], state=driver["state"], severity=driver["severity"],
+                closed_ms=driver["closedMs"], confidence=rule.confidence, responded=driver["responded"],
+                unanswered=driver["unanswered"], action=guardian.decision.action, must_stop=guardian.decision.must_stop,
+                observed_at=latest.captured_at,
+            )
+        reliable = [e for e in events if e.face_present and e.confidence >= 0.5 and (latest.captured_at - e.captured_at).total_seconds() <= 60]
+        return summary_from(
+            source=batch.source, attention=attention_of(rule.state), state=rule.state, severity=rule.severity,
+            closed_ms=max((e.eyes.closed_ms for e in reliable), default=0), confidence=rule.confidence,
+            responded=False, unanswered=False, action=None, must_stop=False, observed_at=latest.captured_at,
+        )
 
     @staticmethod
     def _guardian(session: _Session, batch: DriverBatch, rule: RuleResult) -> GuardianResult:

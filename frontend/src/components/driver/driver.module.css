@@ -2,7 +2,8 @@
    (eyelid, head angle, closure timer) or marks a moment (state change, calibration lock,
    alert onset); nothing moves for decoration. Reduced motion is handled in globals.css. */
 
-.page {
+.page,
+.scope {
   --lens: #101713;
   --lens-line: rgb(255 255 255 / 9%);
   --on-lens: #e9eee9;
@@ -28,12 +29,12 @@
   font-family: var(--font);
   font-variant-numeric: tabular-nums;
 }
-.page[data-state="attentive"] { --state: var(--s-attentive); --state-ink: var(--ink-attentive); }
-.page[data-state="distracted"] { --state: var(--s-distracted); --state-ink: var(--ink-distracted); }
-.page[data-state="drowsy"] { --state: var(--s-drowsy); --state-ink: var(--ink-drowsy); }
-.page[data-state="no_face"],
-.page[data-state="uncertain"],
-.page[data-state="idle"] { --state: var(--s-neutral); --state-ink: var(--ink-neutral); }
+.page[data-state="attentive"], .scope[data-state="attentive"] { --state: var(--s-attentive); --state-ink: var(--ink-attentive); }
+.page[data-state="distracted"], .scope[data-state="distracted"] { --state: var(--s-distracted); --state-ink: var(--ink-distracted); }
+.page[data-state="drowsy"], .scope[data-state="drowsy"] { --state: var(--s-drowsy); --state-ink: var(--ink-drowsy); }
+.page[data-state="no_face"], .scope[data-state="no_face"],
+.page[data-state="uncertain"], .scope[data-state="uncertain"],
+.page[data-state="idle"], .scope[data-state="idle"] { --state: var(--s-neutral); --state-ink: var(--ink-neutral); }
 
 /* ---------- Session status ---------- */
 .sessionBar { max-width: 1320px; margin: 0 auto; padding: 28px 32px 16px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--border); animation: rise 500ms var(--ease) both; }
@@ -747,6 +748,87 @@
   white-space: nowrap;
 }
 .mobileAlert { display: none; }
+
+/* ---------- Driver camera inside the garage (blackbox) dashboard ---------- */
+.scope.garageCam {
+  min-height: 0;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  transition: border-color 320ms var(--ease);
+}
+.garageCam[data-severity="warning"] { border-color: var(--warn-line); }
+.garageCam[data-severity="critical"] { border-color: var(--danger-line); }
+.garageCam .lens { border-radius: 18px; box-shadow: none; }
+.garageCamHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.garageCamHead .kicker span { display: inline-flex; align-items: center; gap: 6px; }
+.garageCamIdle { display: grid; gap: 12px; }
+.garageCamIdle p, .garageCamNote { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.garageCamError { color: var(--danger) !important; }
+/* Compact lens: icon-only controls and smaller chips so nothing covers the face in a narrow column. */
+.garageCam .chips { top: 10px; left: 10px; right: 10px; gap: 6px; }
+.garageCam .chip { padding: 4px 8px; gap: 5px; font-size: 11px; }
+.garageCam .chip svg { width: 10px; height: 10px; }
+.garageCam .simTag { font-size: 11px; letter-spacing: 0.06em; }
+.garageCam .controls { bottom: 10px; gap: 2px; padding: 3px; }
+.garageCam .controlButton { min-width: 32px; height: 32px; padding: 0 8px; }
+.garageCam .controlButton span { display: none; }
+.garageCam .controlButton svg { width: 15px; height: 15px; }
+.garageCam .lensCaption { inset: auto 12px 12px; font-size: 11px; }
+.garageCam .reticleTag { font-size: 11px; padding: 3px 7px; }
+/* Idle, the lens is a quiet strip: the agent panel below stays above the fold. It grows when watching. */
+.garageCam .lens { transition: aspect-ratio 420ms var(--ease); }
+.garageCam[data-phase="idle"] .lens, .garageCam[data-phase="error"] .lens { aspect-ratio: 16 / 7; }
+/* The face drawing is placed for the full-size lens; in the idle strip the caption stands alone, centred. */
+.garageCam[data-phase="idle"] .avatar, .garageCam[data-phase="error"] .avatar { display: none; }
+.garageCam[data-phase="idle"] .lensCaption, .garageCam[data-phase="error"] .lensCaption { inset: 0; display: grid; place-items: center; padding: 28px 20px 0; }
+@media (prefers-reduced-motion: reduce) { .garageCam .lens { transition: none; } }
+.garageCam .calibration { padding: 12px; }
+.garageCam .calibrationCopy strong { font-size: 12px; }
+.garageCam .scenario { min-height: 32px; padding: 0 10px; font-size: 12px; }
+.garageCam .confirm { min-height: 32px; padding: 0 12px; font-size: 12px; }
+/* Idle: one primary action across the card, the two simulations side by side below it. */
+.garageCamActions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.garageCamActions .confirm { grid-column: 1 / -1; }
+.garageCamActions .scenario { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.garageCam .confirm svg { width: 14px; height: 14px; }
+.garageCam .respond { padding: 10px 10px 10px 12px; gap: 10px; }
+.garageCamVoice { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.garageCamVoice svg { flex-shrink: 0; margin-top: 3px; }
+.garageCamVoice[data-speaking="true"] { color: var(--text); }
+.garageCamVoice[data-speaking="true"] svg { color: var(--danger); animation: tick 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .garageCamVoice[data-speaking="true"] svg { animation: none; } }
+.garageCamPicker { display: grid; grid-template-columns: auto minmax(0, 1fr) 32px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.garageCamPicker select {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.garageCamPicker button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.garageCamPicker button:hover { color: var(--text); }
+.garageCamPicker select:focus-visible, .garageCamPicker button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.garageCamLink { justify-self: start; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.garageCamLink:hover { color: var(--text); }
+.garageCamLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 
 /* ---------- Vehicle Guardian board ---------- */
 .board {

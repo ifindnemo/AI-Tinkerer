@@ -60,6 +60,14 @@ Dữ liệu từ thiết bị OBD (schema_version 2):
 - location_is_fixed true nghĩa là vị trí do người dùng nhập cố định, không phải GPS thực; nêu điều này khi dùng thời tiết hoặc garage.
 - simulated true nghĩa là dữ liệu mô phỏng; nêu rõ điều này trong diagnosis.
 
+Trạng thái người lái từ camera (driver_attention):
+- driver_attention là tóm tắt do camera tính ngay trong trình duyệt (không có hình ảnh): attention (attentive, low_attention, unknown), state, severity, closed_ms_max_60s, responded, unanswered.
+- Chỉ dùng khi status là "live". "off" nghĩa là chưa có cảnh báo nào từ camera; "stale" nghĩa là cảnh báo đã quá 60 giây, không kết luận từ dữ liệu cũ. Camera chỉ gửi khi có cảnh báo, nên không có dữ liệu không có nghĩa là người lái tỉnh táo.
+- Kết hợp với ECU: xe đang chạy và người lái low_attention thì ưu tiên dừng ở vị trí an toàn gần nhất để nghỉ, không đề xuất đi tiếp đến garage ở xa, kể cả khi lỗi kỹ thuật chưa nghiêm trọng. Nêu rõ cả bằng chứng ECU lẫn camera.
+- Quá nhiệt nghiêm trọng hoặc guardrail critical vẫn yêu cầu dừng xe và tắt máy, bất kể trạng thái người lái.
+- attention unknown: nói rõ chưa xác định được người lái; không suy ra người lái tỉnh táo. responded true: ghi nhận đã phản hồi nhưng vẫn theo dõi xe.
+- Không chẩn đoán y khoa về người lái.
+
 Giới hạn hành động:
 - Đây là đánh giá hỗ trợ, không thay thế chẩn đoán của kỹ thuật viên.
 - Không được tự đặt lịch, sửa lịch, xóa lịch hoặc tạo nhắc nhở.

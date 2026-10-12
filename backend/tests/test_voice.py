@@ -141,3 +141,24 @@ def test_speak_writes_the_audio_file(monkeypatch, tmp_path) -> None:
     assert written[0].name.endswith("-job1.mp3")
     assert written[0].read_bytes() == b"ID3file"
     assert voice._spoken["vehicle:warning"] == 10**12
+
+
+def test_download_answering_425_while_processing_is_polled_until_ready() -> None:
+    """Blaze's real behaviour: no status route (404), /download says 425 until the audio exists."""
+    import httpx
+
+    calls = {"download": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(202, json={"id": "job-425", "message": "Request accepted for processing"})
+        if request.url.path.endswith("/download"):
+            calls["download"] += 1
+            if calls["download"] < 3:
+                return httpx.Response(425, json={"error": "Audio is still processing, please try a few seconds later"})
+            return httpx.Response(200, content=b"ID3audio", headers={"Content-Type": "audio/mpeg"})
+        return httpx.Response(404, json={"detail": "Not Found"})
+
+    client = voice.BlazeTTS(token="t", speaker_id="s", client=httpx.Client(transport=httpx.MockTransport(handler)), poll_interval=0)
+    speech = client.synthesize("Xin chào.")
+    assert speech.audio == b"ID3audio" and calls["download"] == 3

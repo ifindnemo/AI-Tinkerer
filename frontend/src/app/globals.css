@@ -118,6 +118,14 @@
 }
 html {
   scroll-behavior: smooth;
+  /* Browser-drawn surfaces follow the palette in every theme. */
+  accent-color: var(--accent);
+  caret-color: var(--accent);
+  scrollbar-color: var(--border-strong) transparent;
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 body {
   margin: 0;
@@ -294,6 +302,7 @@ dd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 24px;
   font-size: 13px;
   font-weight: 500;
   color: var(--accent);
@@ -916,8 +925,8 @@ dd {
 .paint {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--paint);
   border: 1px solid rgb(0 0 0 / 12%);
@@ -1759,7 +1768,7 @@ td:last-child {
 }
 .periodic-agent-heading .section-kicker,
 .agent-heading .section-kicker {
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .periodic-agent-avatar,
 .agent-avatar {
@@ -2775,7 +2784,7 @@ td:last-child {
   font-variant-numeric: tabular-nums;
 }
 .health-score span {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--faint);
   max-width: 60px;
   line-height: 1.2;

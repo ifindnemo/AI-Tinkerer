@@ -302,6 +302,7 @@
 }
 .section h2,
 .cta h2 {
+  text-wrap: balance;
   font-size: clamp(28px, 3.3vw, 42px);
   font-weight: 700;
   line-height: 1.12;

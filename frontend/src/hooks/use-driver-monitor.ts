@@ -41,12 +41,25 @@ const UI_INTERVAL_MS = 200; // text and numbers: 5 updates per second
 const SEND_INTERVAL_MS = 3000;
 const MAX_QUEUE = 60;
 const CRITICAL_REPEAT_MS = 8000;
+const rank: Record<DriverSeverity, number> = {normal: 0, warning: 1, critical: 2};
 // Crossing these sends at once instead of waiting for the next 3-second batch.
 const ESCALATE_CLOSED_MS = 2500;
 const ESCALATE_AWAY_MS = 4000;
 
-export function useDriverMonitor() {
+export type DriverMonitorOptions = {
+  /** Share the driver's state with this car's blackbox agent. */
+  vehicleId?: string;
+  /** Real vehicle data (garage page) instead of the simulated ECU; null while there is none. */
+  readVehicle?: () => VehicleSnapshot | null;
+  /** Post only when the driver's alert rises (and on a confirmation), not every few seconds.
+   * Each post still carries the last minute of events, so the backend rules see the whole closure. */
+  alertsOnly?: boolean;
+};
+
+export function useDriverMonitor(options: DriverMonitorOptions = {}) {
   const live = useMemo(() => new LiveChannel(), []);
+  const optionsRef = useRef(options);
+  useEffect(() => {optionsRef.current = options;});
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamera, setSelectedCamera] = useState("");
@@ -107,6 +120,7 @@ export function useDriverMonitor() {
     sending: false,
     abort: null as AbortController | null,
     severity: "normal" as DriverSeverity,
+    driverSeverity: "normal" as DriverSeverity,
     lastTone: 0,
     history: [] as [number, AttentionState][],
     store: null as DriverStore | null,
@@ -165,7 +179,12 @@ export function useDriverMonitor() {
         schemaVersion: 1,
         sessionId: state.sessionId,
         source: state.source,
-        context: {vehicleMoving: moving, ...(vehicle ? {vehicle} : {}), ...(ackAt ? {acknowledgedAt: ackAt} : {})},
+        context: {
+          vehicleMoving: moving,
+          ...(optionsRef.current.vehicleId ? {vehicleId: optionsRef.current.vehicleId} : {}),
+          ...(vehicle ? {vehicle} : {}),
+          ...(ackAt ? {acknowledgedAt: ackAt} : {}),
+        },
         events,
       }, controller.signal);
       if (generation !== state.generation) return;
@@ -206,16 +225,22 @@ export function useDriverMonitor() {
     if (state.phase !== "running") return;
 
     const event = state.tracker.update(sample.frame);
-    const vehicle = ecuReading(state.store?.settings.ecu ?? DEFAULT_ECU, now - state.ecuStart, now);
+    const read = optionsRef.current.readVehicle;
+    const vehicle = read ? read() : ecuReading(state.store?.settings.ecu ?? DEFAULT_ECU, now - state.ecuStart, now);
     state.vehicle = vehicle;
-    const driver = state.safety.update(event, vehicle.speedKmh >= MOVING_KMH);
-    const local = state.guardian.update(event, driver, vehicle, state.ackAt, state.warnC);
+    // Without vehicle data the car is assumed to be moving: an alert must never depend on missing data.
+    const driver = state.safety.update(event, vehicle ? vehicle.speedKmh >= MOVING_KMH : true);
+    const local = vehicle
+      ? state.guardian.update(event, driver, vehicle, state.ackAt, state.warnC)
+      : {decision: null, block: null, assessment: driver};
     // A confirmation ends with its episode, and a new closure or glance away voids it.
-    if (state.ackAt && !local.block.driver.responded) state.ackAt = null;
+    if (state.ackAt && !local.block?.driver.responded) state.ackAt = null;
     state.lastGuardian = local.block;
     const localAssessment = local.assessment;
     // A warm engine alone stays visual; the driver's alertness and a mandatory stop sound.
-    if (shouldSound(state.lastDecision, local.decision)) playTone(localAssessment.severity === "critical" ? "critical" : "warning");
+    if (local.decision ? shouldSound(state.lastDecision, local.decision) : rank[localAssessment.severity] > rank[state.severity]) {
+      playTone(localAssessment.severity === "critical" ? "critical" : "warning");
+    }
     state.lastDecision = local.decision;
     const severityChanged = state.severity !== localAssessment.severity;
     state.severity = localAssessment.severity;
@@ -238,7 +263,10 @@ export function useDriverMonitor() {
       state.queue.push(event);
     }
 
-    if (escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
+    const driverSeverity = local.decision?.driverSeverity ?? localAssessment.severity;
+    const driverRose = rank[driverSeverity] > rank[state.driverSeverity];
+    state.driverSeverity = driverSeverity;
+    if (optionsRef.current.alertsOnly ? driverRose : escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
     if (state.severity === "critical" && now - state.lastTone >= CRITICAL_REPEAT_MS) playTone("critical");
 
     if (changed || severityChanged || now - state.lastUi >= UI_INTERVAL_MS) {
@@ -272,6 +300,7 @@ export function useDriverMonitor() {
     state.lastEvent = null;
     state.lastSentState = null;
     state.severity = "normal";
+    state.driverSeverity = "normal";
     state.scenario = null;
     state.source = null;
     state.phase = "idle";
@@ -358,6 +387,7 @@ export function useDriverMonitor() {
       state.lastEvent = null;
       state.lastSentState = null;
       state.severity = "normal";
+      state.driverSeverity = "normal";
     }
     state.scenario = scenario;
     state.simStart = Date.now();

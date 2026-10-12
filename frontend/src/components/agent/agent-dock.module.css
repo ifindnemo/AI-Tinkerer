@@ -1,0 +1,207 @@
+/* The agent's corner: a round robot and, when it has something to say, a speech bubble above it.
+   It floats over the page, so it stays small, quiet in colour and out of the way of the content. */
+.dock {
+  position: fixed;
+  z-index: 30;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  pointer-events: none;
+}
+.dock > * { pointer-events: auto; }
+
+.robotWrap { position: relative; }
+.robot {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 2px 4px rgb(16 23 19 / 6%), 0 18px 36px -18px rgb(16 23 19 / 35%);
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .robot:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgb(16 23 19 / 8%), 0 22px 40px -18px rgb(16 23 19 / 40%); }
+}
+.robot:active { transform: scale(0.97); }
+.robot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dock[data-state="error"] .robot { border-color: var(--danger-line); }
+.robot[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent), 0 18px 36px -18px rgb(16 23 19 / 35%); }
+
+/* Unseen alert: a small dot on the shell, coloured by severity, with one soft pulse on arrival. */
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--warn);
+  animation: badge-in 420ms var(--ease) both;
+  pointer-events: none;
+}
+.badge[data-severity="critical"] { background: var(--danger); }
+@keyframes badge-in { 0% { transform: scale(0); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+/* The current state in words, beside the robot on wide screens (screen readers get it from the button). */
+.status {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  translate: 6px 0;
+  transition: opacity 180ms var(--ease), translate 180ms var(--ease);
+  pointer-events: none;
+}
+.dock:has(.robot:hover) .status,
+.dock:has(.robot:focus-visible) .status { opacity: 1; translate: 0 0; }
+
+.bubble {
+  position: relative;
+  width: min(320px, calc(100vw - 40px));
+  padding: 12px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 6px 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 4px rgb(16 23 19 / 6%), 0 24px 48px -24px rgb(16 23 19 / 40%);
+  transform-origin: 100% 100%;
+  animation: bubble-in 260ms var(--ease) both;
+}
+.bubble[data-severity="warning"] { border-color: var(--warn-line); background: var(--warn-soft); }
+.bubble[data-severity="critical"] { border-color: var(--danger-line); background: var(--danger-soft); }
+.bubbleHead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.bubbleTag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-strong); }
+.bubble[data-severity="warning"] .bubbleTag { color: var(--warn); }
+.bubble[data-severity="critical"] .bubbleTag { color: var(--danger); }
+.bubbleLive { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.bubbleLive::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: live 1s steps(1) infinite; }
+.bubbleClose {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px -6px -6px auto;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.bubbleClose:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.bubble p { margin: 0; font-size: 13.5px; line-height: 1.5; text-wrap: pretty; animation: text-in 320ms var(--ease) both; }
+.bubbleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bubble[data-severity="critical"] .bubbleLink { color: var(--danger); }
+.bubbleClose:focus-visible, .bubbleLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Quick panel: the last alert, replay, mute and the way to the full agent panel. */
+.panel {
+  width: min(340px, calc(100vw - 40px));
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 4px rgb(16 23 19 / 6%), 0 28px 56px -24px rgb(16 23 19 / 42%);
+  transform-origin: 100% 100%;
+  animation: bubble-in 220ms var(--ease) both;
+}
+.panelHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.panelHead b { display: block; font-size: 14px; }
+.panelStatus { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.panelStatus::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.panelStatus[data-state="error"]::before { background: var(--danger); }
+.panelStatus[data-state="sleeping"]::before { background: var(--faint); }
+.panelStatus[data-state="thinking"]::before, .panelStatus[data-state="speaking"]::before { animation: live 1s steps(1) infinite; }
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.iconButton:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.panelMessage { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); }
+.panelMessage[data-severity="warning"] { border-color: var(--warn-line); background: var(--warn-soft); }
+.panelMessage[data-severity="critical"] { border-color: var(--danger-line); background: var(--danger-soft); }
+.panelMessage p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+.panelMessage[data-severity="warning"] .bubbleTag { color: var(--warn); }
+.panelMessage[data-severity="critical"] .bubbleTag { color: var(--danger); }
+.panelActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+}
+.action:hover:not(:disabled) { border-color: var(--border-strong); }
+.action:active:not(:disabled) { transform: scale(0.97); }
+.action:disabled { opacity: 0.45; cursor: not-allowed; }
+.action[aria-pressed="true"] { background: var(--surface-2); }
+.primaryAction { margin-left: auto; border-color: var(--text); background: var(--text); color: var(--surface); }
+.primaryAction:hover:not(:disabled) { border-color: var(--text); }
+.panelFoot { margin: 10px 0 0; color: var(--faint); font-size: 11.5px; }
+.iconButton:focus-visible, .action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@keyframes bubble-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes text-in { from { opacity: 0; } }
+@keyframes live { 50% { opacity: 0.3; } }
+
+/* Phones: smaller, and above the fixed alert bar of the driver page when it is showing. */
+@media (max-width: 640px) {
+  .dock { right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); }
+  .robot { padding: 6px; }
+  .badge { top: 5px; right: 5px; width: 12px; height: 12px; }
+  .status { display: none; }
+}
+@media (max-width: 980px) {
+  :global(body:has([data-testid="driver-mobile-alert"])) .dock { bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble, .bubble p, .panel, .badge { animation: none; }
+  .panelStatus::before { animation: none !important; }
+  .bubbleLive::before { animation: none; }
+  .robot, .status { transition: none; }
+}
+@media print { .dock { display: none; } }

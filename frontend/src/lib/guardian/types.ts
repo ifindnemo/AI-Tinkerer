@@ -3,7 +3,7 @@
 import type {AttentionState, DriverSeverity} from "../driver/types";
 
 export type VehicleSnapshot = {
-  source: "simulated";
+  source: "simulated" | "obd"; // "obd": the garage's live device stream
   capturedAt: string;
   speedKmh: number;
   coolantC: number;

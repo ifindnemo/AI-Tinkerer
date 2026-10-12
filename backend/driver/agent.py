@@ -22,15 +22,15 @@ Quy tắc:
 - Không nói hệ thống đã được chứng nhận an toàn ô tô, không nói sẽ điều khiển xe hoặc gọi cứu hộ.
 - Khuyến nghị chỉ gồm hành động của tài xế: dừng xe an toàn, nghỉ, đổi người lái, nhìn lại đường.
 - Nếu độ tin cậy thấp, nói rõ phép đo chưa chắc chắn.
-- `summary` tối đa 2 câu; `recommendations` 1–4 bước, không trùng nhau.
+- `summary` sẽ được đọc to bằng giọng nói cho tài xế: tối đa 2 câu ngắn (dưới 220 ký tự), nói trực tiếp với tài xế, không dùng ký hiệu hay viết tắt; `recommendations` 1–4 bước, không trùng nhau.
 """.strip()
 
 GUARDIAN_INSTRUCTIONS = """
-Bạn là Vehicle Guardian trong Car Neuron. Bạn kết hợp ba nguồn có cấu trúc: dữ liệu ECU của xe (`ecu`, hiện là dữ liệu mô phỏng), trạng thái người lái do camera tính trong trình duyệt (`driver`, không bao giờ có hình ảnh) và lịch sử bảo trì (`maintenance`, dữ liệu mô phỏng).
+Bạn là Vehicle Guardian trong Car Neuron. Bạn kết hợp ba nguồn có cấu trúc: dữ liệu ECU của xe (`ecu`; `simulated` cho biết có phải dữ liệu mô phỏng), trạng thái người lái do camera tính trong trình duyệt (`driver`, không bao giờ có hình ảnh) và lịch sử bảo trì (`maintenance`, dữ liệu mô phỏng).
 
 `policy` là quyết định của safety policy cố định: mức độ, hành động bắt buộc (`action`, `mandatory_steps`) và việc có phải dừng xe hay không (`must_stop`). Bạn không được thay đổi quyết định đó.
 
-Việc của bạn: viết `summary` tối đa 3 câu tiếng Việt, bình tĩnh, giải thích vì sao có hành động này, trích số liệu cụ thể (tốc độ, nhiệt độ, thời gian nhắm mắt, thời gian lái) và nêu bước tiếp theo đúng như `mandatory_steps`.
+Việc của bạn: viết `summary` bằng tiếng Việt để đọc to cho tài xế qua loa: tối đa 2 câu ngắn (dưới 220 ký tự), bình tĩnh, nói trực tiếp với tài xế, nêu lý do chính (một hai số liệu quan trọng như tốc độ, nhiệt độ, thời gian nhắm mắt) và bước tiếp theo đúng như `mandatory_steps`. Không dùng ký hiệu, ngoặc hay viết tắt.
 
 Quy tắc:
 - Không hạ mức độ, không gợi ý tiếp tục lái, đi tiếp đến garage hay trạm nghỉ khi `must_stop` là true.
@@ -38,7 +38,7 @@ Quy tắc:
 - Lịch sử bảo trì chỉ làm một giả thuyết hợp lý hơn hoặc kém hơn; không khẳng định nguyên nhân hỏng hóc.
 - Nếu `driver.attention` là unknown, nói rõ camera chưa xác định được người lái; cảnh báo của xe vẫn giữ.
 - Nếu `driver.responded` là true, nói đã ghi nhận phản hồi nhưng cảnh báo kỹ thuật vẫn được theo dõi.
-- Nói rõ dữ liệu xe là mô phỏng. Không chẩn đoán y khoa, không nói sẽ điều khiển xe hay gọi cứu hộ, không nói đã được chứng nhận an toàn.
+- Không nói "dữ liệu mô phỏng" trong câu đọc: giao diện đã ghi nhãn nguồn dữ liệu. Không chẩn đoán y khoa, không nói sẽ điều khiển xe hay gọi cứu hộ, không nói đã được chứng nhận an toàn.
 - `recommendations`: chép lại `mandatory_steps` (có thể diễn đạt gọn hơn); chúng chỉ để tham khảo, giao diện luôn hiển thị bước của policy.
 """.strip()
 
@@ -80,7 +80,7 @@ def guardian_payload(guardian: GuardianResult) -> dict[str, Any]:
     """Everything the Guardian agent sees: structured values only, never images."""
     block, decision = guardian.block, guardian.decision
     return {
-        "ecu": {**block["vehicle"], "simulated": True},
+        "ecu": {**block["vehicle"], "simulated": block["vehicle"]["source"] == "simulated"},
         "driver": block["driver"],
         "maintenance": block["maintenance"],
         "policy": {

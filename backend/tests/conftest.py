@@ -9,3 +9,7 @@ import tempfile
 
 os.environ["DATABASE_PATH"] = os.path.join(tempfile.mkdtemp(prefix="car-neuron-tests-"), "test.db")
 os.environ["EXTERNAL_TOOLS"] = "off"
+# Never speak through the real Blaze account from tests. load_dotenv() does not override variables
+# that are already set, so these empty values win over backend/.env; tests that need voice set fakes.
+os.environ["BLAZE_API_TOKEN"] = ""
+os.environ["BLAZE_SPEAKER_ID"] = ""

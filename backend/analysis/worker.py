@@ -19,6 +19,7 @@ from uuid import uuid4
 from analysis.context import build_context
 from analysis.detector import LOOKBACK, evaluate, policy_for
 from analysis.rules import rules_assessment
+from driver.registry import attach_driver
 from store import store, utc_now
 from telemetry.db import TelemetryStore, iso_utc
 from telemetry.ingest import add_trip_event
@@ -136,7 +137,7 @@ class AnalysisWorker:
         dtc = dtc_status(self.telemetry, job.vehicle_id, job.trip_id)
         profile = vehicle_profile(self.telemetry, job.vehicle_id)
         findings = evaluate(history, dtc)
-        context = build_context(job.vehicle_id, trip, history, dtc, profile, findings)
+        context = attach_driver(build_context(job.vehicle_id, trip, history, dtc, profile, findings))
         memory = store.get_active_incident_memory(job.vehicle_id)
 
         raw, trace, engine, fallback = self._model(context, memory)
@@ -190,7 +191,7 @@ class AnalysisWorker:
                  previous and previous["at"])
         self.broker.publish(job.vehicle_id, "analysis", payload)
         self.broker.publish(job.vehicle_id, "trip", get_trip(self.telemetry, job.trip_id))
-        if severity in ("warning", "critical"):
+        if severity in ("warning", "critical") and not context.get("driver_policy_raised"):
             from voice import announce_alert
 
             announce_alert(

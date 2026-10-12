@@ -178,7 +178,7 @@ def combine(
     window = [e for e in events if e.face_present and e.confidence >= 0.5 and latest.captured_at - e.captured_at <= timedelta(seconds=60)]
     closed_ms = max((e.eyes.closed_ms for e in window), default=0)
 
-    ecu = f"ECU (mô phỏng): {speed} km/h, nước làm mát {coolant}°C"
+    ecu = f"ECU ({'mô phỏng' if vehicle.source == 'simulated' else 'OBD'}): {speed} km/h, nước làm mát {coolant}°C"
     if vehicle.engine_load_pct is not None:
         ecu += f", tải máy {_num(vehicle.engine_load_pct)}%"
     if vehicle.driving_minutes is not None:

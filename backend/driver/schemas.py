@@ -58,7 +58,7 @@ class VehicleSnapshot(BaseModel):
 
     model_config = _STRICT
 
-    source: Literal["simulated"]
+    source: Literal["simulated", "obd"]  # "obd": the garage page's live device stream
     captured_at: datetime = Field(alias="capturedAt")
     speed_kmh: float = Field(alias="speedKmh", ge=0, le=300)
     coolant_c: float = Field(alias="coolantC", ge=-40, le=160)
@@ -77,6 +77,8 @@ class Context(BaseModel):
     model_config = _STRICT
 
     vehicle_moving: bool = Field(alias="vehicleMoving")
+    # Optional: the car this camera belongs to. Its blackbox agent then sees the driver's state.
+    vehicle_id: str | None = Field(default=None, alias="vehicleId", pattern=r"^[\w-]{1,64}$")
     # Optional: with an ECU reading the backend combines car and driver (driver/guardian.py).
     vehicle: VehicleSnapshot | None = None
     # `capturedAt` of the event at which the driver confirmed the alert (eyes open, facing forward).

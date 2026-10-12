@@ -15,10 +15,13 @@ warning or critical assessment. It returns immediately. Synthesis runs on one
 background worker, and a failure never changes the assessment.
 """
 
+import itertools
 import logging
 import os
+import re
 import threading
 import time
+from collections import deque
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -27,6 +30,8 @@ from typing import Any
 from urllib.parse import urljoin
 
 import httpx
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 log = logging.getLogger("car_neuron.voice")
 
@@ -40,8 +45,16 @@ _URL_KEYS = ("audio_url", "download_url", "file_url", "audio_link", "url")
 _REPEAT_SECONDS = 90.0
 _MAX_CHARS = 500
 
+_SPOKEN_CHARS = 260  # a spoken alert stays short: the first sentences, then one step
+
 _lock = threading.Lock()
 _spoken: dict[str, float] = {}
+# Finished clips the browser can play (newest last). In memory: a restart forgets them.
+_clips: deque[dict[str, Any]] = deque(maxlen=50)
+# When each session last had a critical alert queued: a warning that arrives later (its wording
+# was slower) is outdated and must not be spoken after the critical one.
+_critical_at: dict[str, float] = {}
+_clip_seq = itertools.count(1)
 _missing_logged = False
 _executor: ThreadPoolExecutor | None = None
 
@@ -60,7 +73,7 @@ class Speech:
 
 def alert_script(text: str, severity: str, recommendations: Sequence[str] | None = None) -> str:
     """Short Vietnamese line for the driver. The lead states the severity once."""
-    body = " ".join(text.split()).strip()
+    body = _first_sentences(" ".join(text.split()).strip(), _SPOKEN_CHARS)
     if not body:
         raise ValueError("alert text is empty")
     lead = "Cảnh báo nguy hiểm." if severity == "critical" else "Cảnh báo."
@@ -70,6 +83,20 @@ def alert_script(text: str, severity: str, recommendations: Sequence[str] | None
         if step and step.lower() not in spoken.lower():
             spoken = f"{spoken.rstrip('. ')}. {step}."
     return spoken[:_MAX_CHARS]
+
+
+def _first_sentences(text: str, limit: int) -> str:
+    """Whole sentences up to `limit` characters, so speech never stops mid-word."""
+    if len(text) <= limit:
+        return text
+    out = ""
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if out and len(out) + 1 + len(sentence) > limit:
+            break
+        out = f"{out} {sentence}".strip()
+        if len(out) >= limit:
+            break
+    return out[:limit]
 
 
 def announce_alert(
@@ -87,10 +114,15 @@ def announce_alert(
     try:
         if severity not in ALERT_SEVERITIES or not _configured():
             return
+        if severity == "warning" and session_id and _recently_critical(session_id):
+            return
         script = alert_script(text, severity, recommendations)
         key = dedupe_key or f"{severity}:{script}"
         if not _claim(key):
             return
+        if severity == "critical" and session_id:
+            with _lock:
+                _critical_at[session_id] = time.monotonic()
         _pool().submit(_speak, script, severity, key, session_id)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
@@ -184,9 +216,10 @@ class BlazeTTS:
             time.sleep(self.poll_interval)
 
     def _optional_get(self, url: str) -> httpx.Response | None:
-        """None means not ready yet (404 or a transient 429/5xx). Other errors raise."""
+        """None means not ready yet: 404, 425 Too Early (what Blaze's /download answers while the
+        audio is still processing, observed 2026-10-11) or a transient 429/5xx. Other errors raise."""
         response = self._get(url)
-        if response.status_code in (404, 429) or response.status_code >= 500:
+        if response.status_code in (404, 425, 429) or response.status_code >= 500:
             return None
         _raise_for_status(response)
         return response
@@ -220,6 +253,7 @@ def _speak(script: str, severity: str, key: str, session_id: str | None = None) 
         with _client_from_env() as client:
             speech = client.synthesize(script)
         path = _write(speech, severity)
+        _register(session_id, severity, script, path, speech.content_type)
         log.info("spoke %s alert (%s bytes) %s", severity, len(speech.audio), path)
     except Exception:
         log.warning("Blaze TTS failed for a %s alert", severity, exc_info=True)
@@ -265,6 +299,11 @@ def _configured() -> bool:
         log.info("Blaze TTS is off until BLAZE_API_TOKEN and BLAZE_SPEAKER_ID are set")
         _missing_logged = True
     return False
+
+
+def _recently_critical(session_id: str) -> bool:
+    with _lock:
+        return time.monotonic() - _critical_at.get(session_id, float("-inf")) < _REPEAT_SECONDS
 
 
 def _claim(key: str) -> bool:
@@ -370,3 +409,49 @@ def _extension(content_type: str) -> str:
     if "mpeg" in content_type or "mp3" in content_type:
         return "mp3"
     return "bin"
+
+
+def enabled() -> bool:
+    return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and os.getenv("BLAZE_SPEAKER_ID", "").strip())
+
+
+def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str) -> dict[str, Any]:
+    clip = {
+        "id": f"clip_{next(_clip_seq)}",
+        "session": session_id or "",
+        "severity": severity,
+        "text": text,
+        "content_type": content_type,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "_path": path,
+    }
+    clip["seq"] = int(clip["id"].split("_")[1])
+    with _lock:
+        _clips.append(clip)
+    return clip
+
+
+def clips_for(session_id: str, after: int = 0) -> list[dict[str, Any]]:
+    with _lock:
+        return [{k: v for k, v in c.items() if not k.startswith("_")} for c in _clips if c["session"] == session_id and c["seq"] > after]
+
+
+router = APIRouter()
+_SESSION = r"^[\w-]{1,64}$"
+
+
+@router.get("/voice/clips", tags=["voice"])
+def list_clips(session: str = Query(pattern=_SESSION), after: int = Query(0, ge=0)) -> dict[str, Any]:
+    """Spoken alerts for a session (a vehicle id on the garage page), newer than `after`."""
+    with _lock:
+        latest = max((c["seq"] for c in _clips), default=0)
+    return {"enabled": enabled(), "latest": latest, "clips": clips_for(session, after)}
+
+
+@router.get("/voice/clips/{clip_id}/audio", tags=["voice"])
+def clip_audio(clip_id: str) -> FileResponse:
+    with _lock:
+        clip = next((c for c in _clips if c["id"] == clip_id), None)
+    if clip is None or not Path(clip["_path"]).is_file():
+        raise HTTPException(status_code=404, detail="Clip not found")
+    return FileResponse(clip["_path"], media_type=clip["content_type"])

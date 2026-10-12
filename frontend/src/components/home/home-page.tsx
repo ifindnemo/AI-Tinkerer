@@ -150,7 +150,7 @@ export default function HomePage() {
         <section className={styles.section} id="boundary">
           <Reveal className={styles.sectionHead}>
             <span className={styles.kicker}>{t("Minh bạch", "Transparency")}</span>
-            <h2>{t("Mô phỏng nguồn dữ liệu. Phía sau là thật.", "Simulated source. Real everything after it.")}</h2>
+            <h2>{t("Mô phỏng nguồn dữ\u00a0liệu. Phía sau là thật.", "Simulated source. Real everything after it.")}</h2>
             <p>{t("Không có sẵn một chiếc xe hỏng để thử, nên dữ liệu ECU được tiêm lỗi có chủ đích, cách làm quen thuộc khi kiểm thử hệ thống chẩn đoán.", "There is no broken car on hand, so ECU data is fault-injected on purpose, a standard way to test diagnostic systems.")}</p>
           </Reveal>
           <div className={styles.boundary}>
@@ -167,7 +167,7 @@ export default function HomePage() {
               <ul>
                 <li><Layers size={15} />{t("Gateway Next.js → FastAPI; khóa API chỉ nằm ở Python", "Next.js gateway → FastAPI; API keys live only in Python")}</li>
                 <li><ShieldAlert size={15} />{t("Luật an toàn cứng: nước làm mát ≥ 120°C, điện áp ngoài 10.5–15.5 V", "Hard safety rule: coolant ≥ 120°C, voltage outside 10.5–15.5 V")}</li>
-                <li><Sparkles size={15} />{t("Agent OpenAI (mặc định gpt-4.1-mini) gọi tool và trả kết luận có cấu trúc", "OpenAI agent (gpt-4.1-mini by default) calls tools and returns a structured verdict")}</li>
+                <li><Sparkles size={15} />{t("Agent LLM (qua Inworld Router, model cấu hình ở backend) gọi tool và trả kết luận có cấu trúc", "LLM agent (through Inworld Router, model set in the backend) calls tools and returns a structured verdict")}</li>
                 <li><CloudSun size={15} />{t("Thời tiết Open-Meteo và garage gần xe qua LocationIQ", "Open-Meteo weather and nearby garages via LocationIQ")}</li>
                 <li><Database size={15} />{t("SQLite lưu sự cố và bộ nhớ ngắn hạn của agent", "SQLite stores incidents and the agent's short-term memory")}</li>
               </ul>

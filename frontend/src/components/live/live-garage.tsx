@@ -15,10 +15,14 @@ import type {DeviceAnalysis, DeviceState, SignalName} from "@/lib/device/types";
 import type {Analysis} from "@/lib/telemetry";
 import {vehicles} from "@/lib/vehicles";
 import BackendAgentPanel from "../backend-agent-panel";
+import GarageCamera from "../driver/garage-camera";
+import type {VehicleSnapshot} from "@/lib/guardian/types";
 import SiteHeader from "../site/site-header";
 import DtcCard from "./dtc-card";
 import LiveMetrics from "./live-metrics";
 import VehicleProfileCard, {profileName} from "./vehicle-profile";
+import AgentDock from "../agent/agent-dock";
+import {useAgentPresence} from "../agent/use-agent-presence";
 
 const CarViewer = dynamic(() => import("../car-viewer"), {ssr: false});
 type Tab = "overview" | "data";
@@ -42,6 +46,12 @@ function toAnalysis(analysis: DeviceAnalysis, title: string, vehicleName: string
     severity: severityClass[a.severity], score: null, source: "backend", cause: "unclassified",
     title, summary: a.diagnosis, evidence: a.evidence, recommendations: a.recommendations,
   };
+}
+
+/** The live OBD values the driver camera combines with the driver, or null while they are missing. */
+function cameraSnapshot(capturedAt: string | undefined, speed?: number, coolant?: number, load?: number, simulated = false): VehicleSnapshot | null {
+  if (!capturedAt || speed === undefined || coolant === undefined || !Number.isFinite(speed) || !Number.isFinite(coolant)) return null;
+  return {source: simulated ? "simulated" : "obd", capturedAt, speedKmh: speed, coolantC: coolant, engineLoadPct: load !== undefined && Number.isFinite(load) ? load : null, drivingMinutes: null};
 }
 
 /** Browser time, refreshed every few seconds, for "is the device still sending?" */
@@ -69,10 +79,21 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
   const available: SignalName[] = profile?.known ? profile.supported_signals : SIGNALS.map(s => s.name).filter(name => current[name] !== undefined);
   const missing: SignalName[] = profile?.known ? profile.missing_signals : [];
   const analysis = state.analysis;
+  const last = latestSample(state);
+  // Live OBD values for the camera's Guardian policy; signals the car does not report stay absent.
+  const lastAt = connected ? last?.capturedAt : undefined;
+  const speed = current.speed, coolant = current.coolant, load = current.engineLoad;
+  const cameraVehicle = cameraSnapshot(lastAt, speed, coolant, load, simulated);
   const severity = analysis?.reply.assessment.severity;
   const verdictTitle = severity === "critical" ? t("Cảnh báo an toàn từ agent", "Safety alert from the agent") : severity === "warning" ? t("Agent đề xuất kiểm tra xe", "The agent recommends an inspection") : t("Agent chưa ghi nhận bất thường", "No anomaly found by the agent");
   // The 3D model is illustrative; never name the connected car after it.
   const carName = profileName(profile, t("Xe của bạn", "Your car"));
+  useAgentPresence({
+    phase: state.status === "reconnecting" ? "offline" : connected ? "ready" : "nodata",
+    severity: analysis?.reply.assessment.severity ?? "normal",
+    analysisId: analysis?.id ?? null,
+    diagnosis: analysis?.reply.assessment.diagnosis ?? null,
+  });
   const backendState: BackendState = {
     phase: connected ? (analysis ? "ready" : "collecting") : "paused",
     api: state.status === "live" ? "online" : state.status === "reconnecting" ? "offline" : "checking",
@@ -84,7 +105,6 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
   };
   const chip = state.status !== "live" ? t("Đang kết nối…", "Connecting…") : !connected ? t("Thiết bị chưa gửi dữ liệu", "Device not sending") : simulated ? t("LIVE · thiết bị giả lập", "LIVE · simulated device") : t("LIVE · OBD", "LIVE · OBD");
   const healthClass = severity ? severityClass[severity] : "pending";
-  const last = latestSample(state);
   const tabs: {id: Tab; label: string; icon: React.ReactNode}[] = [
     {id: "overview", label: t("Tổng quan", "Overview"), icon: <LayoutDashboard size={16} />},
     {id: "data", label: t("Dữ liệu OBD", "OBD data"), icon: <Activity size={16} />},
@@ -167,6 +187,7 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
                 <DtcCard dtc={state.dtc} />
               </div>
               <aside className="insights-column">
+                <GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} />
                 <BackendAgentPanel
                   state={backendState}
                   connected={connected}
@@ -213,6 +234,7 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
           <span>{simulated ? t("Thiết bị giả lập", "Simulated device") : "OBD-II"} · Frontend v0.3</span>
         </footer>
       </main>
+      <AgentDock session={vehicle.id} anchor="car-agent" />
     </div>
   );
 }
