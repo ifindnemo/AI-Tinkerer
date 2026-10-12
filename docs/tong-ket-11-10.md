@@ -6,11 +6,11 @@ Chuẩn bị cho buổi demo trước CEO ngày **18/10/2026**. Trọng tâm c�
 
 | Phần | Trạng thái |
 |---|---|
-| Camera `/driver`, luồng Vehicle Guardian, phim 90 giây, nhà cung cấp LLM Inworld | Đã commit `14059ee` và đẩy lên `main` |
-| Voice Blaze từ nhánh `feat/voice` (commit `614122b`) | Đã kéo về nhánh local `fe` (fast-forward), **chưa đẩy** |
-| Camera trong garage, voice cho agent, chỉnh giao diện (polish), robot agent | **Chưa commit** (khoảng 38 file thay đổi) |
+| Camera `/driver`, luồng Vehicle Guardian, phim 90 giây, nhà cung cấp LLM Inworld | Commit `14059ee` trên `main` |
+| Voice Blaze từ nhánh `feat/voice` | Commit `614122b` trên `main` |
+| Camera trong garage, voice cho agent, chỉnh giao diện (polish), robot agent, `CLAUDE.md` | Commit `fc31d5b` trên `main` (12/10) |
 
-Bản sao lưu trước khi kéo `feat/voice`: `git stash` mục `stash@{0}` ("camera+blackbox integration before feat/voice"). Có thể xoá khi đã ổn.
+Bản sao lưu cũ trước khi kéo `feat/voice` vẫn còn trong `git stash` (`stash@{0}`); có thể xoá vì mọi thứ đã nằm trên `main`.
 
 ## 2. Camera giám sát tài xế (`/driver`)
 
@@ -119,7 +119,7 @@ EXPECT_VOICE=1 MODE=backend node scripts/verify-garage-camera.mjs   # cần Blaz
    - Cần chọn một trong hai hướng: Google Calendar thật, hoặc lưu lịch trong hệ thống kèm tải file `.ics`.
 2. **Kiểm tra hướng quay đầu trái/phải trên mặt thật** bằng `/driver?debug=1`.
 3. **Máy demo:** bật tăng tốc phần cứng (GPU) trên trình duyệt; dùng `next build && next start`.
-4. **Commit và đẩy** phần camera trong garage, voice và robot khi đã duyệt xong; sau đó xoá `stash@{0}`.
+4. Xoá bản sao lưu `stash@{0}` khi chắc chắn không cần nữa.
 5. **Đề xuất chưa làm:**
    - Bỏ nhãn nhỏ phía trên tiêu đề trên toàn site.
    - Trang Home thêm mục giới thiệu camera và giọng nói (cần duyệt nội dung).
