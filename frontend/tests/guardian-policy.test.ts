@@ -4,7 +4,7 @@ import test from "node:test";
 import {DriverSafety} from "../src/lib/driver/safety";
 import type {DriverEvent} from "../src/lib/driver/types";
 import {ECU_SCENARIOS, ecuReading} from "../src/lib/guardian/ecu";
-import {LocalGuardian, canConfirm, decide, shouldSound, type DecideInput} from "../src/lib/guardian/policy";
+import {LocalGuardian, canConfirm, decide, muteStillHolds, shouldSound, type DecideInput} from "../src/lib/guardian/policy";
 
 // The same table drives backend/tests/test_guardian.py: browser and server cannot drift apart.
 const cases: {name: string; input: DecideInput; expect: ReturnType<typeof decide>}[] =
@@ -100,4 +100,14 @@ test("the horn sounds at a 1.6 s closure even when the warm engine already holds
   const overheat = new LocalGuardian().update(event(0), new DriverSafety().update(event(0), true), ecuReading("overheat", 0, T0), null);
   assert.equal(shouldSound(results[0].decision, overheat.decision), true);
   assert.equal(shouldSound(overheat.decision, overheat.decision), false);
+});
+
+test("a manual horn mute covers its own alert and lifts when the alert rises, a mandatory stop begins or the alert ends", () => {
+  const mute = {driverSeverity: "warning" as const, vehicleCritical: false};
+  assert.equal(muteStillHolds(mute, "warning", false), true);
+  assert.equal(muteStillHolds(mute, "critical", false), false, "a higher driver level must sound again");
+  assert.equal(muteStillHolds(mute, "warning", true), false, "a mandatory engine stop must sound again");
+  assert.equal(muteStillHolds(mute, "normal", false), false, "the next alert must sound again");
+  assert.equal(muteStillHolds({driverSeverity: "normal", vehicleCritical: true}, "normal", true), true, "muted during a stop, quiet while it lasts");
+  assert.equal(muteStillHolds(null, "critical", true), false);
 });

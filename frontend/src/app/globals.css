@@ -951,6 +951,7 @@ dd {
 .model-credit a {
   color: var(--accent);
 }
+.guardian-band { margin-bottom: 22px; animation: panel-in 500ms var(--ease) both; }
 .insights-column {
   display: flex;
   flex-direction: column;

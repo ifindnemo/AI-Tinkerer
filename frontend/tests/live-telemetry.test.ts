@@ -76,3 +76,14 @@ test("overheatSecondAt locates thresholds on the ramp used by the landing chart 
  assert(overheatSecondAt(120) > 38 && overheatSecondAt(120) < 39);
  assert.equal(overheatSecondAt(130), Infinity);
 });
+
+test("the running-warm camera scenario holds between the warning and the mandatory-stop thresholds while moving", () => {
+ for(let tick=0;tick<=900;tick++){
+  const t=liveSample("warm","bmw-m2",tick);
+  assert(t.speed>=60 && t.speed<=70,"moving at about 65 km/h");
+  assert.equal(t.fault,0);assert.deepEqual(t.dtc,[]);
+  if(tick>=10)assert(t.coolant>=105 && t.coolant<120,`coolant ${t.coolant} stays in the warning band at tick ${tick}`);
+  else assert(t.coolant<=106.5);
+ }
+ assert.equal(liveSample("warm","bmw-m2",0).fan,35);
+});

@@ -1,6 +1,6 @@
 import { getVehicle, type Powertrain } from "./vehicles";
 import { tr, type Text } from "./preferences";
-export type ScenarioId = "normal" | "environment" | "engine" | "offline";
+export type ScenarioId = "normal" | "warm" | "environment" | "engine" | "offline";
 export type Telemetry = {
   scenario: ScenarioId;
   vehicleId: string;
@@ -50,6 +50,7 @@ export type Analysis = {
 };
 export const scenarios: { id: ScenarioId; label: Text }[] = [
   { id: "normal", label: {vi: "Vận hành bình thường", en: "Normal driving"} },
+  { id: "warm", label: {vi: "Nóng nhẹ, đang chạy (kịch bản camera)", en: "Running warm (camera scenario)"} },
   { id: "environment", label: {vi: "Thời tiết nắng nóng", en: "Hot weather"} },
   { id: "engine", label: {vi: "Động cơ quá nhiệt", en: "Engine overheating"} },
   { id: "offline", label: {vi: "Mất kết nối blackbox", en: "Blackbox disconnected"} },
@@ -127,6 +128,8 @@ export function getMockTelemetry(
       };
     return ev;
   }
+  if (scenario === "warm")
+    return {...base, coolant: 107, oil: 114, fan: 35, speed: 65, rpm: 2500, coolantTrend: 0.2};
   if (scenario === "environment")
     return {
       ...base,

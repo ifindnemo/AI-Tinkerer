@@ -11,7 +11,7 @@ import {DriverSafety} from "@/lib/driver/safety";
 import {HISTORY_LIMIT, loadDriverStore, saveDriverStore, type DriverSettings, type DriverStore} from "@/lib/driver/storage";
 import type {AttentionState, DriverAssessment, DriverEvent, DriverReply, DriverSeverity, DriverSource} from "@/lib/driver/types";
 import {DEFAULT_ECU, ecuReading, type EcuScenario} from "@/lib/guardian/ecu";
-import {COOLANT_WARN_C, LocalGuardian, MOVING_KMH, canConfirm, shouldSound} from "@/lib/guardian/policy";
+import {COOLANT_WARN_C, LocalGuardian, MOVING_KMH, canConfirm, muteStillHolds, shouldSound, type HornMute} from "@/lib/guardian/policy";
 import type {GuardianBlock, GuardianDecision, VehicleSnapshot} from "@/lib/guardian/types";
 
 export type MonitorPhase = "idle" | "starting" | "calibrating" | "running" | "error";
@@ -29,7 +29,7 @@ export type MonitorView = {
   guardian: GuardianBlock | null; // the local Guardian block (the backend's arrives in `reply.guardian`)
   vehicle: VehicleSnapshot | null;
   acknowledgedAt: string | null;
-  hornMuted: boolean; // quick mute for this session only; the saved sound setting is untouched
+  hornMuted: boolean; // quick mute for the alert it was pressed on; the saved sound setting is untouched
   reply: DriverReply | null;
   sendError: boolean;
   sentEvents: number;
@@ -40,6 +40,10 @@ export type MonitorView = {
 const UI_INTERVAL_MS = 200; // text and numbers: 5 updates per second
 const SEND_INTERVAL_MS = 3000;
 const MAX_QUEUE = 60;
+// In the garage the camera posts only when an alert rises, so a reply that still carries the rule text
+// ("pending") is asked again a few times to pick up the agent's wording and keep the car's summary fresh.
+const FOLLOW_UP_MS = 4500;
+const MAX_FOLLOW_UPS = 4;
 const CRITICAL_REPEAT_MS = 8000;
 const rank: Record<DriverSeverity, number> = {normal: 0, warning: 1, critical: 2};
 // Crossing these sends at once instead of waiting for the next 3-second batch.
@@ -100,7 +104,9 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     ackAt: null as string | null, // capturedAt of the event at which the driver confirmed
     lastGuardian: null as GuardianBlock | null,
     lastDecision: null as GuardianDecision | null,
-    hornMuted: false,
+    hornMute: null as HornMute | null,
+    followUps: 0,
+    followUpTimer: null as ReturnType<typeof setTimeout> | null,
     calibrator: null as Calibrator | null,
     camera: null as CameraSession | null,
     cameraAbort: null as AbortController | null,
@@ -155,7 +161,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
 
   const playTone = useCallback((level: "warning" | "critical") => {
     const state = m.current;
-    if (!state.store?.settings.sound || state.hornMuted) return;
+    if (!state.store?.settings.sound || state.hornMute) return;
     state.lastTone = Date.now();
     state.tone.play(level);
   }, []);
@@ -191,6 +197,16 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       if (reply.guardian) state.warnC = reply.guardian.vehicle.warnC;
       const stillRelevant = events.at(-1)!.state === state.lastEvent?.state && ecu === state.store?.settings.ecu && ackAt === state.ackAt;
       setView(current => ({...current, reply: stillRelevant ? reply : null, sendError: false, sentEvents: current.sentEvents + events.length}));
+      if (optionsRef.current.alertsOnly && reply.assessment.severity !== "normal" && reply.assessment.fallbackReason === "pending" && state.followUps < MAX_FOLLOW_UPS) {
+        state.followUps += 1;
+        if (state.followUpTimer) clearTimeout(state.followUpTimer);
+        state.followUpTimer = setTimeout(() => {
+          state.followUpTimer = null;
+          if (generation !== state.generation || state.phase !== "running") return;
+          if (!state.queue.length && state.lastEvent) state.queue.push(state.lastEvent);
+          void send();
+        }, FOLLOW_UP_MS);
+      }
     } catch {
       if (generation !== state.generation || controller.signal.aborted) return;
       // Keep the newest events for the next attempt; never resend an unbounded backlog.
@@ -237,6 +253,13 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     if (state.ackAt && !local.block?.driver.responded) state.ackAt = null;
     state.lastGuardian = local.block;
     const localAssessment = local.assessment;
+    const driverSeverity = local.decision?.driverSeverity ?? localAssessment.severity;
+    // A manual mute covers the alert it was pressed on: a higher level, a mandatory engine stop or the end of the alert lifts it.
+    let hornLifted = false;
+    if (state.hornMute && !muteStillHolds(state.hornMute, driverSeverity, local.decision?.vehicleLevel === "critical")) {
+      state.hornMute = null;
+      hornLifted = true;
+    }
     // A warm engine alone stays visual; the driver's alertness and a mandatory stop sound.
     if (local.decision ? shouldSound(state.lastDecision, local.decision) : rank[localAssessment.severity] > rank[state.severity]) {
       playTone(localAssessment.severity === "critical" ? "critical" : "warning");
@@ -263,22 +286,25 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       state.queue.push(event);
     }
 
-    const driverSeverity = local.decision?.driverSeverity ?? localAssessment.severity;
     const driverRose = rank[driverSeverity] > rank[state.driverSeverity];
     state.driverSeverity = driverSeverity;
+    if (driverRose) state.followUps = 0;
     if (optionsRef.current.alertsOnly ? driverRose : escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
     if (state.severity === "critical" && now - state.lastTone >= CRITICAL_REPEAT_MS) playTone("critical");
 
-    if (changed || severityChanged || now - state.lastUi >= UI_INTERVAL_MS) {
+    if (changed || severityChanged || hornLifted || now - state.lastUi >= UI_INTERVAL_MS) {
       state.lastUi = now;
-      setView(current => ({...current, event, localAssessment, guardian: local.block, vehicle, acknowledgedAt: state.ackAt, history: state.history, ...(changed ? {reply: null} : {})}));
+      setView(current => ({...current, event, localAssessment, guardian: local.block, vehicle, acknowledgedAt: state.ackAt, history: state.history, hornMuted: state.hornMute !== null, ...(changed ? {reply: null} : {})}));
     }
   }, [live, persist, playTone, send]);
 
   const reset = useCallback(() => {
     const state = m.current;
     state.generation += 1;
-    state.hornMuted = false;
+    state.hornMute = null;
+    state.followUps = 0;
+    if (state.followUpTimer) clearTimeout(state.followUpTimer);
+    state.followUpTimer = null;
     state.cameraAbort?.abort();
     state.cameraAbort = null;
     state.camera?.stop();
@@ -317,7 +343,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     state.source = "webcam";
     state.sessionId = crypto.randomUUID();
     persist({consent: true}, true);
-    setView(current => ({...current, phase: "starting", error: null, source: "webcam", scenario: null, reply: null, event: null, localAssessment: null, sentEvents: 0, sendError: false, calibration: {progress: 0, failed: false, face: true}, store: m.current.store ?? current.store}));
+    setView(current => ({...current, phase: "starting", error: null, source: "webcam", scenario: null, reply: null, event: null, localAssessment: null, hornMuted: false, sentEvents: 0, sendError: false, calibration: {progress: 0, failed: false, face: true}, store: m.current.store ?? current.store}));
     const video = videoRef.current;
     if (!video) {
       state.phase = "error";
@@ -373,6 +399,8 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     if (fresh) {
       // Each scenario is a different driver: a new backend session, no PERCLOS, timers or alert hold.
       state.generation += 1;
+      state.hornMute = null;
+      state.followUps = 0;
       state.abort?.abort();
       state.abort = null;
       state.sending = false;
@@ -391,7 +419,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     }
     state.scenario = scenario;
     state.simStart = Date.now();
-    setView(current => ({...current, phase: "running", error: null, source: "simulated", scenario, delegate: null, calibration: {progress: 1, failed: false, face: true}, ...(fresh ? {reply: null, event: null, localAssessment: null, guardian: null, acknowledgedAt: null, sendError: false, sentEvents: 0} : {})}));
+    setView(current => ({...current, phase: "running", error: null, source: "simulated", scenario, delegate: null, calibration: {progress: 1, failed: false, face: true}, ...(fresh ? {hornMuted: false, reply: null, event: null, localAssessment: null, guardian: null, acknowledgedAt: null, sendError: false, sentEvents: 0} : {})}));
   }, [handleSample, reset]);
 
   const stop = useCallback(() => {
@@ -430,9 +458,23 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     if (patch.ecu !== undefined && patch.ecu !== base.settings.ecu) state.lastSend = 0;
   }, [persist]);
 
+  /** Mutes the horn (and the agent's voice) for the alert that is going on; see `muteStillHolds`. */
   const muteHorn = useCallback(() => {
-    m.current.hornMuted = true;
+    const state = m.current;
+    state.hornMute = {driverSeverity: state.driverSeverity, vehicleCritical: state.lastDecision?.vehicleLevel === "critical"};
     setView(current => ({...current, hornMuted: true}));
+  }, []);
+
+  const unmuteHorn = useCallback(() => {
+    m.current.hornMute = null;
+    setView(current => ({...current, hornMuted: false}));
+  }, []);
+
+  /** Plays the warning tone once, whatever the mute: for checking the room's speakers before the demo. */
+  const testHorn = useCallback(() => {
+    const state = m.current;
+    state.tone.prime();
+    state.tone.play("warning");
   }, []);
 
   const setEcu = useCallback((ecu: EcuScenario) => updateSettings({ecu}), [updateSettings]);
@@ -443,6 +485,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     const event = state.lastEvent;
     if (state.phase !== "running" || !canConfirm(event) || !state.lastGuardian?.driver.alertSince) return false;
     state.ackAt = event!.capturedAt;
+    state.followUps = 0;
     state.queue.push(event!); // the backend checks the confirmation against this very event
     setView(current => ({...current, acknowledgedAt: state.ackAt}));
     void send();
@@ -457,5 +500,5 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     };
   }, [reset]);
 
-  return {view, live, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn};
+  return {view, live, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn, unmuteHorn, testHorn};
 }

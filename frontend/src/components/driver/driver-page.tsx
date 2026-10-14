@@ -4,15 +4,17 @@ import AgentDock from "../agent/agent-dock";
 import {presence} from "@/lib/agent/presence";
 import {Camera, Check, ShieldCheck, Wifi, WifiOff, ArrowUpRight} from "lucide-react";
 import {useDriverMonitor} from "@/hooks/use-driver-monitor";
+import {useDemoReset} from "@/hooks/use-demo-reset";
 import {useLang} from "@/hooks/use-preferences";
 import {pick} from "@/lib/preferences";
 import {SIMULATION_SCENARIOS, type SimulationScenario} from "@/lib/driver/simulation";
-import type {AttentionState, DriverAssessment} from "@/lib/driver/types";
+import type {AttentionState} from "@/lib/driver/types";
 import SiteHeader from "../site/site-header";
 import {ConfidenceBar, EyeGauge, HeadGauge} from "./instruments";
 import {SEVERITY_LABEL, STATE_HINT, STATE_LABEL} from "./labels";
 import DebugLine from "./debug-line";
 import {EcuPicker, GuardianBoard} from "./guardian-board";
+import {AgentCard} from "./agent-card";
 import {canConfirm} from "@/lib/guardian/policy";
 import Lens from "./lens";
 import styles from "./driver.module.css";
@@ -75,43 +77,12 @@ function Ribbon({history}: {history: [number, AttentionState][]}) {
   );
 }
 
-function AgentCard({assessment, offline}: {assessment: DriverAssessment | null; offline: boolean}) {
-  const {t} = useLang();
-  if (!assessment || assessment.severity === "normal") {
-    return (
-      <div id="driver-agent" tabIndex={-1} className={styles.agent} data-severity="normal" data-testid="driver-agent">
-        <div className={styles.agentHead}>
-          <span className={styles.kicker}>Car Neuron Agent</span>
-          {offline && <span className={styles.engine}>{t("Backend chưa phản hồi", "Backend not reachable")}</span>}
-        </div>
-        <p className={styles.agentQuiet}>{assessment ? assessment.summary : t("Agent lên tiếng khi xe hoặc tài xế cần chú ý.", "The agent speaks up when the car or the driver needs attention.")}</p>
-      </div>
-    );
-  }
-  const engine = assessment.fallbackReason === "local" ? t("Luật trên thiết bị", "On-device rules") : assessment.engine === "agent" ? t("Agent AI", "AI agent") : t("Đánh giá theo luật", "Rule-based");
-  return (
-    <div id="driver-agent" tabIndex={-1} className={styles.agent} data-severity={assessment.severity} data-testid="driver-agent">
-      <div className={styles.agentHead}>
-        <span className={styles.kicker}>Car Neuron Agent</span>
-        <span className={styles.engine} title={assessment.fallbackReason ?? undefined}>{engine}</span>
-      </div>
-      <p className={styles.agentSummary}>{assessment.summary}</p>
-      <ol className={styles.steps}>
-        {assessment.recommendations.map((step, index) => <li key={step} style={{animationDelay: `${120 + index * 80}ms`}}>{step}</li>)}
-      </ol>
-      {assessment.evidence.length > 0 && <details className={styles.evidence}>
-        <summary>{t("Cơ sở nhận định", "Evidence")}</summary>
-        <ul>{assessment.evidence.map(item => <li key={item}>{item}</li>)}</ul>
-      </details>}
-    </div>
-  );
-}
-
 export default function DriverPage() {
+  useDemoReset();
   // The demo car's id: the agent dock plays this vehicle's spoken alerts, as on the garage page.
   const monitorOptions = useMemo(() => ({vehicleId: DEMO_VEHICLE}), []);
   const {t, lang} = useLang();
-  const {view, live: channel, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn} = useDriverMonitor(monitorOptions);
+  const {view, live: channel, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn, unmuteHorn, testHorn} = useDriverMonitor(monitorOptions);
   const {phase, source, event, reply, store} = view;
   const active = phase === "calibrating" || phase === "running";
   const live: AttentionState | null = active ? event?.state ?? null : null;
@@ -131,13 +102,14 @@ export default function DriverPage() {
   const state: AttentionState | null = live;
   // What the agent dock shows: the camera, the backend link, and each new alert step in words.
   const responded = !!guardian?.driver.responded;
+  const vehicleAlert = !!guardian && guardian.vehicle.level !== "normal";
   const sound = store.settings.sound;
   useEffect(() => {
     presence.set({
-      camera: {active, sound, severity: active ? severity : "normal", responded},
+      camera: {active, sound: sound && !view.hornMuted, severity: active ? severity : "normal", responded, vehicleAlert},
       agent: active ? {phase: view.sendError ? "offline" : "ready", severity: overall} : null,
     });
-  }, [active, sound, severity, responded, view.sendError, overall]);
+  }, [active, sound, view.hornMuted, severity, responded, vehicleAlert, view.sendError, overall]);
   useEffect(() => () => presence.reset(), []);
   const alertText = active && overall !== "normal" ? assessment?.summary : null;
   const alertKey = `${guardian?.driver.alertSince ?? guardian?.action ?? ""}:${overall}`;
@@ -239,8 +211,11 @@ export default function DriverPage() {
                 maintenance={reply?.guardian?.maintenance ?? null}
                 canConfirm={canConfirm(event)}
                 onConfirm={acknowledge}
-                sound={store.settings.sound && !view.hornMuted}
+                sound={store.settings.sound}
+                hornMuted={view.hornMuted}
                 onMute={muteHorn}
+                onUnmute={unmuteHorn}
+                onTest={testHorn}
                 now={event ? Date.parse(event.capturedAt) : 0}
               />
               <AgentCard assessment={assessment} offline={view.sendError} />

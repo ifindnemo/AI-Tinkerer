@@ -8,7 +8,7 @@ const finite = (v: unknown): v is number => typeof v === "number" && Number.isFi
 const iso = (v: unknown) => text(v) && Number.isFinite(Date.parse(v));
 const member = (v: unknown, values: string[]) => typeof v === "string" && values.includes(v);
 const strings = (v: unknown) => Array.isArray(v) && v.length <= 30 && v.every(text);
-const scenarios = ["normal", "environment", "engine", "offline"];
+const scenarios = ["normal", "warm", "environment", "engine", "offline"];
 function telemetry(v: unknown, vehicleId: string): boolean {
   if (!object(v) || v.vehicleId !== vehicleId || !member(v.scenario, scenarios) || !member(v.powertrain,["ice","ev","hybrid"]) || typeof v.connected !== "boolean" || !(v.capturedAt === "" || iso(v.capturedAt))) return false;
   if (!["coolant","oil","ambient","intake","rpm","speed","battery","fuel","coolantTrend","fan"].every(key => finite(v[key]))) return false;

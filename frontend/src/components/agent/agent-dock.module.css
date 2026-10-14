@@ -12,6 +12,7 @@
 }
 .dock > * { pointer-events: auto; }
 
+
 .robotWrap { position: relative; }
 .robot {
   display: grid;
@@ -82,6 +83,19 @@
 }
 .bubble[data-severity="warning"] { border-color: var(--warn-line); background: var(--warn-soft); }
 .bubble[data-severity="critical"] { border-color: var(--danger-line); background: var(--danger-soft); }
+/* Still in the page for screen readers (role=status), just not drawn. */
+.bubbleQuiet {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  animation: none;
+}
 .bubbleHead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .bubbleTag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-strong); }
 .bubble[data-severity="warning"] .bubbleTag { color: var(--warn); }

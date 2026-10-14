@@ -84,7 +84,7 @@ const muteStore = {
  * (last alert, replay, mute, details); unseen alerts leave a badge; with nothing going on it naps.
  * It adds no alert of its own: the horn, cards and banners stay the primary warning.
  */
-export default function AgentDock({session, anchor}: {session: string; anchor: string}) {
+export default function AgentDock({session, anchor, quietOver}: {session: string; anchor: string; quietOver?: string}) {
   const {t, lang} = useLang();
   const state = useSyncExternalStore(presence.subscribe, presence.get, presence.get);
   const muted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
@@ -98,6 +98,28 @@ export default function AgentDock({session, anchor}: {session: string; anchor: s
   const software = useSyncExternalStore(noSubscribe, isSoftwareRendering, () => false);
   const dockRef = useRef<HTMLElement>(null);
   const robotRef = useRef<HTMLButtonElement>(null);
+  const [covered, setCovered] = useState(false);
+
+  // The bubble repeats what a card on the page already shows in full (the garage's Guardian band). While
+  // that card is in view the bubble stops covering the page and only speaks to screen readers; the
+  // robot, its voice and its panel stay.
+  useEffect(() => {
+    if (!quietOver || typeof IntersectionObserver === "undefined") return;
+    let observer: IntersectionObserver | null = null;
+    const attach = () => {
+      const element = document.querySelector(quietOver);
+      if (!element) return false;
+      observer = new IntersectionObserver(([entry]) => setCovered(entry.isIntersecting && entry.intersectionRatio >= 0.45), {threshold: [0, 0.45, 1]});
+      observer.observe(element);
+      return true;
+    };
+    let timer: ReturnType<typeof setInterval> | null = null;
+    if (!attach()) timer = setInterval(() => {if (attach() && timer) clearInterval(timer);}, 500);
+    return () => {
+      if (timer) clearInterval(timer);
+      observer?.disconnect();
+    };
+  }, [quietOver]);
 
   // Publish the voice state (the garage camera card shows it); a playing clip becomes the bubble.
   const clip = voice.speaking;
@@ -166,7 +188,11 @@ export default function AgentDock({session, anchor}: {session: string; anchor: s
   const napping = awake === "idle" && !visible && !panel && lastActivity > 0 && now - lastActivity > DOZE_MS;
   const face: RobotState = napping ? "sleeping" : awake;
   const badge = !panel && unread(state, now);
-  const label = napping ? t("Đang chợp mắt · di chuột để đánh thức", "Napping · move the pointer to wake it") : lang === "en" ? STATE_LABEL[face].en : STATE_LABEL[face].vi;
+  // A smile after the driver's confirmation must not read "all good" while the car is still warning.
+  const stillWarning = face === "happy" && !!state.camera?.responded && !!state.camera.vehicleAlert;
+  const label = napping ? t("Đang chợp mắt · di chuột để đánh thức", "Napping · move the pointer to wake it")
+    : stillWarning ? t("Đã ghi nhận phản hồi · xe vẫn đang cảnh báo", "Response recorded · the car is still warning")
+    : lang === "en" ? STATE_LABEL[face].en : STATE_LABEL[face].vi;
   const tag = (severity: string | undefined) => severity === "critical" ? t("Nguy hiểm", "Critical") : severity === "warning" ? t("Cảnh báo", "Warning") : "Car Neuron";
   const last = state.bubble?.message ?? null;
   const voiceNote = voice.enabled === false ? t("Giọng nói chưa cấu hình trên backend", "Voice is not configured on the backend")
@@ -209,7 +235,7 @@ export default function AgentDock({session, anchor}: {session: string; anchor: s
         </div>
       )}
       {visible && (
-        <div className={styles.bubble} data-severity={visible.severity} role="status" aria-live={visible.severity === "critical" ? "assertive" : "polite"} data-testid="agent-bubble">
+        <div className={`${styles.bubble} ${covered ? styles.bubbleQuiet : ""}`} data-quiet={covered} data-severity={visible.severity} role="status" aria-live={visible.severity === "critical" ? "assertive" : "polite"} data-testid="agent-bubble">
           <div className={styles.bubbleHead}>
             <span className={styles.bubbleTag}>{tag(visible.severity)}</span>
             {state.voice.speaking?.id === visible.id && <span className={styles.bubbleLive}>{t("đang đọc", "speaking")}</span>}

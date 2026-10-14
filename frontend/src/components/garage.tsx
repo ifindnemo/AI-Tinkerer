@@ -5,6 +5,7 @@ import { useVehicleSession } from "@/hooks/use-vehicle-session";
 import { useAgentMode, useLang } from "@/hooks/use-preferences";
 import { pick, type AgentMode } from "@/lib/preferences";
 import { usePresenter } from "@/hooks/use-presenter";
+import { useDemoReset } from "@/hooks/use-demo-reset";
 import LiveGarage from "./live/live-garage";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
@@ -82,6 +83,7 @@ type Tab = "overview" | "telemetry" | "history";
 // Live OBD data ("device") has its own dashboard; API and Mock share the classic one.
 // Separate components keep each mode's hooks independent when the user switches.
 export default function Garage() {
+  useDemoReset();
   const [mode, setMode] = useAgentMode();
   return mode === "device" ? <LiveGarage mode={mode} setMode={setMode} /> : <ClassicGarage mode={mode} setMode={setMode} />;
 }
@@ -249,6 +251,8 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           </label>
         </section>
         {vehicles.length > 1 && <VehicleLibrary selected={vehicle} onSelect={switchVehicle} />}
+        {/* Outside the tabs, so switching tabs never stops the camera. Needs the backend: the car agent reads the driver state. */}
+        {backend && <div className="guardian-band"><GarageCamera layout="band" vehicleId={vehicle.id} vehicle={cameraVehicle} /></div>}
         {restoring && <div className="session-notice" role="status">{t("Đang khôi phục phiên theo dõi của xe…", "Restoring the monitoring session…")}</div>}
         {recoveryNotice && <div className="session-notice" role="status"><span>{recoveryNotice}</span><button aria-label={t("Ẩn thông báo khôi phục", "Dismiss recovery notice")} onClick={adapter.dismissRecovery}><X size={15} /></button></div>}
         {storageError && <div className="session-notice session-error" role="alert">{storageError}</div>}
@@ -313,7 +317,6 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                 </section>
               </div>
               <aside className="insights-column">
-                {backend && <GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} />}
                 {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                 <details className="vehicle-context">
                   <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
@@ -430,7 +433,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           <span>{t("Dữ liệu ECU mô phỏng", "Simulated ECU data")} · Frontend v0.2</span>
         </footer>
       </main>
-      {backend && <AgentDock session={vehicle.id} anchor="car-agent" />}
+      {backend && <AgentDock session={vehicle.id} anchor="car-agent" quietOver="[data-testid=garage-camera]" />}
       <dialog
         ref={modalRef}
         className="modal"

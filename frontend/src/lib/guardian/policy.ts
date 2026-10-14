@@ -50,6 +50,19 @@ export function shouldSound(previous: GuardianDecision | null, next: GuardianDec
   return RANK[next.driverSeverity] > RANK[previous?.driverSeverity ?? "normal"];
 }
 
+/** What was going on when the horn was muted by hand. */
+export type HornMute = {driverSeverity: DriverSeverity; vehicleCritical: boolean};
+
+/** A quick mute covers the alert it was pressed on and nothing more: it is lifted when the driver's
+ * level rises, when a mandatory engine stop begins, and when the alert is over (so the next one
+ * sounds). It never hides a warning in words and never lowers a level. */
+export function muteStillHolds(mute: HornMute | null, driverSeverity: DriverSeverity, vehicleCritical: boolean): boolean {
+  if (!mute) return false;
+  if (RANK[driverSeverity] > RANK[mute.driverSeverity]) return false;
+  if (vehicleCritical && !mute.vehicleCritical) return false;
+  return driverSeverity !== "normal" || vehicleCritical;
+}
+
 /** Can the driver confirm right now? Only with open eyes, facing forward, on a reliable reading. */
 export const canConfirm = (event: DriverEvent | null) =>
   !!event && event.facePresent && event.confidence >= 0.5 && event.state === "attentive" && !event.eyes.closed && event.head.direction === "forward";

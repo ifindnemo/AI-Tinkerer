@@ -39,15 +39,36 @@ try {
   // The real camera path (Chromium's fake device + the local MediaPipe model) must start here too.
   await page.getByTestId("garage-camera-start").click();
   await expect(page.getByTestId("garage-camera-error")).toHaveCount(0);
-  await expect(page.getByTestId("garage-camera-attention")).toBeVisible({timeout: 30_000});
+  await expect(page.getByTestId("board-driver")).toBeVisible({timeout: 30_000});
   await page.getByRole("button", {name: "Dừng", exact: true}).click();
+  // The README scenario: a car running warm (about 65 km/h, 106 °C) and a driver who closes their eyes.
+  if (mode === "backend") {
+    await page.getByLabel("Kịch bản mô phỏng").selectOption("warm");
+    await page.waitForTimeout(12_000);
+  }
   await page.getByTestId("garage-camera-sim-drowsy").click();
   await expect(page.getByTestId("garage-camera-severity")).toHaveAttribute("data-severity", "critical", {timeout: 30_000});
-  await expect(page.getByTestId("garage-camera-attention")).toHaveText("Giảm tỉnh táo");
+  await expect(page.getByTestId("board-driver")).toHaveText("Giảm tỉnh táo");
+  // All six facts of the brief are on screen together, each labelled with its source.
+  for (const id of ["board-speed", "board-coolant", "board-driver", "board-eyes", "board-alert", "board-action"]) await expect(page.getByTestId(id)).toBeVisible();
+  await expect(page.getByTestId("guardian-board")).toContainText("ECU mô phỏng");
+  if (mode === "backend") {
+    const coolant = Number((await page.getByTestId("board-coolant").textContent()).replace(",", ".").replace(/[^\d.]/g, ""));
+    assert.ok(coolant >= 105 && coolant < 120, `warm scenario: coolant ${coolant} is between the warning and the mandatory-stop thresholds`);
+    await expect(page.getByTestId("board-action")).toHaveText("Dừng ở vị trí an toàn gần nhất", {timeout: 15_000});
+  }
+  // The horn can be muted for this alert and brought back.
+  await page.getByTestId("guardian-mute").click();
+  await expect(page.getByTestId("guardian-unmute")).toBeVisible();
+  await page.getByTestId("guardian-unmute").click();
+  await expect(page.getByTestId("guardian-mute")).toBeVisible();
   // A held alert survives reopened eyes, so the card keeps low attention.
   await expect(page.getByTestId("garage-camera-sharing")).toContainText("Đã gửi cảnh báo cho agent", {timeout: 10_000});
   assert.ok(driverBatches.length > 0 && driverBatches.every(batch => batch.context.vehicleId === "bmw-m2"), "camera events name the car");
-  // The robot's bubble carries the alert in words at once, sound or not.
+  // The next blackbox analysis (15 s batches in API mode; a driver-triggered job in device mode) includes the driver.
+  // The driver's summary stays fresh for 60 s, so this must be checked soon after the alert, before other steps.
+  await expect(page.locator(".insights-column")).toContainText(STOP, {timeout: 50_000});
+  // The robot's bubble carries the alert in words at once, sound or not (hidden from view only while the Guardian band is on screen).
   const bubble = page.getByTestId("agent-bubble");
   await expect(bubble).toBeVisible({timeout: 5_000});
   await expect(bubble).toHaveAttribute("data-severity", /warning|critical/);
@@ -75,16 +96,14 @@ try {
   await expect(page.getByTestId("agent-robot")).toBeFocused();
   await page.getByTestId("agent-robot").click();
   await panel.getByRole("button", {name: "Xem chi tiết"}).click();
-  await expect(page.locator("#car-agent")).toBeInViewport();
+  // The blackbox agent panel now sits below the Guardian band: the dock scrolls to it smoothly (slow on a software-rendered page).
+  await expect(page.locator("#car-agent")).toBeInViewport({timeout: 20_000});
   await page.screenshot({path: `${output}/dock-${mode}.png`, animations: "disabled"});
   // Alerts only: a few posts per episode, never one every few seconds.
   const posted = driverBatches.length;
   await page.waitForTimeout(8000);
   assert.ok(driverBatches.length - posted <= 2, `no continuous posting (${driverBatches.length - posted} more in 8 s)`);
   for (const batch of driverBatches) assert.doesNotMatch(JSON.stringify(batch), /data:|blob:|base64/i);
-  // The next blackbox analysis (15 s batches in API mode; a driver-triggered job in device mode) includes the driver.
-  await expect(page.locator(".insights-column")).toContainText(STOP, {timeout: 90_000});
-  await expect(page.locator(".insights-column")).toContainText("Camera tài xế:", {timeout: 5_000}).catch(() => {});
   await card.scrollIntoViewIfNeeded();
   await card.screenshot({path: `${output}/card-alert.png`});
   const box = await card.boundingBox();

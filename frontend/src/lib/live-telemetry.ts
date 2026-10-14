@@ -26,6 +26,27 @@ export function overheatSecondAt(coolant: number) {
   return Infinity;
 }
 
+// "Running warm" for the camera demo: a car cruising at about 65 km/h whose coolant has crossed the
+// early-warning line (105 °C) and stays there, below the 120 °C mandatory stop. Authored values.
+export const WARM_COOLANT_C = 106.5;
+function warmSample(base: Telemetry, tick: number, now: Date): Telemetry {
+  const climb = Math.min(1, Math.max(0, tick) / 10); // 96 → 106.5 °C in ten seconds, then it holds
+  const coolant = 96 + (WARM_COOLANT_C - 96) * climb + (tick >= 10 ? Math.sin(tick * 0.4) * 0.4 : 0);
+  const drive = Math.sin(tick * 0.3);
+  const moved = Math.min(tick, 600);
+  return {
+    ...base, operatingSource: "scenario", capturedAt: now.toISOString(),
+    coolant: round(coolant), coolantTrend: tick < 10 ? round((WARM_COOLANT_C - 96) / 10 * 60) : 0, oil: round(coolant + 7),
+    intake: round(40 + Math.sin(tick * 0.1)),
+    speed: round(65 + drive * 1.5), rpm: Math.round(2500 + drive * 40),
+    engineLoad: round(72 + Math.sin(tick * 0.4) * 1), map: round(62 + drive * 0.8),
+    tps: round(28 + drive * 0.5), consumption: round(8.5 + drive * 0.1),
+    battery: round(14.1 + Math.sin(tick * 0.25) * 0.05),
+    fan: 35, fault: 0, dtc: [],
+    location: {...base.location, lat: Math.round((base.location.lat + moved * 0.0001) * 1e5) / 1e5, lon: Math.round((base.location.lon + moved * 0.00012) * 1e5) / 1e5},
+  };
+}
+
 function overheatSample(base: Telemetry, tick: number, now: Date): Telemetry {
   const {coolant, trendPerMinute} = overheatCoolant(Math.max(0, tick));
   const drive = Math.sin(tick * 0.3);
@@ -48,6 +69,7 @@ function overheatSample(base: Telemetry, tick: number, now: Date): Telemetry {
 export function liveSample(scenario: ScenarioId, vehicleId: string, tick: number, now = new Date()): Telemetry {
   const base = getMockTelemetry(scenario, vehicleId);
   if (scenario === "engine" && base.powertrain !== "ev") return overheatSample(base, tick, now);
+  if (scenario === "warm" && base.powertrain !== "ev") return warmSample(base, tick, now);
   const wave = Math.sin(tick * 0.55);
   const calm = Math.sin(tick * 0.08);
   const running = scenario !== "offline";

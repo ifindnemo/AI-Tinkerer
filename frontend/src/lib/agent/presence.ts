@@ -5,7 +5,8 @@ import type {DriverSeverity} from "../driver/types";
 // Collecting samples is the normal background; it shows as calm, not as busy work.
 export type AgentPhase = "offline" | "nodata" | "analyzing" | "ready";
 export type AgentPresence = {phase: AgentPhase; severity: DriverSeverity};
-export type CameraPresence = {active: boolean; sound: boolean; severity: DriverSeverity; responded: boolean};
+// `vehicleAlert`: the car itself is still warning (hot engine), whatever the driver does.
+export type CameraPresence = {active: boolean; sound: boolean; severity: DriverSeverity; responded: boolean; vehicleAlert?: boolean};
 export type AgentMessage = {id: string; text: string; severity: DriverSeverity};
 export type VoicePresence = {enabled: boolean | null; blocked: boolean; speaking: AgentMessage | null};
 export type Presence = {

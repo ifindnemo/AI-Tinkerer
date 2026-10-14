@@ -96,6 +96,8 @@ export function useVoiceAlerts(session: string, on: boolean): VoiceState & {repl
         if (player.isStopped()) return;
         setState(current => (current.enabled === data.enabled ? current : {...current, enabled: data.enabled}));
         if (after === null) {after = data.latest; return;}
+        // The backend restarted: its clip numbers began again below ours. Start over, or every new clip would be skipped.
+        if (data.latest < after) {after = 0; return;}
         for (const clip of data.clips) after = Math.max(after, clip.seq);
         player.enqueue(data.clips);
       } catch { /* the next poll retries */ }
