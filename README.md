@@ -31,7 +31,7 @@ require an explicit confirmation request.
 The first run creates `backend/.venv` and installs dependencies. Pages:
 
 - `http://localhost:3000/` — landing page (what the agent does, real vs simulated boundary)
-- `http://localhost:3000/garage` — the dashboard: the **Vehicle Guardian band** (driver camera + the six facts of the brief: speed, coolant, driver state, eye closure, safety alert, recommendation + the agent's words), the 3D car, live telemetry and the agent panel
+- `http://localhost:3000/garage` — the dashboard: the 3D car (the main thing on the page) with live telemetry below it, and on the right the **Vehicle Guardian card** (a large "what to do now" banner, the six facts of the brief: speed, coolant, driver state, eye closure, safety alert, recommendation, the agent's words, then the camera) above the blackbox agent panel
 - `http://localhost:3000/driver` — the driver-attention camera on its own (see below)
 - `http://localhost:3000/film` — a 90-second intro film with vehicle health, the driver camera, chapters and MP4 download
   (`?clean=1` hides the page chrome, `?t=30` opens paused at second 30)

@@ -84,7 +84,7 @@ const muteStore = {
  * (last alert, replay, mute, details); unseen alerts leave a badge; with nothing going on it naps.
  * It adds no alert of its own: the horn, cards and banners stay the primary warning.
  */
-export default function AgentDock({session, anchor, quietOver}: {session: string; anchor: string; quietOver?: string}) {
+export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45}: {session: string; anchor: string; quietOver?: string; quietRatio?: number}) {
   const {t, lang} = useLang();
   const state = useSyncExternalStore(presence.subscribe, presence.get, presence.get);
   const muted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
@@ -106,20 +106,27 @@ export default function AgentDock({session, anchor, quietOver}: {session: string
   useEffect(() => {
     if (!quietOver || typeof IntersectionObserver === "undefined") return;
     let observer: IntersectionObserver | null = null;
-    const attach = () => {
+    let observed: Element | null = null;
+    // The card can be unmounted and mounted again (camera stopped and started): look for it every half second.
+    const watch = () => {
       const element = document.querySelector(quietOver);
-      if (!element) return false;
-      observer = new IntersectionObserver(([entry]) => setCovered(entry.isIntersecting && entry.intersectionRatio >= 0.45), {threshold: [0, 0.45, 1]});
+      if (element === observed) return;
+      observer?.disconnect();
+      observed = element;
+      if (!element) {
+        setCovered(false);
+        return;
+      }
+      observer = new IntersectionObserver(([entry]) => setCovered(entry.isIntersecting && entry.intersectionRatio >= quietRatio), {threshold: [0, quietRatio, 1]});
       observer.observe(element);
-      return true;
     };
-    let timer: ReturnType<typeof setInterval> | null = null;
-    if (!attach()) timer = setInterval(() => {if (attach() && timer) clearInterval(timer);}, 500);
+    watch();
+    const timer = setInterval(watch, 500);
     return () => {
-      if (timer) clearInterval(timer);
+      clearInterval(timer);
       observer?.disconnect();
     };
-  }, [quietOver]);
+  }, [quietOver, quietRatio]);
 
   // Publish the voice state (the garage camera card shows it); a playing clip becomes the bubble.
   const clip = voice.speaking;
@@ -212,7 +219,7 @@ export default function AgentDock({session, anchor, quietOver}: {session: string
   };
 
   return (
-    <aside ref={dockRef} className={styles.dock} aria-label="Car Neuron Agent" data-testid="agent-dock" data-state={face} data-animated={!(software && face !== "speaking")}>
+    <aside ref={dockRef} className={`${styles.dock} ${quietOver ? styles.dockTight : ""}`} aria-label="Car Neuron Agent" data-testid="agent-dock" data-state={face} data-animated={!(software && face !== "speaking")}>
       {panel && (
         <div className={styles.panel} role="dialog" aria-label={t("Bảng nhanh của agent", "Agent quick panel")} data-testid="agent-panel">
           <div className={styles.panelHead}>
@@ -257,7 +264,7 @@ export default function AgentDock({session, anchor, quietOver}: {session: string
           title={label}
           data-testid="agent-robot"
         >
-          <RobotHead shape="circle" state={face} size={compact ? 76 : 112} floorShadow={false} color={colors.shell} trimColor={colors.trim} screenColor={colors.screen} paused={software && face !== "speaking"} aria-hidden="true" />
+          <RobotHead shape="circle" state={face} size={compact ? 76 : quietOver ? 44 : 112} floorShadow={false} color={colors.shell} trimColor={colors.trim} screenColor={colors.screen} paused={software && face !== "speaking"} aria-hidden="true" />
         </button>
         {badge && <span className={styles.badge} data-severity={state.bubble?.message.severity} data-testid="agent-badge" aria-hidden="true" />}
       </div>

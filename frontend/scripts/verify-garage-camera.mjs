@@ -67,7 +67,8 @@ try {
   assert.ok(driverBatches.length > 0 && driverBatches.every(batch => batch.context.vehicleId === "bmw-m2"), "camera events name the car");
   // The next blackbox analysis (15 s batches in API mode; a driver-triggered job in device mode) includes the driver.
   // The driver's summary stays fresh for 60 s, so this must be checked soon after the alert, before other steps.
-  await expect(page.locator(".insights-column")).toContainText(STOP, {timeout: 50_000});
+  // The blackbox agent panel (#car-agent), not the camera card above it: the card carries the same step from the policy at once.
+  await expect(page.locator("#car-agent")).toContainText(STOP, {timeout: 50_000});
   // The robot's bubble carries the alert in words at once, sound or not (hidden from view only while the Guardian band is on screen).
   const bubble = page.getByTestId("agent-bubble");
   await expect(bubble).toBeVisible({timeout: 5_000});
@@ -96,7 +97,7 @@ try {
   await expect(page.getByTestId("agent-robot")).toBeFocused();
   await page.getByTestId("agent-robot").click();
   await panel.getByRole("button", {name: "Xem chi tiết"}).click();
-  // The blackbox agent panel now sits below the Guardian band: the dock scrolls to it smoothly (slow on a software-rendered page).
+  // The blackbox agent panel sits below the camera card in the right column: the dock scrolls to it smoothly (slow on a software-rendered page).
   await expect(page.locator("#car-agent")).toBeInViewport({timeout: 20_000});
   await page.screenshot({path: `${output}/dock-${mode}.png`, animations: "disabled"});
   // Alerts only: a few posts per episode, never one every few seconds.

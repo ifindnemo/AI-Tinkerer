@@ -994,8 +994,7 @@
 .boardEmbedded .boardRow dt small { font-size: 11px; }
 .boardEmbedded .boardFoot { font-size: 12px; }
 
-/* ---------- The garage's Vehicle Guardian band: lens, the six facts and the agent side by side ---------- */
-.garageCamCol { display: grid; gap: 12px; min-width: 0; align-content: start; }
+/* ---------- The garage camera card (right-hand column) ---------- */
 .garageCamHint { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--text); font-size: 12.5px; line-height: 1.5; }
 .garageCamTips { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .garageCamTips summary { cursor: pointer; color: var(--text); font-weight: 600; }
@@ -1003,17 +1002,75 @@
 .garageCam .agent { padding: 14px 16px; border-radius: 16px; scroll-margin-top: 120px; }
 .garageCam .agentSummary { font-size: 16px; }
 .garageCam .steps li { font-size: 13.5px; }
-.garageCam[data-layout="band"] {
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 22px;
-  padding: 20px 22px;
-  border-radius: 22px;
+/* Running: what to do now, the lens, then the confirm button and the horn right under the face. The six facts are in
+   the blackbox cell under the 3D car, so this card stays about as tall as the car. */
+.garageCam[data-phase="running"] { grid-auto-flow: row; }
+.garageCam[data-phase="running"] > .actionBanner { order: 0; }
+.garageCam[data-phase="running"] > .garageCamHead { order: 1; }
+.garageCam[data-phase="running"] > .garageCamLens { order: 2; }
+.garageCam[data-phase="running"] > .garageCamHint { order: 3; }
+.garageCam[data-phase="running"] > .board { order: 4; }
+.garageCam[data-phase="running"] > .garageCamNote { order: 5; }
+.garageCam[data-phase="running"] > .garageCamVoice { order: 8; }
+.garageCam[data-phase="running"] > .garageCamSettings { order: 9; }
+.garageCam[data-phase="calibrating"] .lens, .garageCam[data-phase="running"] .lens { aspect-ratio: 16 / 10; }
+.boardEmbedded .boardNote { display: none; }
+/* Narrow column: the value may wrap to two lines instead of pushing the label out. */
+.boardEmbedded .boardRow { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 10px; }
+.boardEmbedded .boardRow dd { justify-content: flex-end; font-size: 15px; text-wrap: balance; }
+.boardEmbedded .boardRow dt { font-size: 13px; }
+.boardEmbedded .boardRow dt small { font-size: 10.5px; }
+
+/* ---------- The action banner: what to do now, readable from across the room ---------- */
+.actionBanner {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-line);
+  border-radius: 14px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  animation: bannerIn 320ms var(--ease) both;
 }
-@media (max-width: 1100px) {
-  .garageCam[data-layout="band"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .garageCam[data-layout="band"] > :nth-child(3) { grid-column: 1 / -1; }
+.actionBanner[data-severity="critical"] { border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger); }
+.actionBanner > div { display: grid; gap: 2px; min-width: 0; }
+.actionBanner b { font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; text-wrap: balance; }
+.actionBanner span { color: var(--text); font-size: 12.5px; line-height: 1.45; }
+.actionBanner[data-severity="critical"] svg { animation: dotPulse 1.2s ease-in-out infinite; border-radius: 50%; }
+@keyframes bannerIn { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .actionBanner, .actionBanner[data-severity="critical"] svg { animation: none; }
 }
-@media (max-width: 720px) {
-  .garageCam[data-layout="band"] { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px; }
+
+/* Short laptop screens (768 px tall): keep the confirm button and the horn controls on the first screen. */
+@media (max-height: 820px) and (min-width: 1101px) {
+  .scope.garageCam { padding: 14px; gap: 10px; }
+  .actionBanner { padding: 8px 12px; }
+  .actionBanner b { font-size: 18px; }
+  .garageCam .boardEmbedded { gap: 6px; }
+  .boardEmbedded .boardRow { padding: 4px 0; }
+  .garageCam .respond { padding: 8px 8px 8px 12px; }
+  .garageCam .hornRow { padding-top: 6px; }
+  .garageCam[data-phase="calibrating"] .lens, .garageCam[data-phase="running"] .lens { aspect-ratio: 16 / 9; }
+}
+
+.garageCamSettings { color: var(--muted); font-size: 12.5px; }
+.garageCamSettings summary { cursor: pointer; color: var(--text); font-weight: 600; margin-bottom: 8px; }
+.garageCamSettings[open] { display: grid; gap: 10px; }
+.garageCamSettings:not([open]) summary { margin-bottom: 0; }
+
+/* ---------- The six facts as a wide strip under the 3D car (blackbox cell) ---------- */
+.boardWide { gap: 8px; padding: 16px 20px 12px; border-radius: 18px; }
+.boardWide .boardRows { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 28px; }
+.boardWide .boardRow { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 4px; padding: 10px 0; }
+.boardWide .boardRow:nth-child(-n + 3) { border-top: 0; padding-top: 2px; }
+.boardWide .boardRow dd { justify-content: flex-start; font-size: 19px; text-align: left; text-wrap: balance; }
+@media (max-width: 560px) {
+  .boardWide { padding: 14px 16px 10px; }
+  .boardWide .boardRows { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+  .boardWide .boardRow:nth-child(3) { border-top: 1px solid var(--border); padding-top: 10px; }
+  .boardWide .boardRow dd { font-size: 16px; }
 }

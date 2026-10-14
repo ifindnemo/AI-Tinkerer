@@ -951,12 +951,81 @@ dd {
 .model-credit a {
   color: var(--accent);
 }
-.guardian-band { margin-bottom: 22px; animation: panel-in 500ms var(--ease) both; }
+@media (max-height: 820px) and (min-width: 1101px) {
+  .dash > .vehicle-bar { padding-bottom: 12px; margin-bottom: 14px; }
+  .dash > .vehicle-bar h1 { font-size: 24px; margin: 2px 0; }
+}
 .insights-column {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+/* /garage with the backend: two columns, two rows.
+   [ 3D car (wide)       | driver camera ]
+   [ blackbox readings   | agent        ]
+   Without the camera (mock mode) the agent takes the whole right column, as before. */
+.guardian-agent-slot:empty,
+.guardian-facts-slot:empty {
+  display: none;
+}
+.overview-quad > .quad-data {
+  gap: 20px;
+}
+@media (min-width: 1081px) {
+  .overview-quad {
+    grid-template-areas: "car camera" "data agent";
+    row-gap: 20px;
+  }
+  .overview-quad[data-camera="off"] {
+    grid-template-areas: "car agent" "data agent";
+  }
+  .overview-quad > .quad-car { grid-area: car; align-self: stretch; }
+  .overview-quad > .quad-camera { grid-area: camera; }
+  .overview-quad > .quad-data { grid-area: data; }
+  .overview-quad > .quad-agent { grid-area: agent; }
+  /* The car cell is as tall as the camera cell; the 3D view takes the extra height. */
+  .overview-quad[data-camera="on"] > .quad-car { display: flex; }
+  .overview-quad > .quad-car > .vehicle-card { flex: 1; display: flex; flex-direction: column; }
+  .overview-quad[data-camera="on"] > .quad-car .viewer { flex: 1 1 auto; height: auto; min-height: 480px; }
+}
+/* The status strip above the grid is one line here: the details are in the agent cell. */
+.health-overview-slim {
+  padding: 12px 18px;
+  margin-bottom: 16px;
+}
+.health-overview-slim .section-kicker {
+  display: none;
+}
+.health-overview-slim h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+/* The simulated-data label stays; it just sits on the sentence's line instead of under it. */
+.health-overview-slim p,
+.health-overview-slim small {
+  display: inline;
+  margin: 0;
+  font-size: 13px;
+}
+.health-overview-slim small {
+  margin-left: 8px;
+  font-size: 12px;
+}
+.health-overview-slim .health-overview-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+@media (max-height: 820px) and (min-width: 1101px) {
+  .health-overview-slim {
+    padding: 8px 16px;
+    margin-bottom: 12px;
+  }
+  .health-overview-slim .health-overview-icon {
+    width: 32px;
+    height: 32px;
+  }
 }
 .vehicle-context > summary {
   display: flex;
@@ -3168,7 +3237,8 @@ td:last-child {
   .overview-main .vehicle-card {
     order: 1;
   }
-  .insights-column {
+  .insights-column,
+  .guardian-facts-slot {
     order: 2;
   }
   .overview-main .telemetry-section {

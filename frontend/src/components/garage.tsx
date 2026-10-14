@@ -100,6 +100,10 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
     title: item.severity === "good" ? t("Agent chưa ghi nhận bất thường", "No anomaly found by the agent") : item.severity === "watch" ? t("Agent đề xuất kiểm tra xe", "The agent recommends an inspection") : t("Cảnh báo an toàn từ agent", "Safety alert from the agent")};
   const result = rawResult && localize(rawResult);
   const history = rawHistory.map(localize);
+  // Where the camera card puts the agent's words: the top of the agent cell (row 2, right).
+  // Cells of row 2 that the camera card fills through portals: the agent's words and the Guardian's six facts.
+  const [guardianSlot, setGuardianSlot] = useState<HTMLElement | null>(null);
+  const [factsSlot, setFactsSlot] = useState<HTMLElement | null>(null);
   const [paint, setPaint] = useState(0);
   const [error, setError] = useState("");
   const [modal, setModal] = useState<"settings" | "help" | null>(null);
@@ -251,15 +255,14 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           </label>
         </section>
         {vehicles.length > 1 && <VehicleLibrary selected={vehicle} onSelect={switchVehicle} />}
-        {/* Outside the tabs, so switching tabs never stops the camera. Needs the backend: the car agent reads the driver state. */}
-        {backend && <div className="guardian-band"><GarageCamera layout="band" vehicleId={vehicle.id} vehicle={cameraVehicle} /></div>}
         {restoring && <div className="session-notice" role="status">{t("Đang khôi phục phiên theo dõi của xe…", "Restoring the monitoring session…")}</div>}
         {recoveryNotice && <div className="session-notice" role="status"><span>{recoveryNotice}</span><button aria-label={t("Ẩn thông báo khôi phục", "Dismiss recovery notice")} onClick={adapter.dismissRecovery}><X size={15} /></button></div>}
         {storageError && <div className="session-notice session-error" role="alert">{storageError}</div>}
-        {tab === "overview" && (
-          <>
+        {/* With the backend the overview stays mounted (hidden on other tabs): the driver camera lives in it and must not stop. */}
+        {(tab === "overview" || !!backend) && (
+          <div className="overview-pane" style={{display: tab === "overview" ? "contents" : "none"}}>
             {/* With the backend, overall status follows the agent verdict; sensor cards still show local heat levels. */}
-            <section className={`health-overview ${healthClass}`} aria-label={t("Tình trạng xe", "Vehicle status")}>
+            <section className={`health-overview health-overview-slim ${healthClass}`} aria-label={t("Tình trạng xe", "Vehicle status")}>
               <div className="health-overview-icon">{healthClass === "watch" || healthClass === "critical" ? <TriangleAlert size={22} /> : <ShieldCheck size={22} />}</div>
               <div className="health-overview-copy">
                 <span className="section-kicker">{t("TÌNH TRẠNG XE · TỰ ĐỘNG THEO DÕI", "VEHICLE STATUS · AUTO-MONITORED")}</span>
@@ -269,8 +272,9 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
               </div>
               <button className="outline-button" disabled={busy} onClick={runAnalysis}>{t("Kiểm tra xe", "Check car")} <ArrowRight size={16} /></button>
             </section>
-            <div className="overview-grid">
-              <div className="overview-main">
+            {/* Two columns, two rows: [3D car | camera] over [blackbox readings | agent]. */}
+            <div className="overview-grid overview-quad" data-camera={backend ? "on" : "off"}>
+              <div className="overview-main quad-car">
                 <section className="vehicle-card" aria-label="Garage 3D">
                   <CarViewer
                     key={vehicle.id}
@@ -306,6 +310,10 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                     </div>
                   </div>
                 </section>
+              </div>
+              {backend && <aside className="insights-column quad-camera"><GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} agentSlot={guardianSlot} factsSlot={factsSlot} /></aside>}
+              <div className="overview-main quad-data">
+                <div ref={setFactsSlot} className="guardian-facts-slot" />
                 <section className="dash-section telemetry-section" aria-label={t("Thông số vận hành", "Operating data")}>
                   <div className="section-heading">
                     <h2>{t("Thông số vận hành", "Operating data")} <span>TELEMETRY</span></h2>
@@ -316,7 +324,8 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                   <VehicleMetrics telemetry={telemetry} samples={samples} />
                 </section>
               </div>
-              <aside className="insights-column">
+              <aside className="insights-column quad-agent">
+                <div ref={setGuardianSlot} className="guardian-agent-slot" />
                 {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                 <details className="vehicle-context">
                   <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
@@ -372,7 +381,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
         {tab === "telemetry" && (
           <section className="data-panel dash-section">
@@ -433,7 +442,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           <span>{t("Dữ liệu ECU mô phỏng", "Simulated ECU data")} · Frontend v0.2</span>
         </footer>
       </main>
-      {backend && <AgentDock session={vehicle.id} anchor="car-agent" quietOver="[data-testid=garage-camera]" />}
+      {backend && <AgentDock session={vehicle.id} anchor="car-agent" quietOver="[data-testid=garage-camera]" quietRatio={0.1} />}
       <dialog
         ref={modalRef}
         className="modal"

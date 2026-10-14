@@ -20,7 +20,7 @@ const ATTENTION_LABEL: Record<Attention, Text> = {
   unknown: {vi: "Không xác định", en: "Unknown"},
 };
 
-const ACTION_LABEL: Record<GuardianAction, Text> = {
+export const ACTION_LABEL: Record<GuardianAction, Text> = {
   continue: {vi: "Tiếp tục hành trình", en: "Continue the trip"},
   reduce_load: {vi: "Giảm tải, theo dõi nhiệt độ", en: "Ease off, watch the temperature"},
   refocus: {vi: "Nhìn lại phía trước", en: "Eyes back on the road"},
@@ -66,7 +66,7 @@ export function EcuPicker({value, onChange}: {value: EcuScenario; onChange: (ecu
 type Row = {key: string; label: string; value: string; source: string; level?: string; testId: string; animate: boolean};
 
 /** One line per fact, each with its source: what the CEO demo board must show at a glance. */
-export function GuardianBoard({guardian, assessment, maintenance, canConfirm, onConfirm, sound, hornMuted, onMute, onUnmute, onTest, now, embedded = false, title}: {
+export function GuardianBoard({guardian, assessment, maintenance, canConfirm, onConfirm, sound, hornMuted, onMute, onUnmute, onTest, now, embedded = false, wide = false, part = "all", title}: {
   guardian: GuardianBlock | null;
   assessment: DriverAssessment | null;
   maintenance: MaintenanceSummary | null;
@@ -81,6 +81,11 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
   now: number;
   /** Inside another card: no frame of its own, and rows two by two when there is room. */
   embedded?: boolean;
+  /** A framed card with the rows in three columns, for the wide cell under the 3D car. */
+  wide?: boolean;
+  /** `facts`: the six rows and the history note. `controls`: confirm and horn. The garage splits them
+   * over two cells; the /driver page shows both together. */
+  part?: "all" | "facts" | "controls";
   title?: string;
 }) {
   const {t, lang} = useLang();
@@ -99,7 +104,8 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
     {key: "action", animate: true, testId: "board-action", label: t("Đề xuất", "Recommendation"), value: pick(ACTION_LABEL[guardian.action], lang), level: guardian.mustStop ? "critical" : undefined, source: engine},
   ];
   return (
-    <section className={`${styles.board} ${embedded ? styles.boardEmbedded : ""}`} aria-label="Vehicle Guardian" data-testid="guardian-board" data-action={guardian.action} data-must-stop={guardian.mustStop}>
+    <section className={`${styles.board} ${embedded ? styles.boardEmbedded : ""} ${wide ? styles.boardWide : ""}`} aria-label={part === "controls" ? "Vehicle Guardian controls" : "Vehicle Guardian"} data-testid={part === "controls" ? "guardian-controls" : "guardian-board"} data-action={guardian.action} data-must-stop={guardian.mustStop}>
+      {part !== "controls" && <>
       <div className={styles.boardHead}>
         <span className={styles.kicker}>{title ?? "Vehicle Guardian"}</span>
         <span className={styles.boardNote}>{vehicle.source === "obd" ? t("ECU + camera + lịch sử bảo trì", "ECU + camera + service history") : t("ECU mô phỏng + camera + lịch sử bảo trì (mô phỏng)", "Simulated ECU + camera + service history (simulated)")}</span>
@@ -120,6 +126,8 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
           )}
         </p>
       )}
+      </>}
+      {part !== "facts" && <>
       {(alertActive || driver.responded) && (
         <div className={styles.respond} data-state={driver.responded ? "done" : driver.unanswered ? "late" : "waiting"}>
           <div>
@@ -144,6 +152,7 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
           {sound && hornMuted && <button type="button" className={styles.mute} onClick={onUnmute} data-testid="guardian-unmute">{t("Bật lại", "Unmute")}</button>}
         </div>
       </div>
+      </>}
     </section>
   );
 }

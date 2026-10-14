@@ -276,7 +276,7 @@ export default function DriverPage() {
         <a href="#driver-agent"><div><b>{pick(SEVERITY_LABEL[overall], lang)}</b><span>{assessment.recommendations[0] ?? assessment.summary}</span></div><span className={styles.mobileAlertLink}>{t("Hướng dẫn", "Advice")} <ArrowUpRight size={16}/></span></a>
       </aside>}
 
-      <AgentDock session={DEMO_VEHICLE} anchor="driver-agent" />
+      <AgentDock session={DEMO_VEHICLE} anchor="driver-agent" quietOver="[data-testid=guardian-board]" />
 
       <footer className={styles.footer}>
         {t("Prototype. Không điều khiển xe, không gọi cứu hộ và chưa được chứng nhận an toàn ô tô.", "Prototype. It does not control the vehicle, call emergency services, or claim automotive safety certification.")}

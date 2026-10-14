@@ -14,7 +14,8 @@ còi kêu ngay, agent khuyên **dừng ở chỗ an toàn gần nhất** chứ k
 | Chạy | `./demo.sh` (build production lần đầu, chỉ nghe `127.0.0.1`). Không dùng `dev.sh` trên sân khấu: lưu một file `.py` sẽ khởi động lại backend giữa chừng. |
 | Mở trang | Chrome hoặc Edge, bật tăng tốc phần cứng (GPU), `http://localhost:3000/garage?presenter=1&reset=1`. `reset=1` xóa dữ liệu tập (âm tắt, lịch sử, phiên cũ); `presenter=1` ẩn công tắc nguồn dữ liệu. |
 | Máy | Cắm sạc, tắt ngủ/dim màn hình, tắt thông báo hệ điều hành, đóng Teams/Zoom (chúng chiếm camera), chỉ mở **một** tab. |
-| Âm thanh | Bấm **Thử còi** trong dải camera, chỉnh âm lượng loa phòng họp. Chip phải ghi "Còi và giọng nói bật". |
+| Âm thanh | Bấm **Thử còi** trong ô camera (ô phải trên), chỉnh âm lượng loa phòng họp. Chip phải ghi "Còi và giọng nói bật". |
+| Màn hình | Laptop 1366×768: bấm Ctrl và dấu trừ (thu nhỏ trình duyệt còn khoảng 90%) để cả nút **Tôi đã tỉnh** và dòng còi nằm trong màn hình đầu. Máy 1080p thì không cần. |
 | Camera | Ngang tầm mắt, mặt trọn khung, cách 50–80 cm, ánh sáng từ phía trước (không ngược sáng). Đánh dấu chỗ ngồi. Mở `/driver?debug=1` một lần để xem độ tin cậy (từ 0,8 là tốt). |
 | Dự phòng | Quay sẵn video màn hình 60–90 s có tiếng còi (xem mục 5), chép ra ổ ngoài cùng `backend/.venv`, `frontend/node_modules`, `frontend/.next`. |
 
@@ -33,14 +34,14 @@ cho nhiệt độ lên mức đó. README ghi 103 °C làm ví dụ; sản phẩ
 | 2 | Chớp mắt bình thường vài lần | Không cảnh báo | "Chớp mắt thường không báo." |
 | 3 | Nhắm mắt liên tục 2–3 s | Sau khoảng 1,5 s: "Giảm tỉnh táo" + chuông; từ 2,5 s: mức "Nguy hiểm" | "Camera tạo sự kiện có cấu trúc cho agent." |
 | 4 | (không làm gì) | Hàng "Cảnh báo an toàn: Cảnh báo tài xế ngay" (nguồn Safety policy); còi kêu tại máy | "Còi do luật an toàn phát ngay tại máy, không chờ AI." |
-| 5 | Chỉ vào dải Vehicle Guardian | Tốc độ, nước làm mát, trạng thái tài xế, thời gian nhắm mắt, cảnh báo, đề xuất, mỗi dòng có nguồn; lịch sử bảo trì (mô phỏng) | "Agent đọc ECU, camera và lịch sử bảo trì, không đọc video." |
-| 6 | Chỉ vào thẻ Car Neuron Agent | Hàng "Đề xuất: Dừng ở vị trí an toàn gần nhất"; thẻ agent ghi "Agent AI · mức và bước do luật" (hoặc "Đánh giá theo luật · agent đang viết…" cho tới khi LLM trả lời, thường 4–5 s); robot đọc lời bằng giọng nói | "Xe nóng nhẹ mà tài xế mất tỉnh táo thì dừng gần nhất, không chạy tới garage xa." |
+| 5 | Chỉ vào dải Vehicle Guardian (ô blackbox: hàng dưới, bên trái, ngay dưới xe 3D) | Tốc độ, nước làm mát, trạng thái tài xế, thời gian nhắm mắt, cảnh báo, đề xuất, mỗi dòng có nguồn; lịch sử bảo trì (mô phỏng) | "Agent đọc ECU, camera và lịch sử bảo trì, không đọc video." |
+| 6 | Chỉ vào thẻ Car Neuron Agent (ô agent: hàng dưới, bên phải) | Hàng "Đề xuất: Dừng ở vị trí an toàn gần nhất"; thẻ agent ghi "Agent AI · mức và bước do luật" (hoặc "Đánh giá theo luật · agent đang viết…" cho tới khi LLM trả lời, thường 4–5 s); robot đọc lời bằng giọng nói | "Xe nóng nhẹ mà tài xế mất tỉnh táo thì dừng gần nhất, không chạy tới garage xa." |
 | 7 | Mở mắt, nhìn thẳng, bấm **Tôi đã tỉnh** (chỉ bật khi mắt mở, nhìn thẳng) | "Đã ghi nhận phản hồi · Cảnh báo kỹ thuật của xe vẫn được giữ" | "Phản hồi của tài xế được ghi nhận, nhưng cảnh báo của xe vẫn còn." |
 
 Vài điểm cần biết:
-- Còi có nút **Tắt còi** ngay trong dải (chỉ hiện khi đang có cảnh báo). Tắt còi chỉ có hiệu lực cho cảnh báo đó: mức cao hơn, dừng bắt buộc hoặc cảnh báo mới sẽ kêu lại. Nó không ẩn chữ cảnh báo.
+- Còi có nút **Tắt còi** ngay trong thẻ (chỉ hiện khi đang có cảnh báo). Tắt còi chỉ có hiệu lực cho cảnh báo đó: mức cao hơn, dừng bắt buộc hoặc cảnh báo mới sẽ kêu lại. Nó không ẩn chữ cảnh báo.
 - Quay đầu từ 25° trở lên liên tục khoảng 2 s sẽ ra "Mất tập trung" kèm còi: đặt camera ngay trên màn hình để người trình bày nhìn thẳng vào camera.
-- Agent xe (bảng bên phải, dưới dải) cập nhật theo gói 15 mẫu (khoảng 15 s). Câu "dừng tại vị trí an toàn gần nhất" xuất hiện ở đó trong vòng 60 s kể từ lúc cảnh báo tài xế.
+- Agent xe (ô agent, hàng dưới bên phải) cập nhật theo gói 15 mẫu (khoảng 15 s). Câu "dừng tại vị trí an toàn gần nhất" xuất hiện ở đó trong vòng 60 s kể từ lúc cảnh báo tài xế.
 - "Nhắm mắt lâu nhất · 60 s" là đỉnh trong 60 giây, nên vẫn hiện số cũ sau khi mở mắt.
 
 **Màn 2 (hỏi đáp, không bắt buộc):** chọn kịch bản **"Động cơ quá nhiệt"**. Nước làm mát lên 122 °C sau khoảng 42 s,

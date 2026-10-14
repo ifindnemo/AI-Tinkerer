@@ -12,6 +12,12 @@
 }
 .dock > * { pointer-events: auto; }
 
+/* Pages with a full-width status card (garage band, driver board): a smaller robot tucked into the corner,
+   so it stays clear of the values the card shows at its right edge. */
+.dockTight { right: max(2px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
+.dockTight .robot { padding: 6px; }
+.dockTight .badge { top: 5px; right: 5px; width: 12px; height: 12px; }
+
 
 .robotWrap { position: relative; }
 .robot {
