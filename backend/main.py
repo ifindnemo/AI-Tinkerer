@@ -1,9 +1,13 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
 load_dotenv()
+# Without this the app's own log.info/warning lines (voice clips, agent fallbacks) never show.
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 from routes import router  # noqa: E402
 from store import store  # noqa: E402

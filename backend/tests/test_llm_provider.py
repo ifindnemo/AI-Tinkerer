@@ -25,3 +25,14 @@ def test_missing_llmmodel_falls_back_to_openai_model(monkeypatch) -> None:
     monkeypatch.setenv("LLMMODEL", " ")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1-mini")
     assert llm_provider.model_name() == "gpt-4.1-mini"
+
+
+def test_request_timeout_is_bounded_and_tolerates_bad_values(monkeypatch) -> None:
+    monkeypatch.delenv("LLM_REQUEST_TIMEOUT_SECONDS", raising=False)
+    assert llm_provider.request_timeout() == 20.0
+    monkeypatch.setenv("LLM_REQUEST_TIMEOUT_SECONDS", "8")
+    assert llm_provider.request_timeout() == 8.0
+    monkeypatch.setenv("LLM_REQUEST_TIMEOUT_SECONDS", "oops")
+    assert llm_provider.request_timeout() == 20.0
+    monkeypatch.setenv("LLM_REQUEST_TIMEOUT_SECONDS", "0")
+    assert llm_provider.request_timeout() == 1.0

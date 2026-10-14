@@ -129,6 +129,7 @@ def test_car_agent_stays_quiet_when_only_the_driver_raised_the_alert(spoken, mon
     spoken.clear()
     normal = VehicleAssessment(severity=Severity.NORMAL, diagnosis="Xe ổn.", evidence=["x"], confidence=0.7, recommendations=["Theo dõi."])
     monkeypatch.setattr(vehicle_agent, "model_assessment", lambda context, memory: (normal, []))
+    monkeypatch.setenv("AGENT_MODE", "openai")  # driver wording was requested above in rules mode; the car batch uses the stubbed model
     app = FastAPI()
     app.include_router(router, prefix="/api")
     record = {"capturedAt": T0.isoformat(), "rpm": 2400, "map": 60, "tps": 30, "engineLoad": 50, "consumption": 8, "speed": 62,

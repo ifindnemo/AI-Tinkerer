@@ -13,6 +13,7 @@ import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
+from datetime import datetime
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from threading import Lock
@@ -21,7 +22,7 @@ from typing import Any
 from driver.agent import submit
 from driver.guardian import RESPONSE_TIMEOUT, GuardianResult, acknowledgement_valid, attention_of, combine, maintenance_context
 from driver.registry import DriverRegistry, driver_registry, summary_from
-from driver.rules import RuleResult, assess
+from driver.rules import MICROSLEEP_HOLD, RuleResult, assess
 from driver.schemas import DriverBatch, DriverNarrative
 from store import utc_now
 
@@ -77,7 +78,7 @@ class DriverService:
             rule = assess(list(session.events), moving)
             # Wording for an ongoing closure must not be reused after reopening or parking.
             latest = session.events[-1]
-            guardian = self._guardian(session, batch, rule) if vehicle else None
+            guardian = self._guardian(session, batch, rule, moving) if vehicle else None
             episode = guardian.episode_key if guardian else rule.episode_key
             severity = guardian.decision.severity if guardian else rule.severity
             context_key = f"{episode}:{moving}:{latest.state}:{latest.eyes.closed}:{latest.head.direction}"
@@ -164,10 +165,28 @@ class DriverService:
         )
 
     @staticmethod
-    def _guardian(session: _Session, batch: DriverBatch, rule: RuleResult) -> GuardianResult:
+    def _alert_lapsed(events: list, since: datetime, moving: bool) -> bool:
+        """Whether the alert that began at `since` ended before the newest event: the rules went back
+        to normal at some event in between, or the events stop for longer than any alert is held.
+        The garage camera posts only when an alert rises, so the backend may see no request at all
+        while the driver is attentive; a new closure then starts a new episode."""
+        start = next((i for i, event in enumerate(events) if event.captured_at >= since), None)
+        if start is None:
+            return False
+        for i in range(start + 1, len(events)):
+            if events[i].captured_at - events[i - 1].captured_at > MICROSLEEP_HOLD:
+                return True
+            if i < len(events) - 1 and assess(events[: i + 1], moving).severity == "normal":
+                return True
+        return False
+
+    @staticmethod
+    def _guardian(session: _Session, batch: DriverBatch, rule: RuleResult, moving: bool = True) -> GuardianResult:
         events = list(session.events)
         latest = events[-1]
         responded = acknowledgement_valid(events, batch.context.acknowledged_at)
+        if session.alert_since is not None and DriverService._alert_lapsed(events, session.alert_since, moving):
+            session.alert_since = None
         if rule.severity != "normal" and rule.state in ("drowsy", "distracted"):
             if session.alert_since is None:
                 starts = [e.captured_at for e in batch.events if e.state in ("drowsy", "distracted") and e.face_present and e.confidence >= 0.5]

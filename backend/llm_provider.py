@@ -15,6 +15,15 @@ _lock = Lock()
 _configured: str | None = None
 
 
+def request_timeout() -> float:
+    """Seconds one LLM HTTP call may take. Without a limit a hung provider holds a worker thread
+    for the SDK default of several minutes."""
+    try:
+        return max(1.0, float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "20")))
+    except ValueError:
+        return 20.0
+
+
 def provider() -> str:
     return "inworld" if os.getenv("INWORLD_API_KEY", "").strip() else "openai"
 
@@ -38,10 +47,16 @@ def configure() -> str:
 
             key = os.environ["INWORLD_API_KEY"].strip()
             # Inworld's key is already the Base64 credential; it is sent as Basic, as in Inworld's docs.
-            client = AsyncOpenAI(base_url=INWORLD_BASE_URL, api_key=key, default_headers={"Authorization": f"Basic {key}"})
+            client = AsyncOpenAI(base_url=INWORLD_BASE_URL, api_key=key, default_headers={"Authorization": f"Basic {key}"},
+                                 timeout=request_timeout(), max_retries=1)
             set_default_openai_client(client, use_for_tracing=False)
             set_default_openai_api("chat_completions")  # the Router's documented, widest-supported endpoint
             set_tracing_disabled(True)  # traces would otherwise be uploaded to OpenAI with no valid key
+        elif os.getenv("OPENAI_API_KEY", "").strip():
+            from agents import set_default_openai_client
+            from openai import AsyncOpenAI
+
+            set_default_openai_client(AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"].strip(), timeout=request_timeout(), max_retries=1))
         _configured = current
         return current
 

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from agent.orchestrator import vehicle_agent
@@ -9,12 +11,14 @@ from schemas import (
 
 
 router = APIRouter()
+log = logging.getLogger("car_neuron.api")
 
 
 def _run_agent(telemetry_context: dict) -> dict:
     try:
         return vehicle_agent.analyze_telemetry_context(telemetry_context)
     except Exception as error:
+        log.exception("vehicle analysis failed")
         raise HTTPException(
             status_code=502,
             detail="Vehicle analysis is temporarily unavailable.",

@@ -171,7 +171,7 @@ def test_vehicle_level_change_rekeys_the_agent_wording(monkeypatch) -> None:
 
     def fake(rule, events, moving, guardian):
         calls.append(guardian.decision.action)
-        return DriverNarrative(summary="Xe mô phỏng: dừng tại vị trí an toàn gần nhất.", recommendations=["Dừng xe."])
+        return DriverNarrative(summary="Xe mô phỏng: dừng tại vị trí an toàn gần nhất và tắt máy.", recommendations=["Dừng xe."])
 
     monkeypatch.setattr(agent_module, "_narrate", fake)
     service = DriverService()
@@ -206,6 +206,14 @@ def test_agent_payload_has_structured_values_only() -> None:
     ("Không tiếp tục đến garage ở xa; dừng tại vị trí an toàn gần nhất.", False),
     ("Đừng tiếp tục lái khi còn buồn ngủ.", False),
     ("Không nên tiếp tục hành trình đến garage ở xa.", False),
+    ("Hãy đến garage gần nhất để kiểm tra.", True),
+    ("Ghé trạm nghỉ phía trước rồi đi tiếp.", True),
+    ("Bạn cứ lái chậm về nhà.", True),
+    ("Bạn không buồn ngủ nhưng nên tiếp tục lái.", True),
+    ("Mở nắp két nước để máy nguội nhanh hơn.", True),
+    ("Hãy đưa xe tới garage khi thuận tiện.", True),
+    ("Dừng xe ngay, tắt máy và đừng mở nắp két nước khi máy còn nóng.", False),
+    ("Không đi đến garage ở xa, hãy dừng ở chỗ an toàn gần nhất.", False),
     ("Hãy dừng tại vị trí an toàn gần nhất thay vì tiếp tục hành trình đến garage ở xa.", False),
     ("Xe đang chạy ở tốc độ 65 km/h, nhiệt độ động cơ đang tăng ở mức cảnh báo và người lái có dấu hiệu mất tỉnh táo sau hơn hai giờ vận hành. Không nên tiếp tục đến garage ở xa. Hãy dừng tại vị trí an toàn gần nhất, nghỉ ngơi và kiểm tra lại nhiệt độ động cơ trước khi tiếp tục.", False),
 ])
@@ -252,3 +260,51 @@ def test_unsafe_agent_wording_falls_back_to_the_rules(monkeypatch) -> None:
     a = reply["assessment"]
     assert a["engine"] == "rules" and a["fallbackReason"] == "unsafe_wording"
     assert "Không nên tiếp tục hành trình đến garage ở xa." in a["summary"]
+
+
+def test_a_closure_after_the_first_alert_lapsed_is_a_new_episode_not_an_unanswered_one() -> None:
+    """The garage camera posts only when an alert rises, so the backend sees no request while the
+    driver is attentive between two closures. The second closure must start a fresh episode."""
+    service = DriverService()
+    first = service.process(_batch([_event(0), _event(1), _event(2, "drowsy", 1700), _event(3, "drowsy", 2400)], _vehicle(3)))
+    assert first["guardian"]["driver"]["severity"] == "warning" and first["guardian"]["driver"]["unanswered"] is False
+    # 36 s of normal driving (events exist every second but nothing is posted), then a new closure.
+    quiet = [_event(t) for t in range(4, 40)]
+    second = service.process(_batch([*quiet, _event(40, "drowsy", 1700), _event(41, "drowsy", 1800)], _vehicle(41)))
+    driver = second["guardian"]["driver"]
+    assert driver["unanswered"] is False, "the first, long-expired alert must not make the new one 'unanswered'"
+    assert driver["severity"] == "warning"
+    assert driver["alertSince"] == _iso(40)
+    assert second["assessment"]["severity"] == "warning"
+
+
+def test_a_continuing_alert_still_escalates_when_unanswered() -> None:
+    service = DriverService()
+    service.process(_batch([_event(0), _event(1, "drowsy", 1700), _event(2, "drowsy", 1900)], _vehicle(2)))
+    later = service.process(_batch([_event(t, "drowsy", 1900 + 1000 * (t - 2)) for t in range(3, 15)], _vehicle(14)))
+    assert later["guardian"]["driver"]["unanswered"] is True and later["assessment"]["severity"] == "critical"
+
+
+@pytest.mark.parametrize("text,ok", [
+    ("Hãy dừng xe ở nơi an toàn và tắt máy ngay.", True),
+    ("Dừng xe an toàn rồi tắt động cơ, không mở nắp két nước.", True),
+    ("Nhiệt độ đang cao, hãy giảm ga.", False),
+    ("Hãy tắt máy.", False),
+])
+def test_a_mandatory_engine_stop_must_say_stop_and_engine_off(text, ok) -> None:
+    from driver.agent import states_the_stop
+
+    assert states_the_stop(text, "stop_engine") is ok
+    assert states_the_stop(text, "stop_nearest_safe") is True
+
+
+def test_wording_that_misses_the_engine_stop_falls_back_to_the_rules(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_MODE", "openai")
+    monkeypatch.setattr(agent_module, "_narrate", lambda rule, events, moving, guardian: DriverNarrative(
+        summary="Nhiệt độ đang rất cao, hãy giảm ga và theo dõi.", recommendations=["Giảm ga."]))
+    service = DriverService()
+    service.process(_batch([_event(0)], _vehicle(0, coolant=122)))
+    time.sleep(0.2)
+    reply = service.process(_batch([_event(1)], _vehicle(1, coolant=122)))
+    a = reply["assessment"]
+    assert a["severity"] == "critical" and a["engine"] == "rules" and a["fallbackReason"] == "unsafe_wording"

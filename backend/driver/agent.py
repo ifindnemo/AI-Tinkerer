@@ -42,18 +42,34 @@ Quy tắc:
 - `recommendations`: chép lại `mandatory_steps` (có thể diễn đạt gọn hơn); chúng chỉ để tham khảo, giao diện luôn hiển thị bước của policy.
 """.strip()
 
-# Wording that would tell a driver who must stop to keep going. A negation earlier in the same
-# clause ("Không nên tiếp tục …", "thay vì tiếp tục …", "chưa nên đi tiếp") makes it safe.
-_CONTINUE = re.compile(r"tiếp tục (lái|chạy|hành trình|đi|đến|tới)|đi tiếp|chạy tiếp|lái tiếp", re.IGNORECASE)
+# Wording that would tell a driver who must stop to keep going, to head for a garage or rest area, or to
+# open the radiator cap. A negation earlier in the same clause ("Không nên tiếp tục …", "thay vì tiếp tục …",
+# "chưa nên đi tiếp") makes it safe; a contrast word ("nhưng", "tuy nhiên", "sau đó") starts a new clause, so
+# "không buồn ngủ nhưng nên tiếp tục lái" is still caught.
+_CONTINUE = re.compile(
+    r"tiếp tục (lái|chạy|hành trình|đi|đến|tới|di chuyển|chuyến)|đi tiếp|chạy tiếp|lái tiếp|di chuyển tiếp"
+    r"|cứ (lái|chạy|đi)|(đến|tới|ghé|về|đi|lái|chạy|đưa xe)[^.;,!?]{0,25}(garage|gara|trạm nghỉ|trạm dừng|trạm xăng)"
+    r"|mở nắp",
+    re.IGNORECASE,
+)
 _NEGATION = re.compile(r"\b(không|đừng|chưa|thay vì|tránh)\b", re.IGNORECASE)
+_CLAUSE_END = re.compile(r"[.;:!?,]|\b(?:nhưng|tuy nhiên|song|sau đó|rồi)\b", re.IGNORECASE)
 
 
 def unsafe_for_stop(text: str) -> bool:
     for match in _CONTINUE.finditer(text):
-        clause = re.split(r"[.;:!?,]", text[: match.start()])[-1]
+        clause = _CLAUSE_END.split(text[: match.start()])[-1]
         if not _NEGATION.search(clause):
             return True
     return False
+
+
+def states_the_stop(text: str, action: str) -> bool:
+    """A mandatory stop-the-engine alert must say to stop and to switch the engine off."""
+    if action != "stop_engine":
+        return True
+    lowered = text.lower()
+    return "dừng" in lowered and ("tắt máy" in lowered or "tắt động cơ" in lowered)
 
 
 log = logging.getLogger("car_neuron.driver")
@@ -120,6 +136,9 @@ def _safe_narrate(rule: RuleResult, events: list[DriverEvent], moving: bool,
         narrative = _narrate(rule, events, moving, guardian) if guardian else _narrate(rule, events, moving)
         if guardian and guardian.decision.must_stop and unsafe_for_stop(narrative.summary):
             log.warning("guardian wording contradicts a mandatory stop; the rule text is used")
+            return None, "unsafe_wording"
+        if guardian and not states_the_stop(narrative.summary, guardian.decision.action):
+            log.warning("guardian wording does not say to stop and switch the engine off; the rule text is used")
             return None, "unsafe_wording"
         return narrative, None
     except Exception:

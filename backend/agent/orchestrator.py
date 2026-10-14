@@ -1,11 +1,14 @@
 import json
+import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
 
 from agents import Agent, Runner
 
 import llm_provider
+from analysis.rules import batch_policy, batch_rules_assessment
 
 from agent.prompt import build_agent_instructions
 from agent.safety import evaluate_hard_safety
@@ -25,6 +28,9 @@ from schemas import (
 )
 from store import store
 
+
+log = logging.getLogger("car_neuron.agent")
+_batch_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="batch-agent")
 
 SEVERITY_RANK = {
     Severity.NORMAL: 0,
@@ -338,13 +344,39 @@ class VehicleAgent:
         vehicle_id = str(telemetry_context["vehicle_id"])
         attach_driver(telemetry_context)  # the camera's latest summary for this car, if any
         previous_memory = store.get_active_incident_memory(vehicle_id)
-        assessment, trace, safety = self._run_analysis(
-            telemetry_context,
-            previous_memory,
-        )
-        return self.persist_assessment(
+        raw, trace, engine, fallback = self._model_or_rules(telemetry_context, previous_memory)
+        assessment, safety = self.finalize(raw, telemetry_context, trace, batch_policy(telemetry_context))
+        result = self.persist_assessment(
             telemetry_context, assessment, trace, safety, previous_memory
         )
+        # Which engine worded the answer: the UI labels a rule-only assessment as such.
+        result["engine"] = engine
+        result["fallback_reason"] = fallback
+        return result
+
+    def _model_or_rules(
+        self,
+        telemetry_context: dict[str, Any],
+        previous_memory: dict[str, Any] | None,
+    ) -> tuple[VehicleAssessment, list[dict[str, Any]], str, str | None]:
+        """(raw assessment, tool trace, engine, fallback reason). The LLM is the only slow part:
+        when it is off, fails or is too slow, the rule-only assessment answers instead of a 502,
+        and the hard safety floors in `finalize` still apply to either."""
+        if os.getenv("AGENT_MODE", "openai").lower() == "rules":
+            return batch_rules_assessment(telemetry_context), [], "rules", "rules_mode"
+        timeout = float(os.getenv("BATCH_AGENT_TIMEOUT_SECONDS", "30"))
+        future = _batch_executor.submit(self.model_assessment, telemetry_context, previous_memory)
+        try:
+            raw, trace = future.result(timeout=timeout)
+            return raw, trace, "agent", None
+        except TimeoutError:
+            future.cancel()  # a late reply is dropped: nothing is persisted from it
+            log.warning("vehicle agent took more than %.0f s; the rule assessment is used", timeout)
+            reason = "timeout"
+        except Exception:
+            log.exception("vehicle agent failed; the rule assessment is used")
+            reason = "error"
+        return batch_rules_assessment(telemetry_context), [], "rules", reason
 
     @staticmethod
     def persist_assessment(

@@ -141,6 +141,7 @@ def test_classic_blackbox_batch_sends_the_driver_state_to_the_agent(monkeypatch)
         return _raw(), []
 
     monkeypatch.setattr(vehicle_agent, "model_assessment", fake_model)
+    monkeypatch.setenv("AGENT_MODE", "openai")  # the blackbox batch now honours AGENT_MODE=rules; this test needs the (stubbed) model
     app = FastAPI()
     app.include_router(blackbox_router, prefix="/api")
     record = {"capturedAt": _iso(0), "rpm": 2400, "map": 60, "tps": 30, "engineLoad": 50, "consumption": 8, "speed": 62,
