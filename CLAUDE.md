@@ -23,9 +23,13 @@ Vehicle health and driver-attention agent: a blackbox/OBD stream and a webcam fe
 ```sh
 ./dev.sh                     # backend :8000 + frontend :3000 (dev)
 ./dev.sh --mock              # frontend only, browser-simulated agent
-cd frontend && npx next build && npx next start   # demo: always a production build
-cd backend && AGENT_MODE=rules .venv/bin/python -m uvicorn main:app --port 8000   # no LLM calls
+./demo.sh                     # demo: production build, localhost only, no reload; --rules = no LLM and no paid services
+cd frontend && npx next build && npx next start   # the same by hand: a demo is always a production build
+cd backend && AGENT_MODE=rules .venv/bin/python -m uvicorn main:app --port 8000   # no LLM calls (batch, OBD and driver wording)
+backend/.venv/bin/python backend/scripts/llm_preflight.py   # one tiny LLM call: provider, model, latency
 ```
+
+Demo address: `/garage?presenter=1&reset=1` (`reset=1` clears rehearsal leftovers in the browser). Steps and fallbacks: `docs/demo-runbook.md`.
 
 The 3D garage needs GPU WebGL; on a software-rendered browser it stalls the page. `pkill -f` matches its own shell here: find PIDs with `ss -ltnp` and kill by PID.
 
@@ -42,7 +46,7 @@ Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI chan
 
 ## Rules
 
-- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `EXTERNAL_TOOLS`, `COOLANT_WARN_C`.
+- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `EXTERNAL_TOOLS`, `COOLANT_WARN_C`, `BATCH_AGENT_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LOG_LEVEL`.
 - **Tests never call paid services:** `backend/tests/conftest.py` blanks the Blaze variables and turns external tools off; keep it that way.
 - **Privacy:** camera frames stay in the browser. Only structured attention events reach the backend (the schema forbids extra fields). Never send frames, landmarks or blobs.
 - **Safety:** deterministic rules set severity and the mandatory steps; the LLM only words them and can never lower them or tell a driver who must stop to continue. Alerts and the horn never wait for the LLM or the network.

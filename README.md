@@ -8,7 +8,7 @@ When a warning or critical issue is detected, Car Neuron System does not act wit
 
 The project is uniquely suited to the vehicle environment because its core value depends on live in-vehicle context: ECU telemetry, diagnostic signals, vehicle history, and location. Without those signals, it would be only a generic chatbot; inside the vehicle, it becomes a proactive health agent that can detect risks before they develop into costly breakdowns.
 
-Technically, the application uses Next.js for the driver-facing dashboard and agent experience, Python with FastAPI for backend services and diagnostic orchestration, and browser local storage for persistence of maintenance history and in-app state. Simulated black-box telemetry provides controlled normal and overheating scenarios, while simulated GPS coordinates support proximity-based garage recommendations. GPT-5.6-sol interprets structured diagnostic evidence into clear driver language, determines severity, and coordinates the consent-based action flow. The telemetry source is simulated for safe testing; the diagnosis pipeline, LLM interaction, persistence, location-based filtering, and user-action workflow are implemented as functional parts of the product.
+Technically, the application uses Next.js for the driver-facing dashboard and agent experience, Python with FastAPI for backend services and diagnostic orchestration, and browser local storage for persistence of maintenance history and in-app state. Simulated black-box telemetry provides controlled normal and overheating scenarios, while simulated GPS coordinates support proximity-based garage recommendations. A large language model (Inworld Router or OpenAI, chosen in `backend/.env`) turns structured diagnostic evidence into clear driver language. Deterministic safety rules set the minimum severity and the mandatory steps, and the model cannot lower them; any action that reaches outside the app needs the driver's explicit confirmation. The telemetry source is simulated for safe testing; the diagnosis pipeline, LLM interaction, persistence, location-based filtering, and user-action workflow are implemented as functional parts of the product.
 
 ## MVP implementation
 
@@ -31,11 +31,26 @@ require an explicit confirmation request.
 The first run creates `backend/.venv` and installs dependencies. Pages:
 
 - `http://localhost:3000/` — landing page (what the agent does, real vs simulated boundary)
-- `http://localhost:3000/garage` — the dashboard: 3D car, live telemetry and the agent panel
+- `http://localhost:3000/garage` — the dashboard: the **Vehicle Guardian band** (driver camera + the six facts of the brief: speed, coolant, driver state, eye closure, safety alert, recommendation + the agent's words), the 3D car, live telemetry and the agent panel
+- `http://localhost:3000/driver` — the driver-attention camera on its own (see below)
 - `http://localhost:3000/film` — a 90-second intro film with vehicle health, the driver camera, chapters and MP4 download
   (`?clean=1` hides the page chrome, `?t=30` opens paused at second 30)
 
 In the dashboard, the top bar switches the agent source (API / Mock) and the interface language (VI / EN).
+
+## Running the demo
+
+```sh
+./demo.sh            # production build, real LLM from backend/.env, listens on 127.0.0.1 only
+./demo.sh --rules    # no LLM and no paid service anywhere: rule-only answers (offline fallback)
+backend/.venv/bin/python backend/scripts/llm_preflight.py   # one tiny LLM call: provider, model, latency
+```
+
+Open `http://localhost:3000/garage?presenter=1&reset=1` (`reset=1` clears rehearsal leftovers in the browser).
+Pick the scenario **Nóng nhẹ, đang chạy (kịch bản camera)** (a car at about 65 km/h with coolant held near
+106 °C, above the 105 °C warning line and below the 120 °C mandatory stop), turn on the camera and close your
+eyes for two to three seconds. Step by step, fallbacks and the checklist: [docs/demo-runbook.md](docs/demo-runbook.md).
+The product brief behind it: [docs/README_VEHICLE_GUARDIAN_CAMERA.md](docs/README_VEHICLE_GUARDIAN_CAMERA.md).
 
 ## Live OBD mode (device)
 
