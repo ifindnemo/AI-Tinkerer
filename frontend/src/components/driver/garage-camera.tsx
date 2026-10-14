@@ -1,5 +1,5 @@
 "use client";
-import {useEffect, useMemo, useState, useSyncExternalStore} from "react";
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
 import {createPortal} from "react-dom";
 import Link from "next/link";
 import {ArrowUpRight, AudioLines, Bell, BellOff, Camera, RefreshCw, ScanFace} from "lucide-react";
@@ -28,8 +28,9 @@ const attentionOf = (state: AttentionState): Attention =>
  * button and the horn, then the camera settings. The six facts of the Vehicle Guardian (speed, coolant, driver
  * state, eye closure, safety alert, recommendation) belong to the blackbox cell and the agent's words to the agent
  * cell, both in row 2: `factsSlot` and `agentSlot` (DOM nodes there) receive them through portals; without a slot
- * they stay in this card. */
-export default function GarageCamera({vehicleId, vehicle, agentSlot = null, factsSlot = null}: {vehicleId: string; vehicle: VehicleSnapshot | null; agentSlot?: HTMLElement | null; factsSlot?: HTMLElement | null}) {
+ * they stay in this card. `onAlertSent` fires once per alert, when the backend has the camera's alert: the garage
+ * uses it to send the blackbox batch early so the vehicle agent sees car and driver together. */
+export default function GarageCamera({vehicleId, vehicle, agentSlot = null, factsSlot = null, onAlertSent}: {vehicleId: string; vehicle: VehicleSnapshot | null; agentSlot?: HTMLElement | null; factsSlot?: HTMLElement | null; onAlertSent?: () => void}) {
   const {t, lang} = useLang();
   const options = useMemo(() => ({vehicleId, readVehicle: () => vehicle, alertsOnly: true}), [vehicleId, vehicle]);
   const monitor = useDriverMonitor(options);
@@ -75,6 +76,14 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
     // One message per alert step; the wording of the same step does not re-open the bubble.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertKey, !!alertText]);
+
+  // Once per alert, after the backend answered (it then holds the driver summary the vehicle agent reads).
+  const flushedFor = useRef("");
+  useEffect(() => {
+    if (!alertId || view.sentEvents === 0 || flushedFor.current === alertId) return;
+    flushedFor.current = alertId;
+    onAlertSent?.();
+  }, [alertId, view.sentEvents, onAlertSent]);
 
   const sharing = view.sendError
     ? t("Chưa gửi được cảnh báo · còi trên thiết bị vẫn hoạt động", "Alert not sent · on-device sound still works")

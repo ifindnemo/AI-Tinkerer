@@ -17,6 +17,11 @@
 .dockTight { right: max(2px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
 .dockTight .robot { padding: 6px; }
 .dockTight .badge { top: 5px; right: 5px; width: 12px; height: 12px; }
+/* Laptop widths: the page gutter is only 30-50 px, so the robot shrinks to keep off the horn and confirm buttons at the card's right edge. */
+@media (min-width: 1101px) and (max-width: 1480px) {
+  .dockTight { right: max(0px, env(safe-area-inset-right)); }
+  .dockTight .robotWrap { transform: scale(0.72); transform-origin: right bottom; }
+}
 
 
 .robotWrap { position: relative; }

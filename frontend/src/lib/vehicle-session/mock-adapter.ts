@@ -106,6 +106,8 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
     this.emit();
     if(sampleForBackend)this.blackbox.push(packet);
   };
+  // The mock has no backend and no driver camera: nothing to send early.
+  flushNow = () => {};
   setScenario = (scenario: ScenarioId) => {
     if(!this.running || this.state.restoring || scenario===this.state.scenario)return;
     this.task?.abort();this.task=null;

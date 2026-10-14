@@ -311,7 +311,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                   </div>
                 </section>
               </div>
-              {backend && <aside className="insights-column quad-camera"><GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} agentSlot={guardianSlot} factsSlot={factsSlot} /></aside>}
+              {backend && <aside className="insights-column quad-camera"><GarageCamera vehicleId={vehicle.id} vehicle={cameraVehicle} agentSlot={guardianSlot} factsSlot={factsSlot} onAlertSent={adapter.flushNow} /></aside>}
               <div className="overview-main quad-data">
                 <div ref={setFactsSlot} className="guardian-facts-slot" />
                 <section className="dash-section telemetry-section" aria-label={t("Thông số vận hành", "Operating data")}>
@@ -326,7 +326,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
               </div>
               <aside className="insights-column quad-agent">
                 <div ref={setGuardianSlot} className="guardian-agent-slot" />
-                {backend ? <BackendAgentPanel state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
+                {backend ? <BackendAgentPanel compact state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                 <details className="vehicle-context">
                   <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
                   <div className="context-grid">

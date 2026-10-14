@@ -1047,14 +1047,16 @@
 
 /* Short laptop screens (768 px tall): keep the confirm button and the horn controls on the first screen. */
 @media (max-height: 820px) and (min-width: 1101px) {
-  .scope.garageCam { padding: 14px; gap: 10px; }
+  .scope.garageCam { padding: 12px; gap: 8px; }
   .actionBanner { padding: 8px 12px; }
   .actionBanner b { font-size: 18px; }
   .garageCam .boardEmbedded { gap: 6px; }
   .boardEmbedded .boardRow { padding: 4px 0; }
-  .garageCam .respond { padding: 8px 8px 8px 12px; }
+  .garageCam .respond { padding: 6px 8px 6px 12px; }
   .garageCam .hornRow { padding-top: 6px; }
   .garageCam[data-phase="calibrating"] .lens, .garageCam[data-phase="running"] .lens { aspect-ratio: 16 / 9; }
+  /* The banner already says the level; the lens carries the driver's state. Both horn and confirm stay on the first screen. */
+  .garageCam[data-phase="running"] > .garageCamHead { display: none; }
 }
 
 .garageCamSettings { color: var(--muted); font-size: 12.5px; }

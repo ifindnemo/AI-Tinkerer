@@ -32,7 +32,7 @@ cho nhiệt độ lên mức đó. README ghi 103 °C làm ví dụ; sản phẩ
 |---|---|---|---|
 | 1 | Bấm **Bật camera**, ngồi thẳng 3–8 s (hiệu chỉnh) | Khung bám mặt; "Tỉnh táo"; dòng "0 khung hình gửi đi" | "Dữ liệu xe là mô phỏng. Hình ảnh không rời trình duyệt, chỉ gửi chỉ số." |
 | 2 | Chớp mắt bình thường vài lần | Không cảnh báo | "Chớp mắt thường không báo." |
-| 3 | Nhắm mắt liên tục 2–3 s | Sau khoảng 1,5 s: "Giảm tỉnh táo" + chuông; từ 2,5 s: mức "Nguy hiểm" | "Camera tạo sự kiện có cấu trúc cho agent." |
+| 3 | Nhắm mắt liên tục 2–3 s | Sau khoảng 1,5 s: "Giảm tỉnh táo" + còi hai âm cao-thấp; từ 2,5 s: mức "Nguy hiểm" | "Camera tạo sự kiện có cấu trúc cho agent." |
 | 4 | (không làm gì) | Hàng "Cảnh báo an toàn: Cảnh báo tài xế ngay" (nguồn Safety policy); còi kêu tại máy | "Còi do luật an toàn phát ngay tại máy, không chờ AI." |
 | 5 | Chỉ vào dải Vehicle Guardian (ô blackbox: hàng dưới, bên trái, ngay dưới xe 3D) | Tốc độ, nước làm mát, trạng thái tài xế, thời gian nhắm mắt, cảnh báo, đề xuất, mỗi dòng có nguồn; lịch sử bảo trì (mô phỏng) | "Agent đọc ECU, camera và lịch sử bảo trì, không đọc video." |
 | 6 | Chỉ vào thẻ Car Neuron Agent (ô agent: hàng dưới, bên phải) | Hàng "Đề xuất: Dừng ở vị trí an toàn gần nhất"; thẻ agent ghi "Agent AI · mức và bước do luật" (hoặc "Đánh giá theo luật · agent đang viết…" cho tới khi LLM trả lời, thường 4–5 s); robot đọc lời bằng giọng nói | "Xe nóng nhẹ mà tài xế mất tỉnh táo thì dừng gần nhất, không chạy tới garage xa." |
@@ -41,7 +41,7 @@ cho nhiệt độ lên mức đó. README ghi 103 °C làm ví dụ; sản phẩ
 Vài điểm cần biết:
 - Còi có nút **Tắt còi** ngay trong thẻ (chỉ hiện khi đang có cảnh báo). Tắt còi chỉ có hiệu lực cho cảnh báo đó: mức cao hơn, dừng bắt buộc hoặc cảnh báo mới sẽ kêu lại. Nó không ẩn chữ cảnh báo.
 - Quay đầu từ 25° trở lên liên tục khoảng 2 s sẽ ra "Mất tập trung" kèm còi: đặt camera ngay trên màn hình để người trình bày nhìn thẳng vào camera.
-- Agent xe (ô agent, hàng dưới bên phải) cập nhật theo gói 15 mẫu (khoảng 15 s). Câu "dừng tại vị trí an toàn gần nhất" xuất hiện ở đó trong vòng 60 s kể từ lúc cảnh báo tài xế.
+- Agent xe (ô agent, hàng dưới bên phải) và dải trạng thái trên cùng cập nhật theo gói blackbox 15 mẫu (khoảng 15 s). Khi camera báo động và backend đã nhận, gói đang gom (từ 5 mẫu) được gửi sớm, nên agent thường trả lời trong vài giây; tối đa một gói sớm mỗi 20 s. Câu "dừng tại vị trí an toàn gần nhất" xuất hiện ở đó trong vòng 60 s kể từ lúc cảnh báo tài xế. Mục "Cơ sở & mức độ chắc chắn" của agent xe mặc định gập: bấm để mở khi cần chỉ bằng chứng.
 - "Nhắm mắt lâu nhất · 60 s" là đỉnh trong 60 giây, nên vẫn hiện số cũ sau khi mở mắt.
 
 **Màn 2 (hỏi đáp, không bắt buộc):** chọn kịch bản **"Động cơ quá nhiệt"**. Nước làm mát lên 122 °C sau khoảng 42 s,

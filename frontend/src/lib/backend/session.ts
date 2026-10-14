@@ -9,6 +9,7 @@ import type {SessionSnapshot,VehicleSessionAdapter} from '../vehicle-session/typ
 import {initialBackendState,isIncident,isAgentReply,type BatchReply,type Incident} from './contract';
 import {apiFailureMessage,vehicleApi} from './client';
 
+const FLUSH_MIN_MS=20000;
 export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  readonly mode='backend' as const;
  private readonly initial:SessionSnapshot;
@@ -31,7 +32,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  private emit=()=>this.listeners.forEach(fn=>fn());
  private update(patch:Partial<NonNullable<SessionSnapshot['backend']>>){this.state={...this.state,backend:{...this.state.backend!,...patch}};this.emit();}
  start=()=>{
-  if(this.running)return;this.running=true;this.generation++;this.tick=0;this.handled=null;
+  if(this.running)return;this.running=true;this.generation++;this.tick=0;this.handled=null;this.lastFlush=0;
   this.state={...this.initial,restoring:false};this.stream.start();this.sample(false);
   this.timer=setInterval(()=>this.sample(true),1000);void this.checkConnection();void this.restoreIncident();
  };
@@ -47,6 +48,14 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   this.state={...this.state,scenario,result:null,samples:[],telemetry:{...this.state.telemetry,scenario,connected:false},backend:{...this.state.backend!,phase:scenario==='offline'?'paused':'collecting',error:'',reply:null}};
   // Send the first batch of the new scenario early so the agent reacts within seconds.
   this.stream.breakSequence(scenario==='offline'?BLACKBOX_BATCH_SIZE:BLACKBOX_EARLY_BATCH_SIZE);this.sample(false);
+ };
+ // The camera has just reported an alert to the backend: let the agent see car and driver together now, not after 15 s.
+ // At most one early batch per FLUSH_MIN_MS: repeated alerts must not turn into a stream of small LLM calls.
+ private lastFlush=0;
+ flushNow=()=>{
+  if(!this.running||this.busy||this.state.scenario==='offline')return;
+  const now=Date.now();if(now-this.lastFlush<FLUSH_MIN_MS)return;
+  this.lastFlush=now;this.stream.flush();
  };
  private async checkConnection(){
   this.health?.abort();const controller=new AbortController();this.health=controller;const generation=this.generation;

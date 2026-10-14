@@ -1,5 +1,5 @@
 import type {Telemetry} from "../telemetry";
-import {BLACKBOX_BATCH_SIZE, BLACKBOX_SAMPLE_MS, initialTransfer, type BlackboxBatch, type BlackboxRecord, type BlackboxTransfer} from "./types";
+import {BLACKBOX_BATCH_SIZE, BLACKBOX_EARLY_BATCH_SIZE, BLACKBOX_SAMPLE_MS, initialTransfer, type BlackboxBatch, type BlackboxRecord, type BlackboxTransfer} from "./types";
 
 // Explicit whitelist: never spread a Telemetry/session/agent object onto the wire.
 export function blackboxRecord(t: Telemetry): BlackboxRecord {
@@ -37,10 +37,19 @@ export class BlackboxBatchStream {
       if(elapsed>BLACKBOX_SAMPLE_MS*2)this.records=[];
     }
     this.records.push(record);
-    if(this.records.length>=this.target){
-      const batch: BlackboxBatch={schemaVersion:1,batchId:crypto.randomUUID(),vehicleId:this.vehicleId,source:"simulated",sampleIntervalMs:BLACKBOX_SAMPLE_MS,recordCount:this.records.length,records:this.records};
-      this.records=[];this.target=BLACKBOX_BATCH_SIZE;this.state={...this.state,lastBatch:batch};
-    }
+    if(this.records.length>=this.target)this.close();
+    this.publish();
+  }
+  private close(){
+    const batch: BlackboxBatch={schemaVersion:1,batchId:crypto.randomUUID(),vehicleId:this.vehicleId,source:"simulated",sampleIntervalMs:BLACKBOX_SAMPLE_MS,recordCount:this.records.length,records:this.records};
+    this.records=[];this.target=BLACKBOX_BATCH_SIZE;this.state={...this.state,lastBatch:batch};
+  }
+  // Close the batch being collected as soon as it holds the minimum the contract accepts (an early batch);
+  // with fewer samples it closes at that minimum, so the wait is at most a few seconds instead of 15.
+  flush(){
+    if(!this.active)return;
+    this.target=Math.min(this.target,BLACKBOX_EARLY_BATCH_SIZE);
+    if(this.records.length>=this.target)this.close();
     this.publish();
   }
   // A new sequence may close its first batch early; later batches are full size.

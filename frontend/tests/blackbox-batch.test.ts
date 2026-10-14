@@ -48,3 +48,21 @@ test("after a scenario change the first batch closes early, later batches are fu
  stream.push({...packet(22),rpm:NaN});stream.breakSequence();assert.equal(state.target,15,"default break keeps full batches");
  stream.dispose();
 });
+test("flush closes the batch now at the early minimum, or at that minimum when fewer samples are held",async()=>{
+ const {BLACKBOX_EARLY_BATCH_SIZE}=await import("../src/lib/blackbox/types");
+ let state=initialTransfer();const snap=()=>state;const stream=new BlackboxBatchStream("bmw-m2",s=>{state=s;});stream.start();
+ for(let second=1;second<=7;second++)stream.push(packet(second));
+ assert.equal(snap().lastBatch,null);
+ stream.flush();
+ assert.equal(snap().lastBatch?.recordCount,7,"everything collected so far goes out at once");
+ assert.equal(snap().buffered,0);assert.equal(snap().target,15,"the next batch is full size again");
+ const sent=snap().lastBatch!.batchId;
+ stream.push(packet(8));stream.push(packet(9));stream.flush();
+ assert.equal(snap().lastBatch?.batchId,sent,"2 samples are below the contract minimum: wait");
+ assert.equal(snap().target,BLACKBOX_EARLY_BATCH_SIZE);
+ for(let second=10;second<=11;second++)stream.push(packet(second));
+ assert.equal(snap().lastBatch?.batchId,sent,"4 samples: still waiting");
+ stream.push(packet(12));
+ assert.notEqual(snap().lastBatch?.batchId,sent);assert.equal(snap().lastBatch?.recordCount,5,"closed at the minimum, not at 15");
+ stream.dispose();stream.flush();
+});
