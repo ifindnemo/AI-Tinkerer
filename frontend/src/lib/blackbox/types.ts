@@ -15,6 +15,8 @@ export type BlackboxRecord = {
 export type BlackboxBatch = {
   schemaVersion: 1; batchId: string; vehicleId: string; source: "simulated";
   sampleIntervalMs: 1000; recordCount: number; records: BlackboxRecord[];
+  // The language the agent should answer in; added when the batch is sent, not when it is collected.
+  lang?: "vi" | "en";
 };
 // `target` is the size of the batch currently being collected (early or full).
 export type BlackboxTransfer = {buffered: number; target: number; lastBatch: BlackboxBatch | null};

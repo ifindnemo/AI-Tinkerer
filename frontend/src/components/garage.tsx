@@ -10,6 +10,7 @@ import LiveGarage from "./live/live-garage";
 import {thermalLevel} from "@/lib/thermal-status";
 import BlackboxTransferStatus from "./blackbox-transfer";
 import BackendAgentPanel from "./backend-agent-panel";
+import AgentSettings from "./agent/agent-settings";
 import GarageCamera from "./driver/garage-camera";
 import AgentDock from "./agent/agent-dock";
 import {useAgentPresence} from "./agent/use-agent-presence";
@@ -325,6 +326,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                 </section>
               </div>
               <aside className="insights-column quad-agent">
+                {backend && <AgentSettings />}
                 <div ref={setGuardianSlot} className="guardian-agent-slot" />
                 {backend ? <BackendAgentPanel compact state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
                 <details className="vehicle-context">

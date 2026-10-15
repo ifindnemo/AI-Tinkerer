@@ -48,7 +48,7 @@ export type DriverBatch = {
   source: DriverSource;
   // With `vehicle` the backend combines car and driver (Vehicle Guardian); `vehicleMoving` then follows the speed.
   // `vehicleId` shares the driver's state with that car's blackbox agent (backend/driver/registry.py).
-  context: {vehicleMoving: boolean; vehicleId?: string; vehicle?: VehicleSnapshot; acknowledgedAt?: string};
+  context: {vehicleMoving: boolean; vehicleId?: string; vehicle?: VehicleSnapshot; acknowledgedAt?: string; lang?: "vi" | "en"};
   events: DriverEvent[];
 };
 

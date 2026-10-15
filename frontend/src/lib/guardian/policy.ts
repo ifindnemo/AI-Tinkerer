@@ -1,7 +1,7 @@
 // Browser mirror of backend/driver/guardian.py, so the horn and the mandatory stop never wait for
 // the network. `decide()` is tested against the same case table as the Python version
 // (backend/driver/guardian_cases.json); change both together.
-import {tr} from "../preferences";
+import {trAgent as tr} from "../preferences";
 import type {AttentionState, DriverAssessment, DriverEvent, DriverSeverity} from "../driver/types";
 import type {Attention, GuardianBlock, GuardianDecision, VehicleSnapshot} from "./types";
 

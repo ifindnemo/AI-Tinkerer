@@ -23,7 +23,7 @@ export function validateBatch(value:unknown):BlackboxBatch{
   if(!finite(r.coolant,-40,180)||!finite(r.rpm,0,12000)||!finite(r.speed,0,350)||!finite(r.intake,-40,100)||!finite(r.engineLoad,0,100)||!finite(r.battery,0,30)||!finite(r.oil,-40,220)||!finite(r.fuel,0,100)||!finite(r.fan,0,100)||!finite(r.location?.lat,-90,90)||!finite(r.location?.lon,-180,180)||!strings(r.dtc)||(r.map!==null&&!finite(r.map,0,10000))||(r.tps!==null&&!finite(r.tps,0,10000))||(r.consumption!==null&&!finite(r.consumption,0,10000))||![null,0,1,2,3].includes(r.fault))throw new Error('Chỉ số cảm biến không hợp lệ.');
   return {capturedAt:r.capturedAt,rpm:r.rpm,map:r.map,tps:r.tps,engineLoad:r.engineLoad,consumption:r.consumption,speed:r.speed,coolant:r.coolant,oil:r.oil,intake:r.intake,battery:r.battery,fuel:r.fuel,fan:r.fan,fault:r.fault,dtc:[...r.dtc],location:{lat:r.location.lat,lon:r.location.lon},units:{rpm:'rpm',map:r.units.map,tps:r.units.tps,speed:r.units.speed,temperature:'°C',engineLoad:'%',battery:'V',consumption:'L/h',fuel:'%',fan:'%'}};
  });
- return {schemaVersion:1,batchId:b.batchId,vehicleId:b.vehicleId,source:'simulated',sampleIntervalMs:1000,recordCount:records.length,records};
+ return {schemaVersion:1,batchId:b.batchId,vehicleId:b.vehicleId,source:'simulated',sampleIntervalMs:1000,recordCount:records.length,records,...(b.lang==='en'?{lang:'en' as const}:{})};
 }
 export function isAssessment(value:unknown):value is Assessment{const a=value as Assessment;return !!a&&severity(a.severity)&&typeof a.diagnosis==='string'&&finite(a.confidence,0,1)&&strings(a.evidence)&&strings(a.recommendations)&&strings(a.suspected_faults)&&strings(a.missing_data);}
 export function isIncident(value:unknown,vehicleId?:string):value is Incident{

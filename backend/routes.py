@@ -39,8 +39,9 @@ def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
             assessment["diagnosis"],
             severity=severity,
             recommendations=assessment["recommendations"],
-            dedupe_key=f"{batch.vehicle_id}:{severity}",
+            dedupe_key=f"{batch.vehicle_id}:{severity}" + ("" if batch.lang == "vi" else f":{batch.lang}"),
             session_id=batch.vehicle_id,
+            lang=batch.lang,
         )
     return {
         **result,

@@ -10,6 +10,7 @@ from typing import Any
 from driver.guardian import GuardianResult
 from driver.rules import RuleResult
 from driver.schemas import DriverEvent, DriverNarrative
+from lang import normalize
 
 INSTRUCTIONS = """
 Bạn là trợ lý chú ý của tài xế trong Car Neuron. Bạn chỉ nhận các chỉ số có cấu trúc do camera trên xe tính ngay trong trình duyệt; không bao giờ có hình ảnh hay video.
@@ -42,6 +43,21 @@ Quy tắc:
 - `recommendations`: chép lại `mandatory_steps` (có thể diễn đạt gọn hơn); chúng chỉ để tham khảo, giao diện luôn hiển thị bước của policy.
 """.strip()
 
+_EN_OUTPUT_RULE = """
+OUTPUT LANGUAGE: ENGLISH. Write `summary` and `recommendations` in natural spoken English. `summary` is read aloud:
+at most 2 short sentences (under 220 characters), addressed directly to the driver, no symbols, brackets or
+abbreviations. These instructions and the input labels are in Vietnamese: do not copy Vietnamese into the answer.
+Every other rule above applies unchanged: the language only changes the wording, never the level or the steps.
+""".strip()
+
+
+def localized(instructions: str, lang: str) -> str:
+    """The instructions for the output language: Vietnamese as written, English with a closing rule."""
+    if normalize(lang) != "en":
+        return instructions
+    return f"{instructions.replace('bằng tiếng Việt', 'bằng tiếng Anh (English)')}\n\n{_EN_OUTPUT_RULE}"
+
+
 # Wording that would tell a driver who must stop to keep going, to head for a garage or rest area, or to
 # open the radiator cap. A negation earlier in the same clause ("Không nên tiếp tục …", "thay vì tiếp tục …",
 # "chưa nên đi tiếp") makes it safe; a contrast word ("nhưng", "tuy nhiên", "sau đó") starts a new clause, so
@@ -55,21 +71,49 @@ _CONTINUE = re.compile(
 _NEGATION = re.compile(r"\b(không|đừng|chưa|thay vì|tránh)\b", re.IGNORECASE)
 _CLAUSE_END = re.compile(r"[.;:!?,]|\b(?:nhưng|tuy nhiên|song|sau đó|rồi)\b", re.IGNORECASE)
 
+# The same test for English: keep driving, drive on to a garage or rest area, open the radiator cap. A negation
+# earlier in the same clause ("Do not continue …", "instead of driving on …") makes it safe; a contrast word
+# ("but", "however", "then") starts a new clause, so "you are not drowsy but should keep driving" is still caught.
+_PLACE_EN = r"(?:garage|workshop|mechanic|service (?:centre|center|station)|rest (?:stop|area)|service area|truck stop|gas station|petrol station)"
+_CONTINUE_EN = re.compile(
+    r"\b(?:continue|proceed|carry on|press on|drive on|keep on)\b"
+    r"|\bkeep\b[^.;,!?]{0,12}\b(?:driving|going|moving)\b"
+    r"|\b(?:drive|go|head|travel|ride|continue|proceed)\b[^.;,!?]{0,20}\b(?:on|ahead|to|toward|towards|for)\b[^.;,!?]{0,25}\b" + _PLACE_EN + r"\b"
+    r"|\b(?:take|bring)\b[^.;,!?]{0,25}\b(?:to|toward|towards)\b[^.;,!?]{0,15}\b" + _PLACE_EN + r"\b"
+    r"|\b(?:open|remove|unscrew)\b[^.;,!?]{0,15}\b(?:radiator|coolant|engine)?\s*cap\b",
+    re.IGNORECASE,
+)
+_NEGATION_EN = re.compile(r"\b(?:do not|don't|dont|never|avoid|instead of|rather than|without|should not|shouldn't|must not|mustn't|cannot|can't|no need to|not)\b", re.IGNORECASE)
+_CLAUSE_END_EN = re.compile(r"[.;:!?,]|\b(?:but|however|though|then|afterwards|after that)\b", re.IGNORECASE)
+
 
 def unsafe_for_stop(text: str) -> bool:
-    for match in _CONTINUE.finditer(text):
-        clause = _CLAUSE_END.split(text[: match.start()])[-1]
-        if not _NEGATION.search(clause):
-            return True
+    """Whether the wording tells a driver who must stop to carry on (Vietnamese or English)."""
+    for pattern, clause_end, negation in ((_CONTINUE, _CLAUSE_END, _NEGATION), (_CONTINUE_EN, _CLAUSE_END_EN, _NEGATION_EN)):
+        for match in pattern.finditer(text):
+            clause = clause_end.split(text[: match.start()])[-1]
+            if not negation.search(clause):
+                return True
     return False
 
 
+_STOP_EN = re.compile(r"\b(?:stop|pull over|park)\b", re.IGNORECASE)
+_ENGINE_OFF_EN = re.compile(
+    r"\b(?:switch|turn|shut)\s+(?:off|down)\s+(?:the\s+|your\s+)?(?:engine|motor)\b"
+    r"|\b(?:switch|turn|shut)\s+(?:the\s+|your\s+)?(?:engine|motor)\s+(?:off|down)\b"
+    r"|\bengine\s+off\b",
+    re.IGNORECASE,
+)
+
+
 def states_the_stop(text: str, action: str) -> bool:
-    """A mandatory stop-the-engine alert must say to stop and to switch the engine off."""
+    """A mandatory stop-the-engine alert must say to stop and to switch the engine off (in either language)."""
     if action != "stop_engine":
         return True
     lowered = text.lower()
-    return "dừng" in lowered and ("tắt máy" in lowered or "tắt động cơ" in lowered)
+    if "dừng" in lowered and ("tắt máy" in lowered or "tắt động cơ" in lowered):
+        return True
+    return bool(_STOP_EN.search(text) and _ENGINE_OFF_EN.search(text))
 
 
 log = logging.getLogger("car_neuron.driver")
@@ -77,7 +121,7 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="driver-agent")
 _agents: dict[str, Any] = {}
 
 
-def _build_agent(kind: str):
+def _build_agent(kind: str, lang: str = "vi"):
     from agents import Agent
 
     import llm_provider
@@ -85,7 +129,7 @@ def _build_agent(kind: str):
     llm_provider.configure()
     return Agent(
         name="Vehicle Guardian" if kind == "guardian" else "Driver Attention",
-        instructions=GUARDIAN_INSTRUCTIONS if kind == "guardian" else INSTRUCTIONS,
+        instructions=localized(GUARDIAN_INSTRUCTIONS if kind == "guardian" else INSTRUCTIONS, lang),
         model=llm_provider.model_name(),
         model_settings=llm_provider.model_settings(),
         output_type=DriverNarrative,
@@ -115,7 +159,9 @@ def _narrate(rule: RuleResult, events: list[DriverEvent], moving: bool, guardian
     from agents import Runner
 
     kind = "guardian" if guardian else "driver"
-    _agents[kind] = _agents.get(kind) or _build_agent(kind)
+    lang = normalize(guardian.lang if guardian else rule.lang)  # the wording the rule texts are already in
+    key = f"{kind}:{lang}"
+    _agents[key] = _agents.get(key) or _build_agent(kind, lang)
     if guardian:
         payload: dict[str, Any] = guardian_payload(guardian)
     else:
@@ -124,7 +170,7 @@ def _narrate(rule: RuleResult, events: list[DriverEvent], moving: bool, guardian
             "rule_assessment": {"severity": rule.severity, "state": rule.state, "summary": rule.summary, "evidence": rule.evidence},
             "recent_events": [event.model_dump(mode="json", by_alias=True) for event in events[-6:]],
         }
-    result = Runner.run_sync(_agents[kind], json.dumps(payload, ensure_ascii=False), max_turns=2)
+    result = Runner.run_sync(_agents[key], json.dumps(payload, ensure_ascii=False), max_turns=2)
     if not isinstance(result.final_output, DriverNarrative):
         raise RuntimeError("driver agent returned an invalid narrative")
     return result.final_output

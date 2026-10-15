@@ -24,7 +24,19 @@ MOVING_KMH = 5.0
 _NEGATED = re.compile(r"\b(không|đừng|chưa|thay vì|tránh)\b", re.IGNORECASE)
 _GARAGE_TRIP = re.compile(r"(đưa xe|lái xe|chạy|đi|đến|tới)[^.;]{0,20}garage|garage[^.;]{0,30}(khi thuận tiện|sớm)", re.IGNORECASE)
 
+_NEGATED_EN = re.compile(r"\b(do not|don't|never|avoid|instead of|rather than|without|should not|shouldn't|must not|no need to)\b", re.IGNORECASE)
+_GARAGE_TRIP_EN = re.compile(
+    r"\b(drive|take|bring|go|head|continue|proceed|travel|ride)\b[^.;]{0,25}\b(garage|workshop|mechanic|service (centre|center|station))\b"
+    r"|\b(garage|workshop|mechanic)\b[^.;]{0,30}\b(when convenient|as soon as possible|soon)\b",
+    re.IGNORECASE,
+)
+
 STOP_FOR_DRIVER = "Dừng tại vị trí an toàn gần nhất để nghỉ; không tiếp tục đến garage ở xa."
+STOP_FOR_DRIVER_EN = "Stop at the nearest safe place to rest; do not continue to a distant garage."
+
+
+def stop_for_driver(lang: str) -> str:
+    return STOP_FOR_DRIVER_EN if lang == "en" else STOP_FOR_DRIVER
 
 
 class DriverRegistry:
@@ -93,8 +105,10 @@ def vehicle_moving(context: dict[str, Any]) -> bool:
 
 
 def suggests_garage_trip(text: str) -> bool:
-    for match in _GARAGE_TRIP.finditer(text):
-        clause = re.split(r"[.;:!?,]", text[: match.start()])[-1] + match.group(0)
-        if not _NEGATED.search(clause):
-            return True
+    """Whether a step sends the driver to a garage (Vietnamese or English; a negation in the same clause makes it safe)."""
+    for pattern, negated in ((_GARAGE_TRIP, _NEGATED), (_GARAGE_TRIP_EN, _NEGATED_EN)):
+        for match in pattern.finditer(text):
+            clause = re.split(r"[.;:!?,]", text[: match.start()])[-1] + match.group(0)
+            if not negated.search(clause):
+                return True
     return False

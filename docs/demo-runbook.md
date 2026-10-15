@@ -9,7 +9,7 @@ còi kêu ngay, agent khuyên **dừng ở chỗ an toàn gần nhất** chứ k
 | Việc | Cách làm |
 |---|---|
 | Cài môi trường | Chạy `./dev.sh` một lần (tạo `backend/.venv`, cài `node_modules`), tắt đi. Dùng cùng phiên bản Python/Node với lần tập. |
-| Khóa dịch vụ | `backend/.env`: `INWORLD_API_KEY` + `LLMMODEL` (hoặc `OPENAI_API_KEY`), `BLAZE_API_TOKEN` + `BLAZE_SPEAKER_ID` (giọng nói), `LOCATIONIQ_ACCESS_TOKEN` (garage gần xe). Không gửi `.env` lên git. |
+| Khóa dịch vụ | `backend/.env`: `INWORLD_API_KEY` + `LLMMODEL` (hoặc `OPENAI_API_KEY`), `BLAZE_API_TOKEN` + `BLAZE_SPEAKER_ID` (giọng tiếng Việt) và `BLAZE_SPEAKER_ID_EN` (giọng tiếng Anh, lấy từ `GET /v1/voices`; không có thì agent tiếng Anh chỉ hiện chữ), `LOCATIONIQ_ACCESS_TOKEN` (garage gần xe). Không gửi `.env` lên git. |
 | Thử LLM thật | `backend/.venv/bin/python backend/scripts/llm_preflight.py` → in nhà cung cấp, model, độ trễ. Lỗi thì sửa `LLMMODEL`/khóa trước khi lên sân khấu. |
 | Chạy | `./demo.sh` (build production lần đầu, chỉ nghe `127.0.0.1`). Không dùng `dev.sh` trên sân khấu: lưu một file `.py` sẽ khởi động lại backend giữa chừng. |
 | Mở trang | Chrome hoặc Edge, bật tăng tốc phần cứng (GPU), `http://localhost:3000/garage?presenter=1&reset=1`. `reset=1` xóa dữ liệu tập (âm tắt, lịch sử, phiên cũ); `presenter=1` ẩn công tắc nguồn dữ liệu. |
@@ -61,6 +61,8 @@ Chưa kiểm tra trên người thật (xem mục 7). Nếu tài xế đeo kính
 | "Chưa chắc chắn" | Ngồi gần hơn, thêm sáng phía trước; không được thì chuyển sang mô phỏng. |
 | Còi không kêu | Xem dòng "Còi và giọng nói bật"; bấm **Thử còi**; kiểm tra loa. Chip "Âm thanh đang tắt": bấm **Bật âm** (cài đặt này được nhớ giữa các lần mở trang). |
 | Không có giọng nói | Chữ, còi và robot vẫn có. Blaze chưa cấu hình hoặc đang chậm; không ảnh hưởng cảnh báo. |
+| Đổi ngôn ngữ agent / giọng nói | Thẻ **Agent trả lời bằng** (đầu ô agent, hàng dưới bên phải): *Theo giao diện* (mặc định, theo nút VI/EN trên cùng), *Tiếng Việt* hoặc *English*. Một lựa chọn cho cả chữ và giọng đọc; cảnh báo tiếp theo sẽ ra bằng ngôn ngữ đó (cảnh báo đang hiện giữ nguyên ngôn ngữ cũ). Cạnh đó có nút bật/tắt giọng nói và thanh âm lượng. Mức cảnh báo và bước bắt buộc không đổi theo ngôn ngữ. |
+| Chọn English mà không nghe giọng | Dòng trạng thái ghi "Giọng tiếng Anh chưa cấu hình trên backend": thiếu `BLAZE_SPEAKER_ID_EN`. Chữ và còi vẫn có; giọng tiếng Việt không đọc câu tiếng Anh. Muốn nghe: thêm `BLAZE_SPEAKER_ID_EN` rồi khởi động lại backend. |
 | Agent chậm hoặc lỗi | Thẻ ghi "Đánh giá theo luật": vẫn hợp lệ (mức và bước vẫn do luật). Bảng agent xe tự dùng luật sau 30 s. |
 | Backend vừa khởi động lại | Tải lại trang. |
 | Camera bị chiếm (Teams, Zoom, tab `/driver`) | Đóng ứng dụng/tab đó rồi bấm Bật camera. |

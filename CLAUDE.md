@@ -46,7 +46,7 @@ Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI chan
 
 ## Rules
 
-- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `EXTERNAL_TOOLS`, `COOLANT_WARN_C`, `BATCH_AGENT_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LOG_LEVEL`.
+- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `BLAZE_SPEAKER_ID_EN`, `BLAZE_TTS_LANGUAGE_EN`, `BLAZE_TTS_MODEL_EN`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `EXTERNAL_TOOLS`, `COOLANT_WARN_C`, `BATCH_AGENT_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LOG_LEVEL`.
 - **Tests never call paid services:** `backend/tests/conftest.py` blanks the Blaze variables and turns external tools off; keep it that way.
 - **Privacy:** camera frames stay in the browser. Only structured attention events reach the backend (the schema forbids extra fields). Never send frames, landmarks or blobs.
 - **Safety:** deterministic rules set severity and the mandatory steps; the LLM only words them and can never lower them or tell a driver who must stop to continue. Alerts and the horn never wait for the LLM or the network.

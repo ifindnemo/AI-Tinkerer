@@ -13,3 +13,4 @@ os.environ["EXTERNAL_TOOLS"] = "off"
 # that are already set, so these empty values win over backend/.env; tests that need voice set fakes.
 os.environ["BLAZE_API_TOKEN"] = ""
 os.environ["BLAZE_SPEAKER_ID"] = ""
+os.environ["BLAZE_SPEAKER_ID_EN"] = ""

@@ -20,6 +20,15 @@ test('one complete batch makes one native backend request and duplicate retries 
  let calls=0;const gateway=new BatchGateway(async(path,value)=>{assert.equal(path,'/api/telemetry/batch');assert.deepEqual(value,batch());calls++;await new Promise(r=>setTimeout(r,10));return Response.json(normal);});
  const [a,b]=await Promise.all([gateway.submit(batch()),gateway.submit(batch())]);assert.equal(a.status,200);assert.deepEqual(a,b);assert.equal(calls,1);
 });
+test('the language the agent should answer in is passed on only when it is English, and nothing else is let through',async()=>{
+ const seen:unknown[]=[];const gateway=new BatchGateway(async(_path,value)=>{seen.push(value);return Response.json(normal);});
+ assert.equal((await gateway.submit({...batch(),lang:'en'})).status,200);
+ assert.equal((await gateway.submit({...batch(),lang:'vi'})).status,200);
+ assert.equal((seen[0] as {lang?:string}).lang,'en');
+ assert.equal('lang' in (seen[1] as object),false,'Vietnamese is the backend default: the wire format is unchanged');
+ assert.equal('lang' in validateBatch({...batch(),lang:'fr'}),false,'an unknown language falls back to the default');
+ assert.equal('lang' in validateBatch(batch()),false);
+});
 test('backend failure is visible and not automatically replayed',async()=>{
  let calls=0;const gateway=new BatchGateway(async()=>{calls++;return new Response('private diagnostic details',{status:502});});
  const result=await gateway.submit(batch());assert.equal(result.status,502);assert.equal(JSON.stringify(result).includes('private diagnostic'),false);await gateway.submit(batch());assert.equal(calls,1);

@@ -1,6 +1,6 @@
 "use client";
 import {useCallback, useEffect, useSyncExternalStore} from "react";
-import {agentModeStore, langStore, localeOf, timeOf, type PreferenceStore} from "@/lib/preferences";
+import {agentLangStore, agentModeStore, langStore, localeOf, timeOf, voiceVolumeStore, type Lang, type PreferenceStore} from "@/lib/preferences";
 
 function usePreference<T extends string>(store: PreferenceStore<T>) {
   const fallback = useCallback(() => store.fallback, [store]);
@@ -17,4 +17,16 @@ export function useLang() {
 
 export function useAgentMode() {
   return [usePreference(agentModeStore), agentModeStore.set] as const;
+}
+
+/** The agent's output language: the setting ("auto" follows the interface) and the language it resolves to. */
+export function useAgentLang() {
+  const setting = usePreference(agentLangStore);
+  const ui = usePreference(langStore);
+  const resolved: Lang = setting === "auto" ? ui : setting;
+  return {setting, resolved, setAgentLang: agentLangStore.set};
+}
+
+export function useVoiceVolume() {
+  return [usePreference(voiceVolumeStore), voiceVolumeStore.set] as const;
 }

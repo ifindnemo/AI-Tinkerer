@@ -3,6 +3,7 @@ import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from "re
 import {ArrowUpRight, RotateCcw, Volume2, VolumeX, X} from "lucide-react";
 import {useLang} from "@/hooks/use-preferences";
 import {useVoiceAlerts} from "@/hooks/use-voice-alerts";
+import {muteStore} from "@/lib/agent/mute";
 import {bubbleOpen, presence, robotState, unread, type RobotState} from "@/lib/agent/presence";
 import {RobotHead} from "@/vendor/robot-heads";
 import styles from "./agent-dock.module.css";
@@ -50,32 +51,6 @@ function token(name: string, fallback: string) {
 }
 
 const DOZE_MS = 90_000; // no input and nothing happening for this long: the robot naps
-const MUTE_KEY = "car-neuron.agent-dock.v1";
-
-/** The dock's own mute, remembered in this browser only (a per-viewer convenience). */
-const muteStore = {
-  listeners: new Set<() => void>(),
-  read(): boolean {
-    try {
-      return JSON.parse(localStorage.getItem(MUTE_KEY) ?? "{}").muted === true;
-    } catch {
-      return false;
-    }
-  },
-  set(muted: boolean) {
-    try {
-      localStorage.setItem(MUTE_KEY, JSON.stringify({muted}));
-    } catch { /* storage may be blocked: the choice still holds for this page */ }
-    muteStore.value = muted;
-    muteStore.listeners.forEach(listener => listener());
-  },
-  value: null as boolean | null,
-  get: () => (muteStore.value ??= muteStore.read()),
-  subscribe(listener: () => void) {
-    muteStore.listeners.add(listener);
-    return () => {muteStore.listeners.delete(listener);};
-  },
-};
 
 /**
  * The agent's face in the corner of the garage and driver pages. It mirrors what the page already
@@ -131,8 +106,8 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
   // Publish the voice state (the garage camera card shows it); a playing clip becomes the bubble.
   const clip = voice.speaking;
   useEffect(() => {
-    presence.set({voice: {enabled: voice.enabled, blocked: voice.blocked, speaking: clip ? {id: clip.id, text: clip.text, severity: clip.severity} : null}});
-  }, [voice.enabled, voice.blocked, clip]);
+    presence.set({voice: {enabled: voice.enabled, blocked: voice.blocked, lang: voice.lang, speaking: clip ? {id: clip.id, text: clip.text, severity: clip.severity} : null}});
+  }, [voice.enabled, voice.blocked, voice.lang, clip]);
 
   // One coarse clock for timeouts, the short smile and the nap.
   useEffect(() => {
@@ -202,7 +177,7 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
     : lang === "en" ? STATE_LABEL[face].en : STATE_LABEL[face].vi;
   const tag = (severity: string | undefined) => severity === "critical" ? t("Nguy hiểm", "Critical") : severity === "warning" ? t("Cảnh báo", "Warning") : "Car Neuron";
   const last = state.bubble?.message ?? null;
-  const voiceNote = voice.enabled === false ? t("Giọng nói chưa cấu hình trên backend", "Voice is not configured on the backend")
+  const voiceNote = voice.enabled === false ? (voice.lang === "en" ? t("Giọng tiếng Anh chưa cấu hình trên backend", "The English voice is not configured on the backend") : t("Giọng nói chưa cấu hình trên backend", "Voice is not configured on the backend"))
     : !soundOn ? t("Đang tắt tiếng", "Muted")
     : voice.blocked ? t("Trình duyệt chặn âm thanh: bấm vào trang một lần", "The browser blocked audio: click the page once")
     : t("Giọng nói bật", "Voice on");

@@ -9,6 +9,7 @@ from typing import Any
 
 from agent.safety import COOLANT_CRITICAL_C, evaluate_hard_safety
 from analysis.detector import thresholds
+from lang import normalize, pick
 from schemas import Severity, VehicleAssessment
 from telemetry.signals import SIGNALS, format_agent_value
 
@@ -115,6 +116,7 @@ def batch_rules_assessment(context: dict[str, Any]) -> VehicleAssessment:
     (AGENT_MODE=rules), slow or failing. The detector of the device path needs a stored trip, so
     this reads the batch directly: the coolant threshold, the hard safety floors and the trend.
     `VehicleAgent.finalize` still applies its floors and ceilings afterwards."""
+    lang = normalize(context.get("lang"))
     records = context.get("records") or []
     warn_c, rise_per_min = thresholds()
     safety = evaluate_hard_safety(context)
@@ -137,40 +139,54 @@ def batch_rules_assessment(context: dict[str, Any]) -> VehicleAssessment:
         rising = len(coolant) >= 3 and last > 95 and slope > rise_per_min
         if last >= COOLANT_CRITICAL_C:
             severity = _raise(severity, Severity.CRITICAL)
-            diagnosis_parts.append(f"nước làm mát đã tới {last:.1f}°C, chạm ngưỡng nguy hiểm {COOLANT_CRITICAL_C:.0f}°C")
-            faults.append("Hệ thống làm mát quá nhiệt")
+            diagnosis_parts.append(pick(lang, f"nước làm mát đã tới {last:.1f}°C, chạm ngưỡng nguy hiểm {COOLANT_CRITICAL_C:.0f}°C",
+                                        f"coolant has reached {last:.1f}°C, the critical threshold of {COOLANT_CRITICAL_C:.0f}°C"))
+            faults.append(pick(lang, "Hệ thống làm mát quá nhiệt", "Cooling system overheating"))
         elif hot:
             severity = _raise(severity, Severity.WARNING)
-            diagnosis_parts.append(f"nước làm mát {last:.1f}°C, vượt ngưỡng cảnh báo {warn_c:.0f}°C")
-            faults.append("Hệ thống làm mát cần kiểm tra")
+            diagnosis_parts.append(pick(lang, f"nước làm mát {last:.1f}°C, vượt ngưỡng cảnh báo {warn_c:.0f}°C",
+                                        f"coolant at {last:.1f}°C, above the warning threshold of {warn_c:.0f}°C"))
+            faults.append(pick(lang, "Hệ thống làm mát cần kiểm tra", "Cooling system needs checking"))
+            ease_load = pick(lang, "Giảm tải động cơ và theo dõi nhiệt độ; nếu tiếp tục tăng, dừng xe ở nơi an toàn và để máy nguội.",
+                             "Ease the engine load and watch the temperature; if it keeps rising, stop somewhere safe and let the engine cool.")
             advice += [
-                "Giảm tải động cơ và theo dõi nhiệt độ; nếu tiếp tục tăng, dừng xe ở nơi an toàn và để máy nguội.",
-                "Kiểm tra mức nước làm mát và quạt két nước khi máy đã nguội.",
+                ease_load,
+                pick(lang, "Kiểm tra mức nước làm mát và quạt két nước khi máy đã nguội.",
+                     "Check the coolant level and the radiator fan once the engine has cooled."),
             ]
         if hot or last >= COOLANT_CRITICAL_C:
-            evidence.append(f"Nước làm mát {min(values):.1f}–{last:.1f}°C trong {len(values)} mẫu gần nhất (ngưỡng cảnh báo {warn_c:.0f}°C).")
+            evidence.append(pick(lang, f"Nước làm mát {min(values):.1f}–{last:.1f}°C trong {len(values)} mẫu gần nhất (ngưỡng cảnh báo {warn_c:.0f}°C).",
+                                 f"Coolant {min(values):.1f}–{last:.1f}°C over the last {len(values)} samples (warning threshold {warn_c:.0f}°C)."))
             fans = [r["fan_percent"] for r in records if r.get("fan_percent") is not None]
             if fans and fans[-1] == 0:
-                evidence.append("Quạt làm mát đang ở 0% trong khi nhiệt độ cao.")
+                evidence.append(pick(lang, "Quạt làm mát đang ở 0% trong khi nhiệt độ cao.",
+                                     "The cooling fan is at 0% while the temperature is high."))
         if rising:
-            evidence.append(f"Nước làm mát tăng {slope:.1f}°C/phút trong {(coolant[-1][0] - coolant[0][0]).total_seconds():.0f} giây.")
+            evidence.append(pick(lang, f"Nước làm mát tăng {slope:.1f}°C/phút trong {(coolant[-1][0] - coolant[0][0]).total_seconds():.0f} giây.",
+                                 f"Coolant rising {slope:.1f}°C/min over {(coolant[-1][0] - coolant[0][0]).total_seconds():.0f} seconds."))
             if severity == Severity.NORMAL:
-                advice.append("Theo dõi nhiệt độ; nếu tiếp tục tăng, dừng xe ở nơi an toàn và để máy nguội.")
+                advice.append(pick(lang, "Theo dõi nhiệt độ; nếu tiếp tục tăng, dừng xe ở nơi an toàn và để máy nguội.",
+                                   "Watch the temperature; if it keeps rising, stop somewhere safe and let the engine cool."))
 
     if severity == Severity.CRITICAL:
         advice = [
-            "Dừng xe ở vị trí an toàn, tắt máy và không mở nắp két nước khi máy còn nóng.",
-            *[item for item in advice if not item.startswith("Giảm tải")],
+            pick(lang, "Dừng xe ở vị trí an toàn, tắt máy và không mở nắp két nước khi máy còn nóng.",
+                 "Stop at a safe place, switch off the engine and do not open the radiator cap while it is hot."),
+            *[item for item in advice if not item.startswith(("Giảm tải", "Ease the engine load"))],
         ]
     if severity != Severity.NORMAL and not diagnosis_parts:
-        diagnosis_parts.append("luật an toàn của hệ thống báo bất thường ở dữ liệu xe")
+        diagnosis_parts.append(pick(lang, "luật an toàn của hệ thống báo bất thường ở dữ liệu xe",
+                                    "the system's safety rule reports an abnormality in the vehicle data"))
     if severity == Severity.NORMAL:
-        diagnosis = f"Theo các luật kiểm tra, {len(records)} mẫu gần nhất chưa vượt ngưỡng cảnh báo."
-        evidence = evidence or ["Không có luật cảnh báo nào kích hoạt."]
-        advice = advice or ["Tiếp tục theo dõi xe trong các gói dữ liệu tiếp theo."]
+        diagnosis = pick(lang, f"Theo các luật kiểm tra, {len(records)} mẫu gần nhất chưa vượt ngưỡng cảnh báo.",
+                         f"According to the rules, the last {len(records)} samples are below the warning thresholds.")
+        evidence = evidence or [pick(lang, "Không có luật cảnh báo nào kích hoạt.", "No warning rule was triggered.")]
+        advice = advice or [pick(lang, "Tiếp tục theo dõi xe trong các gói dữ liệu tiếp theo.",
+                                 "Keep monitoring the car in the next data batches.")]
     else:
-        diagnosis = "Theo các luật kiểm tra: " + "; ".join(diagnosis_parts) + "."
-        advice = advice or ["Đưa xe tới garage để kiểm tra khi thuận tiện."]
+        diagnosis = pick(lang, "Theo các luật kiểm tra: ", "According to the rules: ") + "; ".join(diagnosis_parts) + "."
+        advice = advice or [pick(lang, "Đưa xe tới garage để kiểm tra khi thuận tiện.",
+                                 "Take the car to a garage for a check when convenient.")]
     return VehicleAssessment(
         severity=severity,
         diagnosis=diagnosis[:1500],
@@ -201,6 +217,8 @@ def batch_policy(context: dict[str, Any]) -> dict[str, Any] | None:
     seconds = run * float(context.get("sample_interval_ms") or 1000) / 1000
     return {
         "minimum_severity": "warning",
-        "reasons": [f"Nước làm mát ≥ {warn_c:.0f}°C liên tục {seconds:.0f} giây (hiện {values[-1]:.1f}°C)."],
+        "reasons": [pick(normalize(context.get("lang")),
+                         f"Nước làm mát ≥ {warn_c:.0f}°C liên tục {seconds:.0f} giây (hiện {values[-1]:.1f}°C).",
+                         f"Coolant at or above {warn_c:.0f}°C for {seconds:.0f} seconds (now {values[-1]:.1f}°C).")],
         "ceiling_normal": False,
     }

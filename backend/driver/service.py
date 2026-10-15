@@ -75,13 +75,14 @@ class DriverService:
                 known.setdefault(event.captured_at, event)
             events = sorted(known.values(), key=lambda event: event.captured_at)
             session.events = deque(events, maxlen=MAX_EVENTS)
-            rule = assess(list(session.events), moving)
+            rule = assess(list(session.events), moving, batch.context.lang)
             # Wording for an ongoing closure must not be reused after reopening or parking.
             latest = session.events[-1]
             guardian = self._guardian(session, batch, rule, moving) if vehicle else None
             episode = guardian.episode_key if guardian else rule.episode_key
             severity = guardian.decision.severity if guardian else rule.severity
-            context_key = f"{episode}:{moving}:{latest.state}:{latest.eyes.closed}:{latest.head.direction}"
+            # The language is part of the key: switching it mid-alert asks the agent again, in the new language.
+            context_key = f"{episode}:{moving}:{latest.state}:{latest.eyes.closed}:{latest.head.direction}:{rule.lang}"
             if session.agent_key != context_key:
                 if session.future:
                     session.future.cancel()
@@ -110,11 +111,12 @@ class DriverService:
         if severity in ("warning", "critical"):
             # The garage page plays clips by vehicle id; the camera page by its own session.
             voice_session = batch.context.vehicle_id or batch.session_id
-            self._speak(reply["assessment"], session.future, severity, f"driver:{voice_session}:{episode}:{severity}", voice_session, timeout)
+            self._speak(reply["assessment"], session.future, severity, f"driver:{voice_session}:{episode}:{severity}" + ("" if rule.lang == "vi" else f":{rule.lang}"), voice_session, timeout, rule.lang)
         return reply
 
     @staticmethod
-    def _speak(assessment: dict[str, Any], future: Future | None, severity: str, key: str, voice_session: str, timeout: float) -> None:
+    def _speak(assessment: dict[str, Any], future: Future | None, severity: str, key: str, voice_session: str, timeout: float,
+               lang: str = "vi") -> None:
         """Speak the alert once per episode, in the agent's words when they arrive in time.
 
         With wording already there (or no LLM) it is spoken now. Otherwise the reply of the pending
@@ -127,7 +129,7 @@ class DriverService:
         def say(words: str, worded_by_agent: bool = False) -> None:
             # The agent's sentence already ends with the step; the rule text gets the first step appended.
             announce_alert(words, severity=severity, recommendations=None if worded_by_agent else steps,
-                           dedupe_key=key, session_id=voice_session)
+                           dedupe_key=key, session_id=voice_session, lang=lang)
 
         if assessment["engine"] == "agent" or future is None:
             say(text, assessment["engine"] == "agent")

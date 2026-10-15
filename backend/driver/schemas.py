@@ -9,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from lang import Lang
+
 AttentionState = Literal["attentive", "distracted", "drowsy", "no_face", "uncertain"]
 HeadDirection = Literal["forward", "left", "right", "up", "down"]
 
@@ -83,6 +85,8 @@ class Context(BaseModel):
     vehicle: VehicleSnapshot | None = None
     # `capturedAt` of the event at which the driver confirmed the alert (eyes open, facing forward).
     acknowledged_at: datetime | None = Field(default=None, alias="acknowledgedAt")
+    # The language of the agent's words and of the spoken alert; severity and steps do not depend on it.
+    lang: Lang = "vi"
 
     @field_validator("acknowledged_at")
     @classmethod

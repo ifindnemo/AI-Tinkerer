@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from lang import Lang
+
 
 class Severity(str, Enum):
     NORMAL = "normal"
@@ -72,6 +74,8 @@ class TelemetryBatchInput(BaseModel):
     sample_interval_ms: int = Field(alias="sampleIntervalMs", gt=0, le=3_600_000)
     record_count: int = Field(alias="recordCount", ge=1, le=500)
     records: list[BlackboxTelemetryRecord] = Field(min_length=1, max_length=500)
+    # The language of the agent's words (text and voice); it never changes severity or steps.
+    lang: Lang = "vi"
 
     @model_validator(mode="after")
     def validate_record_count(self):
@@ -88,6 +92,7 @@ class TelemetryBatchInput(BaseModel):
             "source": self.source,
             "sample_interval_ms": self.sample_interval_ms,
             "record_count": len(self.records),
+            "lang": self.lang,
             "current_location": {
                 "latitude": current_location.lat,
                 "longitude": current_location.lon,

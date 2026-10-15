@@ -1,4 +1,4 @@
-import {tr} from "../preferences";
+import {trAgent as tr} from "../preferences";
 import type {DriverAssessment, DriverEvent} from "./types";
 
 /** Browser counterpart of driver/rules.py: immediate alerts survive a lost backend connection. */

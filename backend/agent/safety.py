@@ -1,12 +1,15 @@
 from typing import Any
 
+from lang import normalize, pick
 from schemas import SafetyGuardrailResult, Severity
 
 COOLANT_CRITICAL_C = 120.0  # also the overheat floor of driver/guardian.py
 
 
 def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailResult:
-    """Apply deterministic safety floors before accepting the agent assessment."""
+    """Apply deterministic safety floors before accepting the agent assessment.
+    The wording of the reasons follows `telemetry_context["lang"]`; the floors do not."""
+    lang = normalize(telemetry_context.get("lang"))
     reasons: list[str] = []
     minimum_severity = Severity.NORMAL
 
@@ -16,7 +19,8 @@ def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailRe
 
         if coolant_temp is not None and float(coolant_temp) >= COOLANT_CRITICAL_C:
             reasons.append(
-                "Nhiệt độ nước làm mát đạt ngưỡng nguy hiểm (>= 120°C)."
+                pick(lang, "Nhiệt độ nước làm mát đạt ngưỡng nguy hiểm (>= 120°C).",
+                     "Coolant temperature reached the critical level (>= 120°C).")
             )
             minimum_severity = Severity.CRITICAL
 
@@ -24,7 +28,8 @@ def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailRe
             float(battery_voltage) <= 10.5 or float(battery_voltage) >= 15.5
         ):
             reasons.append(
-                "Điện áp ắc quy nằm ngoài khoảng an toàn 10.5–15.5V."
+                pick(lang, "Điện áp ắc quy nằm ngoài khoảng an toàn 10.5–15.5V.",
+                     "Battery voltage is outside the safe range of 10.5–15.5 V.")
             )
             if minimum_severity != Severity.CRITICAL:
                 minimum_severity = Severity.WARNING
@@ -33,10 +38,10 @@ def evaluate_hard_safety(telemetry_context: dict[str, Any]) -> SafetyGuardrailRe
     stored = (telemetry_context.get("dtc_snapshot") or {}).get("stored") or []
     for code in stored:
         if code == "P0217":
-            reasons.append("ECU báo mã P0217: động cơ quá nhiệt.")
+            reasons.append(pick(lang, "ECU báo mã P0217: động cơ quá nhiệt.", "ECU reports code P0217: engine overheating."))
             minimum_severity = Severity.CRITICAL
         elif code.startswith("P030") and code[-1] in "012345678":
-            reasons.append(f"ECU báo mã {code}: bỏ máy.")
+            reasons.append(pick(lang, f"ECU báo mã {code}: bỏ máy.", f"ECU reports code {code}: engine misfire."))
             if minimum_severity != Severity.CRITICAL:
                 minimum_severity = Severity.WARNING
 

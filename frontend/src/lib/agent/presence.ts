@@ -8,7 +8,8 @@ export type AgentPresence = {phase: AgentPhase; severity: DriverSeverity};
 // `vehicleAlert`: the car itself is still warning (hot engine), whatever the driver does.
 export type CameraPresence = {active: boolean; sound: boolean; severity: DriverSeverity; responded: boolean; vehicleAlert?: boolean};
 export type AgentMessage = {id: string; text: string; severity: DriverSeverity};
-export type VoicePresence = {enabled: boolean | null; blocked: boolean; speaking: AgentMessage | null};
+// `lang`: the language `enabled` is about (each language has its own voice on the backend).
+export type VoicePresence = {enabled: boolean | null; blocked: boolean; speaking: AgentMessage | null; lang?: "vi" | "en"};
 export type Presence = {
   agent: AgentPresence | null;
   camera: CameraPresence | null;

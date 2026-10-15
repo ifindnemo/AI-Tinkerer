@@ -4,6 +4,7 @@ import {AttentionTracker} from "@/lib/driver/attention";
 import {Calibrator} from "@/lib/driver/calibration";
 import {CameraError, startCamera, type CameraErrorCode, type CameraSample, type CameraSession} from "@/lib/driver/camera";
 import {postDriverEvents} from "@/lib/driver/client";
+import {resolveAgentLang} from "@/lib/preferences";
 import {LiveChannel} from "@/lib/driver/live";
 import {simulatedSample, type SimulationScenario} from "@/lib/driver/simulation";
 import {AlertTone} from "@/lib/driver/sound";
@@ -190,6 +191,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
           ...(optionsRef.current.vehicleId ? {vehicleId: optionsRef.current.vehicleId} : {}),
           ...(vehicle ? {vehicle} : {}),
           ...(ackAt ? {acknowledgedAt: ackAt} : {}),
+          lang: resolveAgentLang(), // the agent words (and speaks) the alert in this language
         },
         events,
       }, controller.signal);

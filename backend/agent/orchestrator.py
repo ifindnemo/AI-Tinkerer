@@ -12,7 +12,8 @@ from analysis.rules import batch_policy, batch_rules_assessment
 
 from agent.prompt import build_agent_instructions
 from agent.safety import evaluate_hard_safety
-from driver.registry import STOP_FOR_DRIVER, attach_driver, suggests_garage_trip, vehicle_moving
+from driver.registry import attach_driver, stop_for_driver, suggests_garage_trip, vehicle_moving
+from lang import normalize, number, pick
 from agent.tools.garage_search import search_nearby_garages
 from agent.tools import (
     VEHICLE_READ_TOOLS,
@@ -43,19 +44,28 @@ class VehicleAgent:
     def __init__(self):
         llm_provider.configure()
         self.model = llm_provider.model_name()
-        self.agent = Agent[VehicleToolContext](
-            name="Vehicle Guardian",
-            instructions=build_agent_instructions(),
-            model=self.model,
-            model_settings=llm_provider.model_settings(parallel_tool_calls=True),
-            tools=VEHICLE_READ_TOOLS,
-            output_type=VehicleAssessment,
-        )
+        # One agent per output language: the instructions differ only in the language rule.
+        self._agents: dict[str, Agent[VehicleToolContext]] = {}
+        self.agent = self._agent_for("vi")
+
+    def _agent_for(self, lang: str) -> "Agent[VehicleToolContext]":
+        lang = normalize(lang)
+        if lang not in self._agents:
+            self._agents[lang] = Agent[VehicleToolContext](
+                name="Vehicle Guardian",
+                instructions=build_agent_instructions(lang),
+                model=self.model,
+                model_settings=llm_provider.model_settings(parallel_tool_calls=True),
+                tools=VEHICLE_READ_TOOLS,
+                output_type=VehicleAssessment,
+            )
+        return self._agents[lang]
 
     @staticmethod
     def _enforce_safety_floor(
         assessment: VehicleAssessment,
         safety,
+        lang: str = "vi",
     ) -> VehicleAssessment:
         target_severity = assessment.severity
         if SEVERITY_RANK[target_severity] < SEVERITY_RANK[safety.minimum_severity]:
@@ -64,7 +74,8 @@ class VehicleAgent:
         evidence = list(dict.fromkeys([*safety.reasons, *assessment.evidence]))[:8]
         recommendations = list(assessment.recommendations)
         if target_severity == Severity.CRITICAL:
-            critical_action = "Dừng xe ở vị trí an toàn và không tiếp tục lái."
+            critical_action = pick(lang, "Dừng xe ở vị trí an toàn và không tiếp tục lái.",
+                                   "Stop at a safe place and do not continue driving.")
             recommendations = [
                 critical_action,
                 *[item for item in recommendations if item != critical_action],
@@ -104,7 +115,7 @@ class VehicleAgent:
             "short_term_memory": short_term_memory,
         }
         result = Runner.run_sync(
-            self.agent,
+            self._agent_for(telemetry_context.get("lang", "vi")),
             json.dumps(input_data, ensure_ascii=False),
             context=context,
             max_turns=6,
@@ -122,7 +133,7 @@ class VehicleAgent:
     ) -> tuple[VehicleAssessment, dict[str, Any]]:
         """Deterministic floors and ceilings, then the garage lookup for alerts."""
         safety = evaluate_hard_safety(telemetry_context)
-        assessment = self._enforce_safety_floor(raw, safety)
+        assessment = self._enforce_safety_floor(raw, safety, normalize(telemetry_context.get("lang")))
         assessment = self._enforce_simulated_nominal_profile(
             assessment,
             telemetry_context,
@@ -149,34 +160,48 @@ class VehicleAgent:
         """Camera + blackbox: a driver with low attention in a moving car must stop at the nearest
         safe place, so the severity is at least the driver's and a distant garage is never advised.
         Only a live camera summary counts; an unknown driver never lowers or raises anything."""
+        lang = normalize(telemetry_context.get("lang"))
         driver = telemetry_context.get("driver_attention") or {}
         if driver.get("status") != "live":
             return assessment
         evidence = list(assessment.evidence)
         closed = (driver.get("closed_ms_max_60s") or 0) / 1000
         if driver.get("attention") == "unknown":
-            line = "Camera tài xế: chưa xác định được trạng thái người lái; đánh giá xe dựa trên dữ liệu ECU."
+            line = pick(lang, "Camera tài xế: chưa xác định được trạng thái người lái; đánh giá xe dựa trên dữ liệu ECU.",
+                        "Driver camera: the driver's state could not be determined; the vehicle assessment is based on ECU data.")
             return assessment.model_copy(update={"evidence": list(dict.fromkeys([*evidence, line]))[:8]})
         if driver.get("attention") != "low_attention" or driver.get("severity") == "normal" or not vehicle_moving(telemetry_context):
             return assessment
-        state = "buồn ngủ" if driver.get("state") == "drowsy" else "mất tập trung"
-        line = f"Camera tài xế: dấu hiệu {state}" + (f", nhắm mắt lâu nhất {closed:.1f}".replace(".", ",") + " giây trong 60 giây gần nhất" if closed else "")
-        line += "; đã xác nhận cảnh báo." if driver.get("responded") else "."
+        drowsy = driver.get("state") == "drowsy"
+        state = pick(lang, "buồn ngủ" if drowsy else "mất tập trung", "drowsiness" if drowsy else "distraction")
+        line = pick(lang, f"Camera tài xế: dấu hiệu {state}", f"Driver camera: signs of {state}") + (
+            pick(lang, f", nhắm mắt lâu nhất {number(closed, lang)} giây trong 60 giây gần nhất",
+                 f", longest eye closure {number(closed, lang)} s in the last 60 seconds") if closed else "")
+        line += pick(lang, "; đã xác nhận cảnh báo." if driver.get("responded") else ".",
+                     "; the driver confirmed the alert." if driver.get("responded") else ".")
         floor = Severity.CRITICAL if driver.get("severity") == "critical" else Severity.WARNING
         severity = assessment.severity if SEVERITY_RANK[assessment.severity] >= SEVERITY_RANK[floor] else floor
         # Raised only because of the driver: the camera alert already speaks, so the car agent stays quiet.
         telemetry_context["driver_policy_raised"] = severity != assessment.severity
         steps = [step for step in assessment.recommendations if not suggests_garage_trip(step)]
-        if driver.get("state") == "drowsy":
-            first = [s for s in steps if s.startswith("Dừng xe ở vị trí an toàn")]  # an engine-critical stop stays first
-            steps = [*first, STOP_FOR_DRIVER, *[s for s in steps if s not in first and s != STOP_FOR_DRIVER]]
+        stop = stop_for_driver(lang)
+        if drowsy:
+            engine_stop = pick(lang, "Dừng xe ở vị trí an toàn", "Stop at a safe place")
+            first = [s for s in steps if s.startswith(engine_stop)]  # an engine-critical stop stays first
+            steps = [*first, stop, *[s for s in steps if s not in first and s != stop]]
         else:
-            steps = ["Đưa mắt nhìn lại phía trước ngay; nếu cần thao tác thiết bị, dừng xe an toàn trước.", *steps]
+            steps = [pick(lang, "Đưa mắt nhìn lại phía trước ngay; nếu cần thao tác thiết bị, dừng xe an toàn trước.",
+                          "Look back at the road now; if you need to use a device, stop safely first."), *steps]
         diagnosis = assessment.diagnosis
-        if not any(word in diagnosis.lower() for word in ("người lái", "tài xế")):
+        if not any(word in diagnosis.lower() for word in ("người lái", "tài xế", "driver")):
             # The reason for the alert must be in the headline text, not only in the evidence.
-            lead = (f"Camera cho thấy người lái có dấu hiệu {state} khi xe đang chạy"
-                    + ("; cần dừng nghỉ ở vị trí an toàn gần nhất." if driver.get("state") == "drowsy" else "; cần nhìn lại đường ngay."))
+            lead = pick(
+                lang,
+                f"Camera cho thấy người lái có dấu hiệu {state} khi xe đang chạy"
+                + ("; cần dừng nghỉ ở vị trí an toàn gần nhất." if drowsy else "; cần nhìn lại đường ngay."),
+                f"The camera shows the driver has signs of {state} while the car is moving"
+                + ("; stop and rest at the nearest safe place." if drowsy else "; look back at the road now."),
+            )
             diagnosis = f"{lead} {diagnosis}"[:1500]
         return assessment.model_copy(update={
             "severity": severity,
@@ -195,6 +220,7 @@ class VehicleAgent:
     ) -> VehicleAssessment:
         """Device data: rules set a minimum severity, and with no rule, no DTC and no
         guardrail the model alone cannot raise an alert (ceiling = normal)."""
+        lang = normalize(telemetry_context.get("lang"))
         floor = Severity(policy.get("minimum_severity", "normal"))
         if SEVERITY_RANK[floor] > SEVERITY_RANK[Severity.NORMAL]:
             assessment = cls._enforce_safety_floor(
@@ -204,6 +230,7 @@ class VehicleAgent:
                     minimum_severity=floor,
                     reasons=list(policy.get("reasons", [])),
                 ),
+                lang,
             )
         if (
             policy.get("ceiling_normal")
@@ -213,21 +240,27 @@ class VehicleAgent:
             records = telemetry_context.get("records") or []
             coolant = [r["coolant_temp_c"] for r in records if r.get("coolant_temp_c") is not None]
             evidence = (
-                [f"Nhiệt độ nước làm mát {min(coolant):.1f}–{max(coolant):.1f}°C, chưa chạm ngưỡng cảnh báo."]
+                [pick(lang, f"Nhiệt độ nước làm mát {min(coolant):.1f}–{max(coolant):.1f}°C, chưa chạm ngưỡng cảnh báo.",
+                      f"Coolant temperature {min(coolant):.1f}–{max(coolant):.1f}°C, below the warning threshold.")]
                 if coolant
                 else []
             )
             assessment = VehicleAssessment(
                 severity=Severity.NORMAL,
-                diagnosis=(
+                diagnosis=pick(
+                    lang,
                     f"Trong {len(records)} mẫu gần nhất, các chỉ số chưa vượt ngưỡng cảnh báo của hệ thống "
-                    "và xe không báo mã lỗi."
+                    "và xe không báo mã lỗi.",
+                    f"In the last {len(records)} samples the readings stayed below the system's warning thresholds "
+                    "and the car reported no fault codes.",
                 ),
                 suspected_faults=[],
-                evidence=[*evidence, "Không có mã lỗi DTC và đèn check engine tắt."],
+                evidence=[*evidence, pick(lang, "Không có mã lỗi DTC và đèn check engine tắt.",
+                                          "No DTC fault codes and the check-engine light is off.")],
                 confidence=0.8,
                 missing_data=list(assessment.missing_data),
-                recommendations=["Tiếp tục theo dõi xe trong các chuyến tiếp theo."],
+                recommendations=[pick(lang, "Tiếp tục theo dõi xe trong các chuyến tiếp theo.",
+                                      "Keep monitoring the car on its next trips.")],
             )
         return assessment
 
@@ -238,6 +271,7 @@ class VehicleAgent:
         safety_triggered: bool,
     ) -> VehicleAssessment:
         """Prevent model-only thermal false positives in the stable demo profile."""
+        lang = normalize(telemetry_context.get("lang"))
         records = telemetry_context.get("records") or []
         if (
             telemetry_context.get("source") != "simulated"
@@ -275,26 +309,34 @@ class VehicleAgent:
             return assessment
 
         evidence = [
-            f"Nhiệt độ nước làm mát ổn định {min(coolant):.1f}–{max(coolant):.1f}°C.",
-            f"Điện áp ổn định {min(battery):.1f}–{max(battery):.1f}V.",
-            "Không ghi nhận mã lỗi DTC trong batch hiện tại.",
+            pick(lang, f"Nhiệt độ nước làm mát ổn định {min(coolant):.1f}–{max(coolant):.1f}°C.",
+                 f"Coolant temperature steady at {min(coolant):.1f}–{max(coolant):.1f}°C."),
+            pick(lang, f"Điện áp ổn định {min(battery):.1f}–{max(battery):.1f}V.",
+                 f"Voltage steady at {min(battery):.1f}–{max(battery):.1f} V."),
+            pick(lang, "Không ghi nhận mã lỗi DTC trong batch hiện tại.",
+                 "No DTC fault codes in the current batch."),
         ]
         if oil:
             evidence.insert(
                 1,
-                f"Nhiệt độ dầu ổn định {min(oil):.1f}–{max(oil):.1f}°C.",
+                pick(lang, f"Nhiệt độ dầu ổn định {min(oil):.1f}–{max(oil):.1f}°C.",
+                     f"Oil temperature steady at {min(oil):.1f}–{max(oil):.1f}°C."),
             )
         return VehicleAssessment(
             severity=Severity.NORMAL,
-            diagnosis=(
+            diagnosis=pick(
+                lang,
                 "Các chỉ số trong 15 mẫu mô phỏng ổn định và nằm trong vùng "
-                "vận hành bình thường; chưa ghi nhận dấu hiệu quá nhiệt hoặc lỗi hiện tại."
+                "vận hành bình thường; chưa ghi nhận dấu hiệu quá nhiệt hoặc lỗi hiện tại.",
+                "The readings in the 15 simulated samples are steady and within the normal operating "
+                "range; no sign of overheating or a current fault.",
             ),
             suspected_faults=[],
             evidence=evidence,
             confidence=0.9,
             missing_data=[],
-            recommendations=["Tiếp tục theo dõi xe trong các gói telemetry tiếp theo."],
+            recommendations=[pick(lang, "Tiếp tục theo dõi xe trong các gói telemetry tiếp theo.",
+                                  "Keep monitoring the car in the next telemetry batches.")],
         )
 
     @staticmethod

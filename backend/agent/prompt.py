@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from lang import normalize
+
 
 DIAGNOSTIC_SKILL_PATH = (
     Path(__file__).resolve().parents[2]
@@ -84,8 +86,26 @@ Yêu cầu đầu ra:
 """.strip()
 
 
-def build_agent_instructions() -> str:
-    """Combine orchestration rules with the checked-in diagnostic skill."""
+_VI_LANGUAGE_LINE = "Luôn trả lời nội dung chẩn đoán và khuyến nghị bằng tiếng Việt."
+_EN_LANGUAGE_LINE = (
+    "Luôn trả lời nội dung chẩn đoán và khuyến nghị bằng tiếng Anh (English): "
+    "toàn bộ hướng dẫn và dữ liệu đầu vào là tiếng Việt nhưng câu trả lời phải là tiếng Anh."
+)
+_EN_FINAL_RULE = """
+<output_language>
+OUTPUT LANGUAGE: ENGLISH. Write every free-text field of your answer in clear, natural English:
+diagnosis, suspected_faults, evidence, missing_data and recommendations. The instructions above and
+some input labels are in Vietnamese; do not copy Vietnamese into the answer. Keep numbers, units
+and DTC codes as they are. Tool results (garage names, addresses, maintenance records) may be in
+Vietnamese: keep proper names as they are and describe their content in English. All safety rules
+above apply unchanged: the language only changes the wording, never the severity or the steps.
+</output_language>
+""".strip()
+
+
+def build_agent_instructions(lang: str = "vi") -> str:
+    """Combine orchestration rules with the checked-in diagnostic skill, for the output language."""
+    english = normalize(lang) == "en"
     try:
         skill = DIAGNOSTIC_SKILL_PATH.read_text(encoding="utf-8")
     except OSError as error:
@@ -98,9 +118,12 @@ def build_agent_instructions() -> str:
         if separator:
             skill = body.strip()
 
-    return (
-        f"{SYSTEM_PROMPT}\n\n"
+    system = SYSTEM_PROMPT.replace(_VI_LANGUAGE_LINE, _EN_LANGUAGE_LINE) if english else SYSTEM_PROMPT
+    text = (
+        f"{system}\n\n"
         "<diagnostic_skill>\n"
         f"{skill}\n"
         "</diagnostic_skill>"
     )
+    # The last thing the model reads: a long Vietnamese prompt must not pull the answer back to Vietnamese.
+    return f"{text}\n\n{_EN_FINAL_RULE}" if english else text

@@ -46,9 +46,29 @@ export const agentModeStore = persistentStore<AgentMode>(
   ["backend", "mock", "device"],
 );
 
+// The language the agent writes and speaks in. "auto" follows the interface language; the page can also pin it
+// (for example an English interface with a Vietnamese-speaking driver). It only chooses the wording: levels and
+// mandatory steps are the same in both.
+export type AgentLang = "auto" | Lang;
+export const agentLangStore = persistentStore<AgentLang>("car-neuron.agent-lang", "auto", ["auto", "vi", "en"]);
+/** The language the next agent answer is asked for. */
+export const resolveAgentLang = (): Lang => {
+  const chosen = agentLangStore.get();
+  return chosen === "auto" ? langStore.get() : chosen;
+};
+
+// Volume of the agent's voice, in percent steps (a text value so it fits the same store).
+export const VOICE_VOLUMES = ["20", "40", "60", "80", "100"] as const;
+export type VoiceVolume = (typeof VOICE_VOLUMES)[number];
+export const voiceVolumeStore = persistentStore<VoiceVolume>("car-neuron.voice-volume", "100", VOICE_VOLUMES);
+/** 0.2 … 1, as `HTMLMediaElement.volume` wants it. */
+export const voiceGain = () => Number(voiceVolumeStore.get()) / 100;
+
 // For text generated outside React (mock analysis, incident timeline, adapter errors).
 // The language is fixed when the text is created; stored history keeps its original language.
 export const tr = (vi: string, en: string) => (langStore.get() === "en" ? en : vi);
+// The same for text the agent would write (the on-device rules mirror the backend's wording): in the agent's language.
+export const trAgent = (vi: string, en: string) => (resolveAgentLang() === "en" ? en : vi);
 export const pick = (text: Text, lang: Lang) => text[lang];
 export const localeOf = (lang: Lang) => (lang === "en" ? "en-GB" : "vi-VN");
 export const timeOf = (iso: string, lang: Lang) =>

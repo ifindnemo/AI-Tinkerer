@@ -13,6 +13,11 @@ Blaze batch TTS (https://api.blaze.vn, documented June 2026):
 `announce_alert` is what the vehicle agent and the driver agent call after a
 warning or critical assessment. It returns immediately. Synthesis runs on one
 background worker, and a failure never changes the assessment.
+
+The alert is spoken in the language it is written in ("vi" or "en"). Each language has
+its own Blaze voice: BLAZE_SPEAKER_ID (Vietnamese) and BLAZE_SPEAKER_ID_EN (English, with
+BLAZE_TTS_LANGUAGE_EN, default "en"). A language without a voice is not spoken at all:
+an English sentence is never read by a Vietnamese voice.
 """
 
 import itertools
@@ -32,6 +37,8 @@ from urllib.parse import urljoin
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
+
+from lang import normalize
 
 log = logging.getLogger("car_neuron.voice")
 
@@ -56,6 +63,7 @@ _clips: deque[dict[str, Any]] = deque(maxlen=50)
 _critical_at: dict[str, float] = {}
 _clip_seq = itertools.count(1)
 _missing_logged = False
+_missing_logged_en = False
 _executor: ThreadPoolExecutor | None = None
 
 
@@ -71,13 +79,17 @@ class Speech:
     job_id: str
 
 
-def alert_script(text: str, severity: str, recommendations: Sequence[str] | None = None) -> str:
-    """Short Vietnamese line for the driver. The lead states the severity once."""
+def alert_script(text: str, severity: str, recommendations: Sequence[str] | None = None, lang: str = "vi") -> str:
+    """Short line for the driver, in `lang`. The lead states the severity once."""
     body = _first_sentences(" ".join(text.split()).strip(), _SPOKEN_CHARS)
     if not body:
         raise ValueError("alert text is empty")
-    lead = "Cảnh báo nguy hiểm." if severity == "critical" else "Cảnh báo."
-    spoken = body if body.lower().startswith("cảnh báo") else f"{lead} {body}"
+    if normalize(lang) == "en":
+        lead = "Critical warning." if severity == "critical" else "Warning."
+        spoken = body if body.lower().startswith(("warning", "critical", "alert", "caution")) else f"{lead} {body}"
+    else:
+        lead = "Cảnh báo nguy hiểm." if severity == "critical" else "Cảnh báo."
+        spoken = body if body.lower().startswith("cảnh báo") else f"{lead} {body}"
     if recommendations:
         step = " ".join(str(recommendations[0]).split()).strip().rstrip(".")
         if step and step.lower() not in spoken.lower():
@@ -106,24 +118,27 @@ def announce_alert(
     recommendations: Sequence[str] | None = None,
     dedupe_key: str | None = None,
     session_id: str | None = None,
+    lang: str = "vi",
 ) -> None:
-    """Queue TTS for a warning or critical alert. No-op for any other severity.
+    """Queue TTS for a warning or critical alert. No-op for any other severity, and for a language
+    that has no voice configured.
 
     Never raises: a voice failure must not change the assessment that triggered it.
     """
     try:
-        if severity not in ALERT_SEVERITIES or not _configured():
+        lang = normalize(lang)
+        if severity not in ALERT_SEVERITIES or not _configured(lang):
             return
         if severity == "warning" and session_id and _recently_critical(session_id):
             return
-        script = alert_script(text, severity, recommendations)
+        script = alert_script(text, severity, recommendations, lang)
         key = dedupe_key or f"{severity}:{script}"
         if not _claim(key):
             return
         if severity == "critical" and session_id:
             with _lock:
                 _critical_at[session_id] = time.monotonic()
-        _pool().submit(_speak, script, severity, key, session_id)
+        _pool().submit(_speak, script, severity, key, session_id, lang)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
 
@@ -248,12 +263,12 @@ class BlazeTTS:
         return self._client.get(absolute, headers=headers)
 
 
-def _speak(script: str, severity: str, key: str, session_id: str | None = None) -> None:
+def _speak(script: str, severity: str, key: str, session_id: str | None = None, lang: str = "vi") -> None:
     try:
-        with _client_from_env() as client:
+        with _client_from_env(lang) as client:
             speech = client.synthesize(script)
         path = _write(speech, severity)
-        _register(session_id, severity, script, path, speech.content_type)
+        _register(session_id, severity, script, path, speech.content_type, lang)
         log.info("spoke %s alert (%s bytes) %s", severity, len(speech.audio), path)
     except Exception:
         log.warning("Blaze TTS failed for a %s alert", severity, exc_info=True)
@@ -269,12 +284,14 @@ def _speak(script: str, severity: str, key: str, session_id: str | None = None) 
         log.warning("could not store the spoken turn", exc_info=True)
 
 
-def _client_from_env() -> BlazeTTS:
+def _client_from_env(lang: str = "vi") -> BlazeTTS:
+    english = normalize(lang) == "en"
+    model = os.getenv("BLAZE_TTS_MODEL", "v2.0_flash").strip() or "v2.0_flash"
     return BlazeTTS(
         token=os.environ["BLAZE_API_TOKEN"].strip(),
-        speaker_id=os.environ["BLAZE_SPEAKER_ID"].strip(),
-        model=os.getenv("BLAZE_TTS_MODEL", "v2.0_flash").strip() or "v2.0_flash",
-        language=os.getenv("BLAZE_TTS_LANGUAGE", "vi").strip() or "vi",
+        speaker_id=os.environ["BLAZE_SPEAKER_ID_EN" if english else "BLAZE_SPEAKER_ID"].strip(),
+        model=(os.getenv("BLAZE_TTS_MODEL_EN", "").strip() or model) if english else model,
+        language=(os.getenv("BLAZE_TTS_LANGUAGE_EN", "en").strip() or "en") if english else (os.getenv("BLAZE_TTS_LANGUAGE", "vi").strip() or "vi"),
         audio_format=os.getenv("BLAZE_AUDIO_FORMAT", "mp3").strip() or "mp3",
         base_url=os.getenv("BLAZE_BASE_URL", BLAZE_BASE_URL).strip() or BLAZE_BASE_URL,
         timeout=float(os.getenv("BLAZE_TTS_TIMEOUT_SECONDS", "20")),
@@ -291,13 +308,21 @@ def _write(speech: Speech, severity: str) -> Path:
     return path
 
 
-def _configured() -> bool:
-    global _missing_logged
-    if os.getenv("BLAZE_API_TOKEN", "").strip() and os.getenv("BLAZE_SPEAKER_ID", "").strip():
+def _speaker_variable(lang: str) -> str:
+    return "BLAZE_SPEAKER_ID_EN" if normalize(lang) == "en" else "BLAZE_SPEAKER_ID"
+
+
+def _configured(lang: str = "vi") -> bool:
+    global _missing_logged, _missing_logged_en
+    if enabled(lang):
         return True
-    if not _missing_logged:
-        log.info("Blaze TTS is off until BLAZE_API_TOKEN and BLAZE_SPEAKER_ID are set")
-        _missing_logged = True
+    english = normalize(lang) == "en"
+    if not (_missing_logged_en if english else _missing_logged):
+        log.info("Blaze TTS (%s) is off until BLAZE_API_TOKEN and %s are set", "en" if english else "vi", _speaker_variable(lang))
+        if english:
+            _missing_logged_en = True
+        else:
+            _missing_logged = True
     return False
 
 
@@ -411,14 +436,16 @@ def _extension(content_type: str) -> str:
     return "bin"
 
 
-def enabled() -> bool:
-    return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and os.getenv("BLAZE_SPEAKER_ID", "").strip())
+def enabled(lang: str = "vi") -> bool:
+    """Whether alerts can be spoken in `lang` (a token and that language's voice are set)."""
+    return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and os.getenv(_speaker_variable(lang), "").strip())
 
 
-def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str) -> dict[str, Any]:
+def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str, lang: str = "vi") -> dict[str, Any]:
     clip = {
         "id": f"clip_{next(_clip_seq)}",
         "session": session_id or "",
+        "lang": normalize(lang),
         "severity": severity,
         "text": text,
         "content_type": content_type,
@@ -431,9 +458,14 @@ def _register(session_id: str | None, severity: str, text: str, path: Path, cont
     return clip
 
 
-def clips_for(session_id: str, after: int = 0) -> list[dict[str, Any]]:
+def clips_for(session_id: str, after: int = 0, lang: str | None = None) -> list[dict[str, Any]]:
+    """Clips of a session newer than `after`; with `lang`, only those spoken in that language."""
     with _lock:
-        return [{k: v for k, v in c.items() if not k.startswith("_")} for c in _clips if c["session"] == session_id and c["seq"] > after]
+        return [
+            {k: v for k, v in c.items() if not k.startswith("_")}
+            for c in _clips
+            if c["session"] == session_id and c["seq"] > after and (lang is None or c.get("lang", "vi") == lang)
+        ]
 
 
 router = APIRouter()
@@ -441,11 +473,12 @@ _SESSION = r"^[\w-]{1,64}$"
 
 
 @router.get("/voice/clips", tags=["voice"])
-def list_clips(session: str = Query(pattern=_SESSION), after: int = Query(0, ge=0)) -> dict[str, Any]:
-    """Spoken alerts for a session (a vehicle id on the garage page), newer than `after`."""
+def list_clips(session: str = Query(pattern=_SESSION), after: int = Query(0, ge=0), lang: str = Query("vi", pattern=r"^(vi|en)$")) -> dict[str, Any]:
+    """Spoken alerts for a session (a vehicle id on the garage page), newer than `after`, in `lang`.
+    `enabled` says whether that language has a voice: the page tells the person when it does not."""
     with _lock:
         latest = max((c["seq"] for c in _clips), default=0)
-    return {"enabled": enabled(), "latest": latest, "clips": clips_for(session, after)}
+    return {"enabled": enabled(lang), "lang": lang, "latest": latest, "clips": clips_for(session, after, lang)}
 
 
 @router.get("/voice/clips/{clip_id}/audio", tags=["voice"])

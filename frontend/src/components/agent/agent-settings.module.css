@@ -1,0 +1,76 @@
+/* The agent's language and voice: a small card that sits next to the agent's words. */
+.settings {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.segments {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-2, color-mix(in srgb, var(--border) 45%, transparent));
+}
+.segment {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--motion-fast, 120ms) ease, color var(--motion-fast, 120ms) ease;
+}
+.segment[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(16 23 19 / 14%);
+}
+.segment:focus-visible, .toggle:focus-visible, .volume input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toggle[aria-pressed="false"] { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+.volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.volume input { width: 96px; accent-color: var(--accent); }
+.volume input:disabled { opacity: 0.4; }
+.volume output { min-width: 3.2ch; color: var(--text); font-variant-numeric: tabular-nums; }
+.status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }

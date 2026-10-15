@@ -1,6 +1,6 @@
 import {BlackboxBatchStream} from '../blackbox/batch-stream';
 import {BLACKBOX_BATCH_SIZE,BLACKBOX_EARLY_BATCH_SIZE,initialTransfer,type BlackboxBatch} from '../blackbox/types';
-import {tr} from '../preferences';
+import {resolveAgentLang,tr} from '../preferences';
 import {initialAgentCycle} from '../periodic-agent/mock';
 import {getMockTelemetry,type Analysis,type ScenarioId} from '../telemetry';
 import {liveSample} from '../live-telemetry';
@@ -82,7 +82,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   this.busy=true;const generation=this.generation;const controller=new AbortController();this.request=controller;
   this.update({phase:'sending',error:''});
   try{
-   const reply=await vehicleApi<BatchReply>('telemetry',{body:batch,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(125000)])});
+   const reply=await vehicleApi<BatchReply>('telemetry',{body:{...batch,lang:resolveAgentLang()},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(125000)])});
    if(!this.running||controller.signal.aborted||generation!==this.generation)return;
    if(reply.vehicleId!==this.vehicle.id||reply.batchId!==batch.batchId||reply.accepted!==batch.records.length||!isAgentReply(reply.latest,this.vehicle.id,batch.batchId,batch.records.length)||(reply.incident&&!isIncident(reply.incident,this.vehicle.id)))throw new Error(tr('Phản hồi không khớp gói dữ liệu của xe.','The reply does not match this vehicle\'s data batch.'));
    const incident=reply.incident??this.state.backend!.incident;

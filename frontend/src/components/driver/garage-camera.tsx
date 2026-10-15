@@ -90,7 +90,7 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
     : reply || view.sentEvents > 0 ? t("Đã gửi cảnh báo cho agent", "Alert sent to the agent") : t("Theo dõi trên thiết bị · chỉ gửi khi có cảnh báo", "Watching on this device · posts only on alerts");
   const voiceLine = !sound ? t("Giọng nói tắt (đang tắt âm)", "Voice off (muted)")
     : hornMuted ? t("Còi và giọng nói đã tắt cho cảnh báo này", "Horn and voice muted for this alert")
-    : voice.enabled === false ? t("Giọng nói chưa cấu hình trên backend (Blaze)", "Voice not configured on the backend (Blaze)")
+    : voice.enabled === false ? (voice.lang === "en" ? t("Giọng tiếng Anh chưa cấu hình trên backend (BLAZE_SPEAKER_ID_EN): chỉ hiện chữ", "English voice not configured on the backend (BLAZE_SPEAKER_ID_EN): text only") : t("Giọng nói chưa cấu hình trên backend (Blaze)", "Voice not configured on the backend (Blaze)"))
     : voice.blocked ? t("Trình duyệt chặn phát âm thanh: bấm vào trang một lần", "The browser blocked audio: click the page once")
     : voice.speaking ? t("Agent đang đọc cảnh báo", "The agent is speaking the alert")
     : voice.enabled ? t("Giọng nói sẵn sàng · agent đọc khi có cảnh báo", "Voice ready · the agent speaks on alerts") : "";

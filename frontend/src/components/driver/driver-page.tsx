@@ -15,6 +15,7 @@ import {SEVERITY_LABEL, STATE_HINT, STATE_LABEL} from "./labels";
 import DebugLine from "./debug-line";
 import {EcuPicker, GuardianBoard} from "./guardian-board";
 import {AgentCard} from "./agent-card";
+import AgentSettings from "../agent/agent-settings";
 import {canConfirm} from "@/lib/guardian/policy";
 import Lens from "./lens";
 import styles from "./driver.module.css";
@@ -183,6 +184,7 @@ export default function DriverPage() {
             </div>
           </div>
           <EcuPicker value={store.settings.ecu} onChange={setEcu} />
+          <AgentSettings />
           <details className={styles.setupGuide}><summary>{t("Đặt camera thế nào cho tốt?", "How should I position the camera?")}</summary><ol><li>{t("Đặt camera ngang tầm mắt, khuôn mặt nằm trọn trong khung.", "Place the camera at eye level with your whole face in view.")}</li><li>{t("Ánh sáng chiếu từ phía trước; tránh ngược sáng.", "Light your face from the front; avoid backlighting.")}</li><li>{t("Giữ mắt mở và nhìn thẳng để hiệu chỉnh. Có thể hiệu chỉnh lại bất cứ lúc nào.", "Keep your eyes open and face forward to calibrate. Recalibrate whenever needed.")}</li></ol></details>
           </div>
 

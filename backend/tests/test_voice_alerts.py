@@ -23,11 +23,11 @@ def spoken(monkeypatch, tmp_path):
     monkeypatch.setattr(voice, "_critical_at", {})
     lines = []
 
-    def fake_speak(script, severity, key, session_id=None):
+    def fake_speak(script, severity, key, session_id=None, lang="vi"):
         lines.append((script, session_id))
         path = tmp_path / f"{len(lines)}.mp3"
         path.write_bytes(b"ID3fake")
-        voice._register(session_id, severity, script, path, "audio/mpeg")
+        voice._register(session_id, severity, script, path, "audio/mpeg", lang)
 
     class Inline:
         def submit(self, fn, *args):
