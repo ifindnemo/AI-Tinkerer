@@ -3,7 +3,7 @@ import {useEffect, useState} from "react";
 import {useAgentLang, useVoiceVolume} from "@/hooks/use-preferences";
 import type {Lang} from "@/lib/preferences";
 
-export type VoiceClip = {id: string; seq: number; severity: "warning" | "critical"; text: string; created_at: string};
+export type VoiceClip = {id: string; seq: number; severity: "warning" | "critical" | "normal"; text: string; created_at: string};
 export type VoiceState = {
   /** The backend has a Blaze voice for `enabledLang` (null until the first answer for the current language). */
   enabled: boolean | null;

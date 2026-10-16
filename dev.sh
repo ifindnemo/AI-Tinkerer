@@ -66,6 +66,7 @@ trap 'trap - EXIT INT TERM; kill 0 2>/dev/null' EXIT INT TERM
 if (( ! MOCK )); then
   say "Starting backend on http://127.0.0.1:$BACKEND_PORT"
   (cd "$ROOT/backend" && exec "$VENV/bin/python" -m uvicorn main:app --reload --timeout-graceful-shutdown 3 --port "$BACKEND_PORT") &
+  backend_pid=$!
   for _ in $(seq 1 30); do
     curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1 && break
     kill -0 $! 2>/dev/null || die "Backend exited during startup. See the log above."
@@ -79,6 +80,10 @@ say "Starting frontend on http://localhost:$FRONTEND_PORT (default agent: $MODE;
 say "Pages: / (landing) · /garage (dashboard) · /film (intro film)"
 (cd "$ROOT/frontend" && BACKEND_URL="http://127.0.0.1:$BACKEND_PORT" NEXT_PUBLIC_AGENT_MODE="$MODE" \
   exec node_modules/.bin/next dev --hostname 0.0.0.0 --port "$FRONTEND_PORT") &
+frontend_pid=$!
 
-wait -n
+# wait -n needs bash 4.3. macOS ships bash 3.2, where that option exits the script and the trap stops both servers.
+while kill -0 "$frontend_pid" 2>/dev/null && { [[ -z ${backend_pid:-} ]] || kill -0 "$backend_pid" 2>/dev/null; }; do
+  sleep 1
+done
 warn "A service stopped; shutting down the other one."

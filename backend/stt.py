@@ -61,8 +61,12 @@ class BlazeSttError(RuntimeError):
     """Blaze rejected the audio or the transcription job failed."""
 
 
-def transcribe(audio: bytes, *, filename: str, content_type: str) -> str:
-    """Send one audio clip to Blaze and return the transcript. Empty when the clip has no speech."""
+def transcribe(audio: bytes, *, filename: str, content_type: str, language: str | None = None) -> str:
+    """Send one audio clip to Blaze and return the transcript. Empty when the clip has no speech.
+
+    `language` is "vi" or "en" for one clip. When it is omitted, the Blaze language
+    variables decide, which is what the alert path uses.
+    """
     token = os.getenv("BLAZE_API_TOKEN", "").strip()
     if not token:
         raise BlazeSttError("BLAZE_API_TOKEN is not configured")
@@ -71,11 +75,26 @@ def transcribe(audio: bytes, *, filename: str, content_type: str) -> str:
     with BlazeSTT(
         token=token,
         model=os.getenv("BLAZE_STT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
-        language=_language(),
+        language=_language(language),
         base_url=os.getenv("BLAZE_BASE_URL", BLAZE_BASE_URL).strip() or BLAZE_BASE_URL,
         timeout=float(os.getenv("BLAZE_STT_TIMEOUT_SECONDS", "30")),
     ) as client:
         return client.transcribe(audio, filename=filename, content_type=content_type)
+
+
+def read_clip(file: UploadFile) -> tuple[bytes, str, str]:
+    """Read one uploaded clip. Raises HTTPException when the upload cannot be transcribed."""
+    content_type = (file.content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    if content_type not in _AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail="Upload an audio file.")
+    audio = file.file.read(MAX_AUDIO_BYTES + 1)
+    if not audio:
+        raise HTTPException(status_code=400, detail="Audio file is empty.")
+    if len(audio) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio file is too large.")
+    if not os.getenv("BLAZE_API_TOKEN", "").strip():
+        raise HTTPException(status_code=503, detail="Speech recognition is not configured.")
+    return audio, file.filename or "audio.wav", content_type
 
 
 def append_turn(session_id: str, *, role: str, text: str, source: str, severity: str | None = None) -> dict[str, Any]:
@@ -207,18 +226,9 @@ def listen(
     session_id: str = Form("default", alias="sessionId"),
 ) -> dict[str, Any]:
     """Transcribe one uploaded clip and append the driver turn to the session JSON file."""
-    content_type = (file.content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
-    if content_type not in _AUDIO_TYPES:
-        raise HTTPException(status_code=415, detail="Upload an audio file.")
-    audio = file.file.read(MAX_AUDIO_BYTES + 1)
-    if not audio:
-        raise HTTPException(status_code=400, detail="Audio file is empty.")
-    if len(audio) > MAX_AUDIO_BYTES:
-        raise HTTPException(status_code=413, detail="Audio file is too large.")
-    if not os.getenv("BLAZE_API_TOKEN", "").strip():
-        raise HTTPException(status_code=503, detail="Speech recognition is not configured.")
+    audio, filename, content_type = read_clip(file)
     try:
-        text = transcribe(audio, filename=file.filename or "audio.wav", content_type=content_type)
+        text = transcribe(audio, filename=filename, content_type=content_type)
         turn = append_turn(session_id, role="driver", text=text, source="stt") if text else None
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Session id is not valid.") from error
@@ -236,7 +246,12 @@ def read_conversation(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Session id is not valid.") from error
 
 
-def _language() -> str:
+def _language(requested: str | None = None) -> str:
+    """Blaze language code for one clip: an explicit vi/en, otherwise the env default."""
+    if requested:
+        from lang import normalize
+
+        return "en" if normalize(requested) == "en" else "vi"
     return os.getenv("BLAZE_STT_LANGUAGE", "").strip() or os.getenv("BLAZE_TTS_LANGUAGE", "vi").strip() or "vi"
 
 

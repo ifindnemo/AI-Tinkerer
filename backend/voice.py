@@ -263,7 +263,21 @@ class BlazeTTS:
         return self._client.get(absolute, headers=headers)
 
 
-def _speak(script: str, severity: str, key: str, session_id: str | None = None, lang: str = "vi") -> None:
+def speak_line(text: str, *, session_id: str, lang: str = "vi") -> bool:
+    """Queue one conversational line in the driver's language. The caller stores the script.
+
+    Returns whether a clip was queued. A missing voice is text-only, same as alerts.
+    """
+    lang = normalize(lang)
+    script = " ".join(text.split()).strip()
+    if not script or not _configured(lang):
+        return False
+    # A fresh key every time: the driver may ask the same thing twice and should hear it twice.
+    _pool().submit(_speak, script[:_MAX_CHARS], "normal", f"talk:{session_id}:{time.monotonic_ns()}", session_id, lang, False)
+    return True
+
+
+def _speak(script: str, severity: str, key: str, session_id: str | None = None, lang: str = "vi", remember: bool = True) -> None:
     try:
         with _client_from_env(lang) as client:
             speech = client.synthesize(script)
@@ -274,7 +288,7 @@ def _speak(script: str, severity: str, key: str, session_id: str | None = None, 
         log.warning("Blaze TTS failed for a %s alert", severity, exc_info=True)
         _release(key)
         return
-    if not session_id:
+    if not remember or not session_id:
         return
     try:
         from stt import append_turn

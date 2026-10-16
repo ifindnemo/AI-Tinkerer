@@ -24,6 +24,30 @@
 }
 
 
+/* Talk control sits on the robot's lower-left, inside its box, so it stays off the horn and confirm buttons. */
+.mic {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(16 23 19 / 12%);
+}
+.mic[data-phase="armed"] { border-color: var(--accent); color: var(--accent-strong); }
+.mic[data-phase="recording"] { border-color: var(--danger-line); color: var(--danger); background: var(--danger-soft); }
+.mic[data-phase="sending"] { opacity: 0.6; cursor: progress; }
+.mic:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mic:disabled { cursor: progress; }
+
 .robotWrap { position: relative; }
 .robot {
   display: grid;
@@ -227,6 +251,6 @@
   .bubble, .bubble p, .panel, .badge { animation: none; }
   .panelStatus::before { animation: none !important; }
   .bubbleLive::before { animation: none; }
-  .robot, .status { transition: none; }
+  .robot, .status, .mic { transition: none; }
 }
 @media print { .dock { display: none; } }

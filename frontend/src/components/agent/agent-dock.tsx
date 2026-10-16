@@ -1,6 +1,7 @@
 "use client";
 import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from "react";
-import {ArrowUpRight, RotateCcw, Volume2, VolumeX, X} from "lucide-react";
+import {ArrowUpRight, Mic, RotateCcw, Volume2, VolumeX, X} from "lucide-react";
+import {useAgentTalk} from "@/hooks/use-agent-talk";
 import {useLang} from "@/hooks/use-preferences";
 import {useVoiceAlerts} from "@/hooks/use-voice-alerts";
 import {muteStore} from "@/lib/agent/mute";
@@ -65,6 +66,7 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
   const muted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
   const soundOn = (state.camera?.sound ?? true) && !muted;
   const voice = useVoiceAlerts(session, soundOn);
+  const talk = useAgentTalk(session, voice.speaking !== null);
   const [now, setNow] = useState(0);
   const [lastActivity, setLastActivity] = useState(0);
   const [panel, setPanel] = useState(false);
@@ -167,13 +169,16 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
 
   const awake = robotState(state, now < state.happyUntil);
   const visible = !panel && bubbleOpen(state, now) ? state.bubble!.message : null;
-  const napping = awake === "idle" && !visible && !panel && lastActivity > 0 && now - lastActivity > DOZE_MS;
-  const face: RobotState = napping ? "sleeping" : awake;
+  const napping = awake === "idle" && !visible && !panel && lastActivity > 0 && now - lastActivity > DOZE_MS && talk.phase !== "recording" && talk.phase !== "sending";
+  const face: RobotState = talk.phase === "recording" ? "listening" : talk.phase === "sending" ? "thinking" : napping ? "sleeping" : awake;
   const badge = !panel && unread(state, now);
   // A smile after the driver's confirmation must not read "all good" while the car is still warning.
   const stillWarning = face === "happy" && !!state.camera?.responded && !!state.camera.vehicleAlert;
-  const label = napping ? t("Đang chợp mắt · di chuột để đánh thức", "Napping · move the pointer to wake it")
+  const label = talk.phase === "recording" ? t("Đang nghe bạn nói · bấm lại để gửi", "Listening · tap again to send")
+    : talk.phase === "sending" ? t("Đang trả lời", "Answering")
+    : napping ? t("Đang chợp mắt · di chuột để đánh thức", "Napping · move the pointer to wake it")
     : stillWarning ? t("Đã ghi nhận phản hồi · xe vẫn đang cảnh báo", "Response recorded · the car is still warning")
+    : talk.phase === "armed" && (face === "idle" || face === "sleeping") ? t("Nói hey neuron để hỏi", "Say hey neuron to ask")
     : lang === "en" ? STATE_LABEL[face].en : STATE_LABEL[face].vi;
   const tag = (severity: string | undefined) => severity === "critical" ? t("Nguy hiểm", "Critical") : severity === "warning" ? t("Cảnh báo", "Warning") : "Car Neuron";
   const last = state.bubble?.message ?? null;
@@ -209,11 +214,12 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
             <p>{last ? last.text : t("Agent sẽ nói và hiện ở đây khi xe hoặc tài xế cần chú ý.", "The agent speaks and shows here when the car or the driver needs attention.")}</p>
           </div>
           <div className={styles.panelActions}>
+            <button type="button" className={styles.action} onClick={talk.toggle} disabled={talk.phase === "sending"} aria-pressed={talk.phase === "recording"} data-testid="agent-talk-panel" data-talk-manual=""><Mic size={15} />{talk.phase === "recording" ? t("Gửi", "Send") : t("Nói", "Talk")}</button>
             <button type="button" className={styles.action} onClick={voice.replay} disabled={!voice.last || !soundOn} data-testid="agent-replay"><RotateCcw size={15} />{t("Nghe lại", "Replay")}</button>
             <button type="button" className={styles.action} onClick={() => muteStore.set(!muted)} aria-pressed={muted} data-testid="agent-mute">{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}{muted ? t("Bật tiếng", "Unmute") : t("Tắt tiếng", "Mute")}</button>
             <button type="button" className={`${styles.action} ${styles.primaryAction}`} onClick={openDetails}>{t("Xem chi tiết", "Details")} <ArrowUpRight size={15} /></button>
           </div>
-          <p className={styles.panelFoot}>{voiceNote}</p>
+          <p className={styles.panelFoot}>{t("Nói “hey neuron”, dừng một nhịp, rồi hỏi. ", "Say “hey neuron”, pause, then ask. ")}{voiceNote}</p>
         </div>
       )}
       {visible && (
@@ -228,6 +234,19 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
         </div>
       )}
       <div className={styles.robotWrap}>
+        <button
+          type="button"
+          className={styles.mic}
+          onClick={talk.toggle}
+          disabled={talk.phase === "sending"}
+          aria-pressed={talk.phase === "recording"}
+          aria-label={talk.phase === "recording" ? t("Gửi câu nói", "Send what you said") : talk.phase === "armed" ? t("Đang chờ hey neuron. Bấm để nói ngay.", "Waiting for hey neuron. Tap to talk now.") : t("Nói với agent", "Talk to the agent")}
+          data-phase={talk.phase}
+          data-testid="agent-talk"
+          data-talk-manual=""
+        >
+          <Mic size={14} />
+        </button>
         <button
           ref={robotRef}
           type="button"
