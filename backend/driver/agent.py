@@ -7,6 +7,7 @@ import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
+from agent.realism import for_model
 from driver.guardian import GuardianResult
 from driver.rules import RuleResult
 from driver.schemas import DriverEvent, DriverNarrative
@@ -27,7 +28,7 @@ Quy tắc:
 """.strip()
 
 GUARDIAN_INSTRUCTIONS = """
-Bạn là Vehicle Guardian trong Car Neuron. Bạn kết hợp ba nguồn có cấu trúc: dữ liệu ECU của xe (`ecu`; `simulated` cho biết có phải dữ liệu mô phỏng), trạng thái người lái do camera tính trong trình duyệt (`driver`, không bao giờ có hình ảnh) và lịch sử bảo trì (`maintenance`, dữ liệu mô phỏng).
+Bạn là Vehicle Guardian trong Car Neuron. Bạn kết hợp ba nguồn có cấu trúc: dữ liệu ECU của xe (`ecu`), trạng thái người lái do camera tính trong trình duyệt (`driver`, không bao giờ có hình ảnh) và lịch sử bảo trì của xe (`maintenance`).
 
 `policy` là quyết định của safety policy cố định: mức độ, hành động bắt buộc (`action`, `mandatory_steps`) và việc có phải dừng xe hay không (`must_stop`). Bạn không được thay đổi quyết định đó.
 
@@ -39,7 +40,7 @@ Quy tắc:
 - Lịch sử bảo trì chỉ làm một giả thuyết hợp lý hơn hoặc kém hơn; không khẳng định nguyên nhân hỏng hóc.
 - Nếu `driver.attention` là unknown, nói rõ camera chưa xác định được người lái; cảnh báo của xe vẫn giữ.
 - Nếu `driver.responded` là true, nói đã ghi nhận phản hồi nhưng cảnh báo kỹ thuật vẫn được theo dõi.
-- Không nói "dữ liệu mô phỏng" trong câu đọc: giao diện đã ghi nhãn nguồn dữ liệu. Không chẩn đoán y khoa, không nói sẽ điều khiển xe hay gọi cứu hộ, không nói đã được chứng nhận an toàn.
+- Coi mọi dữ liệu là của chiếc xe và người lái thật. Không chẩn đoán y khoa, không nói sẽ điều khiển xe hay gọi cứu hộ, không nói đã được chứng nhận an toàn.
 - `recommendations`: chép lại `mandatory_steps` (có thể diễn đạt gọn hơn); chúng chỉ để tham khảo, giao diện luôn hiển thị bước của policy.
 """.strip()
 
@@ -140,7 +141,7 @@ def guardian_payload(guardian: GuardianResult) -> dict[str, Any]:
     """Everything the Guardian agent sees: structured values only, never images."""
     block, decision = guardian.block, guardian.decision
     return {
-        "ecu": {**block["vehicle"], "simulated": block["vehicle"]["source"] == "simulated"},
+        "ecu": block["vehicle"],
         "driver": block["driver"],
         "maintenance": block["maintenance"],
         "policy": {
@@ -170,7 +171,7 @@ def _narrate(rule: RuleResult, events: list[DriverEvent], moving: bool, guardian
             "rule_assessment": {"severity": rule.severity, "state": rule.state, "summary": rule.summary, "evidence": rule.evidence},
             "recent_events": [event.model_dump(mode="json", by_alias=True) for event in events[-6:]],
         }
-    result = Runner.run_sync(_agents[key], json.dumps(payload, ensure_ascii=False), max_turns=2)
+    result = Runner.run_sync(_agents[key], json.dumps(for_model(payload), ensure_ascii=False), max_turns=2)
     if not isinstance(result.final_output, DriverNarrative):
         raise RuntimeError("driver agent returned an invalid narrative")
     return result.final_output
