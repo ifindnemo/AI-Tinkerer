@@ -119,6 +119,10 @@ The user now focuses the demo on one flow (brief: README_VEHICLE_GUARDIAN_CAMERA
 
 The user requested the original 60-second video from `brag-output`, extended to 90 seconds with the driver camera. This supersedes the old 80-second browser animation described above. `/film` now plays the actual local `public/film/car-neuron-90s.mp4` (1920 × 1080, 30 fps), with native controls and subtitles. Chapter metadata in `components/film/timeline.ts` follows the MP4; never run a separate animation clock. Keep `?t=`, `?clean`, keyboard shortcuts, the shared navigation, model/music credits and demo disclosures. Sound starts on user playback; `?autoplay=1` is muted and respects reduced motion. The old React scenes and unused scene CSS were removed. Source is deterministic HyperFrames HTML; see [film handover](../docs/intro-film-90s.md) and its source ZIP.
 
+### Pitch film update (2026-10-16)
+
+The user asked to rework `/film` for the talk timetable (slide 1 What I Built 0:30, slide 3 Under the Hood 1:30, slide 4 Challenges & Learnings 1:30; the live demo is presented separately). `/film` now plays `public/film/car-neuron-pitch-210s.mp4` (3:30, English narration by Blaze BTV Helen, music underneath). Chapters in `components/film/timeline.ts` (`TOTAL = 210`, 8 chapters) follow that MP4. Captions follow the site language (VI or EN) because the speech is English. The 90 s MP4 stays in `public/film/` but is not linked. See [pitch film handover](../docs/intro-film-pitch-210s.md).
+
 ### Garage Vehicle Guardian card (2026-10-14)
 
 The user chose `/garage` (blackbox + camera, API mode, real LLM) as the one demo stage, with the brief in `docs/README_VEHICLE_GUARDIAN_CAMERA.md`, and decided that the **3D car stays the main thing on the page**. Final layout (the user's words, 2026-10-14): a **2 × 2 grid**, the first column wide — cell 1 the 3D car, cell 2 (column 2, row 1) the camera container, cell 3 (row 2, column 1) the blackbox information, cell 4 (row 2, column 2) the agent information. A full-width band above the car and a "camera column that also holds the agent" were tried and rejected.

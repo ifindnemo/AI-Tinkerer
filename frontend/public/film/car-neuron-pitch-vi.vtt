@@ -1,0 +1,151 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:03.280
+Đèn cảnh báo chỉ biết về chiếc xe.
+
+00:00:03.580 --> 00:00:06.270
+Nó không biết ai đang lái.
+
+00:00:06.570 --> 00:00:09.930
+Car Neuron là một tác tử xe đọc cả hai.
+
+00:00:10.230 --> 00:00:13.574
+Hộp đen gửi dữ liệu động cơ mỗi giây một lần.
+
+00:00:13.574 --> 00:00:17.290
+Webcam theo dõi tài xế, ngay trong trình duyệt.
+
+00:00:17.590 --> 00:00:23.130
+Một tác tử đọc mọi thứ, giải thích có gì sai và nói nên làm gì tiếp.
+
+00:00:23.430 --> 00:00:27.610
+Cùng một lỗi, lời khuyên khác nhau, tùy ai đang cầm lái.
+
+00:00:30.500 --> 00:00:31.953
+Đây là cách nó hoạt động.
+
+00:00:31.953 --> 00:00:34.060
+Trình duyệt lo phần cảm biến.
+
+00:00:34.060 --> 00:00:39.581
+Mỗi giây tạo một bản ghi hộp đen, mười lăm bản ghi thành một lô.
+
+00:00:39.581 --> 00:00:42.196
+Dữ liệu xe hiện là mô phỏng;
+
+00:00:42.196 --> 00:00:44.230
+mọi thứ sau đó là thật.
+
+00:00:44.730 --> 00:00:51.411
+Camera chạy MediaPipe ngay trên máy, và chỉ một sự kiện JSON nhỏ rời khỏi tab.
+
+00:00:51.411 --> 00:00:52.216
+Không có khung hình.
+
+00:00:52.216 --> 00:00:53.263
+Không có điểm landmark.
+
+00:00:53.263 --> 00:00:56.080
+Schema từ chối mọi trường thừa.
+
+00:00:56.580 --> 00:00:59.762
+Ở máy chủ, an toàn không bao giờ chờ mô hình.
+
+00:00:59.762 --> 00:01:03.151
+Luật thuần túy đặt mức độ và bước bắt buộc.
+
+00:01:03.151 --> 00:01:08.270
+Nước làm mát 120 độ là nghiêm trọng, AI nghĩ gì cũng vậy.
+
+00:01:08.770 --> 00:01:18.940
+Chính sách Guardian được viết hai lần, bằng Python và TypeScript, và cả hai được kiểm thử với cùng một bảng ca, nên không thể lệch nhau.
+
+00:01:19.440 --> 00:01:24.639
+Sau đó một tác tử LLM, qua Inworld Router, làm những gì luật không làm được.
+
+00:01:24.639 --> 00:01:25.820
+Nó gọi các công cụ:
+
+00:01:25.820 --> 00:01:35.430
+thời tiết bên ngoài, lịch sử bảo dưỡng, gara gần đó, và một đề xuất đặt lịch ở trạng thái chờ đến khi tài xế xác nhận.
+
+00:01:35.930 --> 00:01:40.642
+Cuối cùng, kế hoạch kết hợp mức độ của xe với trạng thái tài xế.
+
+00:01:40.642 --> 00:01:43.244
+Cảnh báo với tài xế tỉnh táo nghĩa là:
+
+00:01:43.244 --> 00:01:44.228
+đặt lịch gara.
+
+00:01:44.228 --> 00:01:47.323
+Cùng cảnh báo đó với tài xế buồn ngủ nghĩa là:
+
+00:01:47.323 --> 00:01:51.050
+dừng lại nghỉ trước, và không bao giờ đề xuất đặt lịch.
+
+00:01:51.550 --> 00:01:58.050
+Câu trả lời được Blaze đọc bằng ngôn ngữ của tài xế, và hiện qua một robot nhỏ ở góc màn hình.
+
+00:02:00.500 --> 00:02:01.311
+Cái gì đã hỏng?
+
+00:02:01.311 --> 00:02:02.269
+Đầu tiên, tốc độ.
+
+00:02:02.269 --> 00:02:08.830
+Tác tử mất mười đến hai mươi giây để trả lời, và tài xế mệt không thể chờ lâu như vậy.
+
+00:02:09.280 --> 00:02:14.270
+Vậy nên luật nói trước, trong vài giây, và kế hoạch đến sau.
+
+00:02:14.720 --> 00:02:15.608
+Rồi đến tiếng ồn.
+
+00:02:15.608 --> 00:02:20.050
+Các đoạn âm thanh chồng lên nhau, và cùng một cảnh báo lặp lại mỗi lô.
+
+00:02:20.050 --> 00:02:26.120
+Giờ mỗi cảnh báo chỉ được giữ chỗ một lần mỗi đợt, và đoạn nghiêm trọng cắt đoạn nhẹ hơn.
+
+00:02:26.570 --> 00:02:29.115
+Rồi mô hình và luật bất đồng.
+
+00:02:29.115 --> 00:02:36.684
+Tác tử từng gọi tài xế buồn ngủ là nghiêm trọng khi xe chỉ ở mức cảnh báo, và kế hoạch gửi họ đến xe cứu hộ.
+
+00:02:36.684 --> 00:02:40.730
+Giờ kế hoạch hỏi luật cứng về chiếc xe, không hỏi mô hình.
+
+00:02:41.180 --> 00:02:42.810
+Những điều nhỏ cũng gây đau.
+
+00:02:42.810 --> 00:02:48.959
+Tải xuống của Blaze trả về "quá sớm" cho đến khi âm thanh sẵn sàng, nên chúng tôi tiếp tục kiểm tra.
+
+00:02:48.959 --> 00:02:54.960
+Một màn hình tiếng Anh nói tiếng Việt, nên mỗi ngôn ngữ có tác tử và giọng riêng.
+
+00:02:55.410 --> 00:03:03.038
+Và một robot hoạt họa cạnh chiếc xe 3D làm điều hướng chậm từ một phần năm giây lên mười giây.
+
+00:03:03.038 --> 00:03:05.920
+Không có GPU, giờ nó đứng yên.
+
+00:03:06.370 --> 00:03:07.385
+Sự đánh đổi:
+
+00:03:07.385 --> 00:03:12.460
+chúng tôi chọn mô hình giọng pro vì chất lượng, và sửa độ trễ ở chỗ khác.
+
+00:03:12.910 --> 00:03:13.364
+Tiếp theo:
+
+00:03:13.364 --> 00:03:22.710
+một chiếc xe thật qua cổng OBD, kiểm tra quay đầu trên khuôn mặt thật, và một lần gọi LLM sau các công cụ.
+
+00:03:23.160 --> 00:03:24.113
+Bài học:
+
+00:03:24.113 --> 00:03:27.840
+để luật canh gác, và để mô hình giải thích.

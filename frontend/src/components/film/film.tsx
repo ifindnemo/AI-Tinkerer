@@ -8,10 +8,11 @@ import SiteHeader from "../site/site-header";
 import {CHAPTERS, TOTAL, chapterAt, clampTime, formatTime, startFromSearch} from "./timeline";
 import styles from "./film.module.css";
 
-const FILM = "/film/car-neuron-90s.mp4";
+const FILM = "/film/car-neuron-pitch-210s.mp4";
 
-function selectSubtitles(tracks: TextTrackList | undefined, english: boolean) {
-  if (tracks) for (const track of tracks) track.mode = english && track.language === "en" ? "showing" : "disabled";
+// The narration is English, so each language shows its own captions.
+function selectSubtitles(tracks: TextTrackList | undefined, language: string) {
+  if (tracks) for (const track of tracks) track.mode = track.language === language ? "showing" : "disabled";
 }
 
 export default function Film() {
@@ -47,7 +48,7 @@ export default function Film() {
     } catch {}
   }, []);
   const updateSubtitles = useCallback(() => {
-    selectSubtitles(video.current?.textTracks, lang === "en");
+    selectSubtitles(video.current?.textTracks, lang);
   }, [lang]);
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function Film() {
       else if (key === "arrowright" || key === "arrowleft") {event.preventDefault(); seek((video.current?.currentTime ?? 0) + (key === "arrowright" ? 5 : -5));}
       else if (key === "f") toggleFullscreen();
       else if (key === "c") setClean(value => !value);
-      else if (/^[1-8]$/.test(key)) seek(CHAPTERS[Number(key) - 1].start);
+      else if (/^[1-9]$/.test(key) && Number(key) <= CHAPTERS.length) seek(CHAPTERS[Number(key) - 1].start);
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
@@ -96,19 +97,19 @@ export default function Film() {
       <main className={styles.main}>
         {!clean && <div className={styles.head}>
           <div>
-            <span className={styles.headKicker}>{t("Phim giới thiệu · 90 giây · Full HD", "Intro film · 90 seconds · Full HD")}</span>
+            <span className={styles.headKicker}>{t("Phim giới thiệu · 3 phút 30 · Full HD", "Intro film · 3 min 30 · Full HD")}</span>
             <h1>{t("Hiểu xe. Hiểu người lái.", "Understand the car. Understand the driver.")}</h1>
-            <p>{t("Từ dữ liệu blackbox đến camera tài xế — xem Car Neuron theo dõi, nhận ra dấu hiệu và đưa ra đề xuất.", "From blackbox data to the driver camera — watch Car Neuron monitor signals, spot changes and offer advice.")}</p>
+            <p>{t("Điều gì Car Neuron đã xây, nó hoạt động ra sao bên trong và những gì đã hỏng trên đường — thuyết minh bằng giọng Blaze tiếng Anh.", "What Car Neuron is, how it works under the hood, and what broke along the way — narrated in English by Blaze.")}</p>
           </div>
-          <a href={FILM} download="Car-Neuron-90s.mp4" className="outline-button"><Download size={16} />{t("Tải video MP4", "Download MP4")}</a>
+          <a href={FILM} download="Car-Neuron-pitch-210s.mp4" className="outline-button"><Download size={16} />{t("Tải video MP4", "Download MP4")}</a>
         </div>}
         <div ref={player} className={styles.player}>
-          <video ref={video} className={styles.video} src={FILM} poster="/film/car-neuron-poster.webp" width={1920} height={1080} controls playsInline preload="metadata"
-            aria-label={t("Phim giới thiệu Car Neuron, 90 giây", "Car Neuron intro film, 90 seconds")}
+          <video ref={video} className={styles.video} src={FILM} poster="/film/car-neuron-pitch-poster.webp" width={1920} height={1080} controls playsInline preload="metadata"
+            aria-label={t("Phim giới thiệu Car Neuron, 3 phút 30", "Car Neuron intro film, 3 minutes 30")}
             onLoadedMetadata={loaded} onTimeUpdate={event => setTime(clampTime(event.currentTarget.currentTime))} onSeeked={event => setTime(clampTime(event.currentTarget.currentTime))}
             onEnded={() => setTime(TOTAL)} onError={() => setError(true)}>
-            <track src="/film/car-neuron-vi.vtt" kind="captions" srcLang="vi" label="Tiếng Việt" />
-            <track src="/film/car-neuron-en.vtt" kind="subtitles" srcLang="en" label="English" />
+            <track src="/film/car-neuron-pitch-vi.vtt" kind="captions" srcLang="vi" label="Tiếng Việt" />
+            <track src="/film/car-neuron-pitch-en.vtt" kind="subtitles" srcLang="en" label="English" />
             {t("Trình duyệt không hỗ trợ video.", "Your browser does not support video.")}
           </video>
           {error && <div className={styles.error} role="alert">
@@ -126,7 +127,7 @@ export default function Film() {
               </li>)}
             </ol>
             <div className={styles.viewActions}>
-              <p>{t("Hình ảnh minh họa kịch bản demo. Nhạc nền; không có thuyết minh. Có phụ đề tiếng Anh.", "Illustrative demo scenarios. Background music, no narration. English subtitles available.")}</p>
+              <p>{t("Hình ảnh minh họa kịch bản demo. Thuyết minh tiếng Anh (Blaze) và nhạc nền; có phụ đề tiếng Việt và tiếng Anh.", "Illustrative demo scenarios. English narration (Blaze) and background music; Vietnamese and English captions available.")}</p>
               <button className={styles.textButton} onClick={() => setClean(true)}><Video size={15} />{t("Chỉ xem video", "Video only")}</button>
               <button className={styles.textButton} onClick={toggleFullscreen}><Maximize size={15} />{t("Toàn màn hình", "Fullscreen")}</button>
             </div>

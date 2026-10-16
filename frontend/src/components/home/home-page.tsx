@@ -62,7 +62,7 @@ export default function HomePage() {
             <p className={styles.lead}>{t("Car Neuron đọc dữ liệu blackbox mỗi giây, đối chiếu nhiều cảm biến với thời tiết và lịch sử bảo dưỡng, rồi giải thích vì sao chiếc xe cần được kiểm tra.", "Car Neuron reads blackbox data every second, cross-checks several sensors against the weather and service history, then explains why the car needs a check.")}</p>
             <div className={styles.heroActions}>
               <Link href="/garage" className="primary-button">{t("Mở garage", "Open the garage")} <ArrowRight size={16} /></Link>
-              <Link href="/film" className="outline-button"><Play size={15} />{t("Xem phim 90 giây", "Watch the 90 s film")}</Link>
+              <Link href="/film" className="outline-button"><Play size={15} />{t("Xem phim 3 phút 30", "Watch the 3:30 film")}</Link>
             </div>
             <p className={styles.heroNote}><FlaskConical size={14} />{t("Nguồn dữ liệu ECU được mô phỏng. Luật an toàn, agent AI và các công cụ là thật khi chạy cùng backend.", "The ECU data source is simulated. The safety rule, AI agent and tools are real when running with the backend.")}</p>
           </div>
@@ -181,7 +181,7 @@ export default function HomePage() {
             <Link href="/film" className={styles.filmCard}>
               <div className={styles.filmCopy}>
                 <span className={styles.kicker}>{t("Phim giới thiệu", "Intro film")}</span>
-                <h2>{t("Toàn bộ câu chuyện trong 90 giây.", "The whole story in 90 seconds.")}</h2>
+                <h2>{t("Toàn bộ câu chuyện trong 3 phút 30.", "The whole story in 3 minutes 30.")}</h2>
                 <p>{t("Dữ liệu xe, agent và camera tài xế trong một phim giới thiệu có thể tải về.", "Vehicle data, the agent and the driver camera in one downloadable intro film.")}</p>
                 <span className={styles.filmPlay}><Play size={16} />{t("Phát phim", "Play the film")}</span>
               </div>

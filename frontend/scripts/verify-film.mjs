@@ -24,14 +24,14 @@ try {
   await page.goto(`${base}/film`);
   await waitVideo();
   assert.deepEqual(await page.locator("video").evaluate(v => ({duration: v.duration, paused: v.paused, muted: v.muted, controls: v.controls, inline: v.playsInline})),
-    {duration: 90, paused: true, muted: false, controls: true, inline: true});
+    {duration: 210, paused: true, muted: false, controls: true, inline: true});
   await expect(page.locator('.site-nav a[aria-current="page"]')).toHaveAttribute("href", "/film");
   await page.locator("h1").click();
   await page.keyboard.press("Space");
   await page.waitForFunction(() => document.querySelector("video").currentTime > .3);
   await page.keyboard.press("Space");
   assert.equal(await page.locator("video").evaluate(v => v.paused), true);
-  for (const [name, time] of [["Camera tài xế", 55.1], ["Riêng tư", 74.3]]) {
+  for (const [name, time] of [["Luật an toàn", 56.5], ["Thử thách", 120.5]]) {
     const button = page.getByRole("button", {name: new RegExp(name)});
     await button.click();
     await waitVideo();
@@ -43,18 +43,20 @@ try {
   assert.equal(await page.locator("video").evaluate(v => v.paused), true);
   assert(Math.abs(await page.locator("video").evaluate(v => v.currentTime) - 71.7) < .05);
   await page.screenshot({path: `${output}/camera-critical.png`});
+  await expect.poll(() => page.locator("video").evaluate(v => Array.from(v.textTracks).find(t => t.language === "vi")?.mode)).toBe("showing");
   await page.getByRole("button", {name: "EN", exact: true}).click();
   await expect.poll(() => page.locator("video").evaluate(v => Array.from(v.textTracks).find(t => t.language === "en")?.mode)).toBe("showing");
   await expect.poll(() => page.locator("video").evaluate(v => Array.from(v.textTracks).find(t => t.language === "en")?.cues?.length)).toBeGreaterThan(0);
   await page.getByRole("button", {name: "VI", exact: true}).click();
   assert.equal(await page.locator("video").evaluate(v => Array.from(v.textTracks).find(t => t.language === "en").mode), "disabled");
+  await expect.poll(() => page.locator("video").evaluate(v => Array.from(v.textTracks).find(t => t.language === "vi")?.mode)).toBe("showing");
   assert(Math.abs(await page.locator("video").evaluate(v => v.currentTime) - 71.7) < .05, "language switch must preserve the playhead");
   const downloadWait = page.waitForEvent("download");
   await page.getByRole("link", {name: "Tải video MP4"}).click();
   const download = await downloadWait;
-  assert.equal(download.suggestedFilename(), "Car-Neuron-90s.mp4");
+  assert.equal(download.suggestedFilename(), "Car-Neuron-pitch-210s.mp4");
   await download.cancel();
-  const range = await context.request.get(`${base}/film/car-neuron-90s.mp4`, {headers: {Range: "bytes=0-1023"}});
+  const range = await context.request.get(`${base}/film/car-neuron-pitch-210s.mp4`, {headers: {Range: "bytes=0-1023"}});
   assert.equal(range.status(), 206);
   assert.equal((await range.body()).length, 1024);
   await page.getByRole("button", {name: "Toàn màn hình", exact: true}).click();
@@ -87,7 +89,7 @@ try {
   await expect(page.getByRole("button", {name: "Hiện lại giao diện"})).toBeVisible();
   // Verify the failed-media fallback, then an actual reload of the real MP4.
   let blocked = true;
-  await page.route("**/film/car-neuron-90s.mp4", route => blocked ? route.abort() : route.continue());
+  await page.route("**/film/car-neuron-pitch-210s.mp4", route => blocked ? route.abort() : route.continue());
   await page.goto(`${base}/film`);
   await expect(page.getByRole("alert").filter({has: page.getByRole("button", {name: "Tải lại video"})})).toBeVisible();
   blocked = false;
@@ -95,7 +97,7 @@ try {
   await waitVideo();
   await expect(page.getByRole("button", {name: "Tải lại video"})).toHaveCount(0);
   // The fast-start MP4 can finish metadata loading before delayed hydration scripts.
-  await page.unroute("**/film/car-neuron-90s.mp4");
+  await page.unroute("**/film/car-neuron-pitch-210s.mp4");
   await page.route("**/_next/static/**/*.js", async route => {await new Promise(resolve => setTimeout(resolve, 400)); await route.continue();});
   await page.goto(`${base}/film?t=80.5`);
   await waitVideo();
@@ -104,7 +106,7 @@ try {
   await page.waitForTimeout(900);
   await page.screenshot({path: `${output}/privacy-desktop.png`, fullPage: true});
   assert.deepEqual(errors, []);
-  console.log("PASS: actual 90s MP4, sound/play/pause/seek, camera/privacy chapters, captions, download/range requests, fullscreen, 320–1440px, clean mode, reduced motion and media error recovery.");
+  console.log("PASS: actual 3:30 MP4, sound/play/pause/seek, chapter jumps, captions, download/range requests, fullscreen, 320–1440px, clean mode, reduced motion and media error recovery.");
 } finally {
   await browser.close();
 }

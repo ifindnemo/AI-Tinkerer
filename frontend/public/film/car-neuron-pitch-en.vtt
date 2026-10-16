@@ -1,0 +1,151 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:03.280
+A warning light only knows about the car.
+
+00:00:03.580 --> 00:00:06.270
+It has no idea who is driving it.
+
+00:00:06.570 --> 00:00:09.930
+Car Neuron is a vehicle agent that reads both.
+
+00:00:10.230 --> 00:00:13.574
+A blackbox streams engine data once a second.
+
+00:00:13.574 --> 00:00:17.290
+A webcam watches the driver, right in the browser.
+
+00:00:17.590 --> 00:00:23.130
+One agent reads everything, explains what's wrong, and says what to do next.
+
+00:00:23.430 --> 00:00:27.610
+Same fault, different advice, depending on who's behind the wheel.
+
+00:00:30.500 --> 00:00:31.953
+Here's how it works.
+
+00:00:31.953 --> 00:00:34.060
+The browser does the sensing.
+
+00:00:34.060 --> 00:00:39.581
+Every second it makes a blackbox record, and fifteen records make one batch.
+
+00:00:39.581 --> 00:00:42.196
+The car's data is simulated for now;
+
+00:00:42.196 --> 00:00:44.230
+everything after it is real.
+
+00:00:44.730 --> 00:00:51.411
+The camera runs MediaPipe locally, and only a small JSON event ever leaves the tab.
+
+00:00:51.411 --> 00:00:52.216
+No frames.
+
+00:00:52.216 --> 00:00:53.263
+No landmarks.
+
+00:00:53.263 --> 00:00:56.080
+The schema rejects any extra field.
+
+00:00:56.580 --> 00:00:59.762
+On the server, safety never waits for a model.
+
+00:00:59.762 --> 00:01:03.151
+Plain rules set the level and the mandatory step.
+
+00:01:03.151 --> 00:01:08.270
+Coolant at one hundred twenty degrees is critical, whatever the AI thinks.
+
+00:01:08.770 --> 00:01:18.940
+The same Guardian policy is written twice, in Python and in TypeScript, and both are tested against one table of cases, so they can't drift apart.
+
+00:01:19.440 --> 00:01:24.639
+Then an LLM agent, through In World Router, does what rules can't.
+
+00:01:24.639 --> 00:01:25.820
+It calls tools:
+
+00:01:25.820 --> 00:01:35.430
+outside weather, maintenance history, nearby garages, and a booking proposal that stays pending until the driver confirms.
+
+00:01:35.930 --> 00:01:40.642
+Finally, the plan combines the car's level with the driver's state.
+
+00:01:40.642 --> 00:01:43.244
+A warning with an alert driver means:
+
+00:01:43.244 --> 00:01:44.228
+book a garage.
+
+00:01:44.228 --> 00:01:47.323
+The same warning with a drowsy driver means:
+
+00:01:47.323 --> 00:01:51.050
+stop and rest first, and no booking is ever proposed.
+
+00:01:51.550 --> 00:01:58.050
+The answer is spoken by Blaze, in the driver's language, and shown by a small robot in the corner.
+
+00:02:00.500 --> 00:02:01.311
+What broke?
+
+00:02:01.311 --> 00:02:02.269
+First, speed.
+
+00:02:02.269 --> 00:02:08.830
+The agent takes ten to twenty seconds to answer, and a tired driver can't wait that long.
+
+00:02:09.280 --> 00:02:14.270
+So the rules speak first, within a few seconds, and the plan comes after.
+
+00:02:14.720 --> 00:02:15.608
+Then, noise.
+
+00:02:15.608 --> 00:02:20.050
+Clips overlapped, and the same warning repeated every batch.
+
+00:02:20.050 --> 00:02:26.120
+Now each alert is claimed once per episode, and a critical clip cuts a milder one.
+
+00:02:26.570 --> 00:02:29.115
+Then the model and the rules disagreed.
+
+00:02:29.115 --> 00:02:36.684
+The agent once called a drowsy driver critical when the car was only warning, and the plan sent them to a tow truck.
+
+00:02:36.684 --> 00:02:40.730
+Now the plan asks the hard rules about the car, not the model.
+
+00:02:41.180 --> 00:02:42.810
+Small things hurt too.
+
+00:02:42.810 --> 00:02:48.959
+Blaze's download answers "too early" until the audio is ready, so we keep checking.
+
+00:02:48.959 --> 00:02:54.960
+An English screen spoke Vietnamese, so each language got its own agent and voice.
+
+00:02:55.410 --> 00:03:03.038
+And a robot animating beside the 3D car slowed navigation from a fifth of a second to ten.
+
+00:03:03.038 --> 00:03:05.920
+Without a GPU, it now holds still.
+
+00:03:06.370 --> 00:03:07.385
+The trade-off:
+
+00:03:07.385 --> 00:03:12.460
+we chose the pro voice model for quality, and fixed latency elsewhere.
+
+00:03:12.910 --> 00:03:13.364
+Next:
+
+00:03:13.364 --> 00:03:22.710
+a real car through the O B D gateway, head-turn checks on real faces, and one LLM call after the tools.
+
+00:03:23.160 --> 00:03:24.113
+The lesson:
+
+00:03:24.113 --> 00:03:27.840
+let rules guard, and let the model explain.
