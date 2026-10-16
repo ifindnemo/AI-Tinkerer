@@ -17,6 +17,7 @@ from driver.routes import router as driver_router  # noqa: E402
 from stt import router as stt_router  # noqa: E402
 from talk import router as talk_router  # noqa: E402
 from voice import router as voice_router  # noqa: E402
+from voice_options import router as voice_options_router  # noqa: E402
 
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ app.include_router(driver_router, prefix="/api")
 app.include_router(stt_router, prefix="/api")
 app.include_router(talk_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
+app.include_router(voice_options_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

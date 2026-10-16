@@ -416,9 +416,8 @@ def test_the_spoken_lead_follows_the_language() -> None:
 
 
 def test_each_language_has_its_own_voice_and_no_voice_means_no_clip(blaze, monkeypatch) -> None:
-    assert voice.enabled() and not voice.enabled("en"), "the English voice is set separately"
-    voice.announce_alert("Coolant is hot.", severity="warning", dedupe_key="e1", session_id="bmw-m2", lang="en")
-    assert blaze == [], "an English sentence is never read by the Vietnamese voice"
+    assert voice.enabled() and voice.enabled("en")
+    assert voice._client_from_env("en").speaker_id == "UK-Nu-1-TM", "English defaults to Helen, never to the Vietnamese voice"
     monkeypatch.setenv("BLAZE_SPEAKER_ID_EN", "en-voice")
     monkeypatch.setenv("BLAZE_TTS_LANGUAGE_EN", "en-US")
     assert voice.enabled("en")
@@ -428,7 +427,7 @@ def test_each_language_has_its_own_voice_and_no_voice_means_no_clip(blaze, monke
     assert (vietnamese.speaker_id, vietnamese.language) == ("vn-voice", "vi")
     assert voice._client_from_env("en").model == voice._client_from_env("vi").model
     monkeypatch.setenv("BLAZE_TTS_MODEL_EN", "v3.0")
-    assert voice._client_from_env("en").model == "v3.0" and voice._client_from_env("vi").model == "v2.0_flash"
+    assert voice._client_from_env("en").model == "v3.0" and voice._client_from_env("vi").model == "v2.0_pro"
 
 
 def test_clips_are_listed_in_the_language_the_page_asks_for(blaze, monkeypatch, tmp_path) -> None:
@@ -445,6 +444,6 @@ def test_clips_are_listed_in_the_language_the_page_asks_for(blaze, monkeypatch, 
     assert english["enabled"] is True and english["lang"] == "en" and [c["lang"] for c in english["clips"]] == ["en"]
     default = client.get("/api/voice/clips?session=bmw-m2").json()
     assert [c["lang"] for c in default["clips"]] == ["vi"]
-    monkeypatch.setenv("BLAZE_SPEAKER_ID_EN", "")
-    assert client.get("/api/voice/clips?session=bmw-m2&lang=en").json()["enabled"] is False
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "")  # a language with no voice at all is text-only
+    assert client.get("/api/voice/clips?session=bmw-m2&lang=vi").json()["enabled"] is False
     assert client.get("/api/voice/clips?session=bmw-m2&lang=fr").status_code == 422

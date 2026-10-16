@@ -14,3 +14,4 @@ os.environ["EXTERNAL_TOOLS"] = "off"
 os.environ["BLAZE_API_TOKEN"] = ""
 os.environ["BLAZE_SPEAKER_ID"] = ""
 os.environ["BLAZE_SPEAKER_ID_EN"] = ""
+os.environ["BLAZE_VOICE_PREFERENCE_FILE"] = os.path.join(os.path.dirname(os.environ["DATABASE_PATH"]), "voice_preference.json")

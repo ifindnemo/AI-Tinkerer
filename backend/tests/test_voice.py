@@ -132,14 +132,14 @@ def test_long_options_are_split_without_losing_the_final_choice(monkeypatch, tmp
 
     def synthesize(self, text: str) -> Speech:
         if spoken:
-            assert [clip["text"] for clip in voice.clips_for("long-options")] == spoken
+            assert [clip["text"] for clip in voice.clips_for("long-options")] == parts[:len(spoken)]
         spoken.append(text)
         return Speech(text=text, audio=b"ID3file", content_type="audio/mpeg", job_id=f"job-{len(spoken)}")
 
     monkeypatch.setattr(BlazeTTS, "synthesize", synthesize)
     voice._speak(script, "warning", "long-options", session_id="long-options", remember=False)
-    assert spoken == parts
-    assert " ".join(clip["text"] for clip in voice.clips_for("long-options")) == script
+    assert spoken == [voice.spoken_form(part) for part in parts]  # what is read: no bracketed label
+    assert " ".join(clip["text"] for clip in voice.clips_for("long-options")) == script  # what is shown: all of it
     assert {clip["group"] for clip in voice.clips_for("long-options")} == {"long-options"}
 
 
@@ -198,7 +198,7 @@ def test_synthesize_polls_then_downloads() -> None:
                 "query": "Cảnh báo. Nước làm mát nóng.",
                 "language": "vi",
                 "speaker_id": "voice-1",
-                "model": "v2.0_flash",
+                "model": "v2.0_pro",
                 "audio_format": "mp3",
             }
             assert request.headers["authorization"] == "Bearer test-token"
@@ -280,3 +280,119 @@ def test_download_answering_425_while_processing_is_polled_until_ready() -> None
     client = voice.BlazeTTS(token="t", speaker_id="s", client=httpx.Client(transport=httpx.MockTransport(handler)), poll_interval=0)
     speech = client.synthesize("Xin chào.")
     assert speech.audio == b"ID3audio" and calls["download"] == 3
+
+
+def test_the_alert_voice_is_read_at_1_5_speed_by_default_and_the_speed_is_clamped(monkeypatch) -> None:
+    monkeypatch.setenv("BLAZE_API_TOKEN", "t")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "v")
+    monkeypatch.delenv("BLAZE_AUDIO_SPEED", raising=False)
+    assert voice._client_from_env("vi").audio_speed == 1.5 and voice._client_from_env("vi").model == "v2.0_pro"
+    for raw, expected in (("1.0", 1.0), ("9", 1.5), ("0.1", 0.5), ("fast", 1.5)):
+        monkeypatch.setenv("BLAZE_AUDIO_SPEED", raw)
+        assert voice._client_from_env("en").audio_speed == expected
+
+
+def test_the_speed_is_sent_to_blaze() -> None:
+    sent = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            sent.update(json.loads(request.content))
+            return httpx.Response(200, content=b"ID3x", headers={"content-type": "audio/mpeg"})
+        return httpx.Response(404)
+
+    client = voice.BlazeTTS(token="t", speaker_id="v", audio_speed=1.3, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client.synthesize("Xin chào.")
+    assert sent["audio_speed"] == 1.3 and sent["model"] == "v2.0_pro"
+
+
+@pytest.mark.parametrize("text,lang,expected", [
+    ("Nước làm mát 108°C.", "vi", "Nước làm mát 108 độ C."),
+    ("Nhiệt độ 112,2 °C và 95℃", "vi", "Nhiệt độ 112,2 độ C và 95 độ C"),
+    ("Coolant is 108°C.", "en", "Coolant is 108 degrees Celsius."),
+    ("Không có nhiệt độ.", "vi", "Không có nhiệt độ."),
+])
+def test_the_degree_sign_is_read_as_words(text, lang, expected) -> None:
+    assert voice.spoken_form(text, lang) == expected
+
+
+def test_what_is_sent_to_blaze_says_do_c_but_the_clip_text_keeps_the_sign(monkeypatch, tmp_path) -> None:
+    sent = []
+
+    class Fake:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def synthesize(self, text):
+            sent.append(text)
+            return voice.Speech(text=text, audio=b"ID3x", content_type="audio/mpeg", job_id="j")
+
+    monkeypatch.setattr(voice, "_client_from_env", lambda lang="vi": Fake())
+    monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+    voice._speak("Cảnh báo. Nước làm mát 108°C.", "warning", "k-degree", "s-degree", "vi")
+    assert sent == ["Cảnh báo. Nước làm mát 108 độ C."]
+    assert voice.clips_for("s-degree")[0]["text"] == "Cảnh báo. Nước làm mát 108°C."
+
+
+def test_the_follow_up_names_the_proposed_booking_and_nothing_else() -> None:
+    garages = [{"tool": "search_nearby_garages", "result": {"options": [{"name": "Garage Minh Khoa", "distance_km": 1.2}]}}]
+    booking = {"id": "act_1", "status": "pending_confirmation", "payload": {"garage_id": "Garage Minh Khoa"}}
+    warning = {"assessment": {"severity": "warning"}, "tool_trace": garages}
+    assert voice.follow_up_for({**warning, "pending_action": booking}) == "Tôi đề xuất đặt lịch tại Garage Minh Khoa. Bạn xác nhận trên màn hình nhé."
+    assert voice.follow_up_for({**warning, "pending_action": booking}, "en") == "I suggest booking at Garage Minh Khoa. Please confirm on the screen."
+    assert voice.follow_up_for(warning) == "", "without a proposal the nearby garages are spoken by tool_options_line"
+    assert voice.follow_up_for({"assessment": {"severity": "critical"}, "tool_trace": garages}) == "", "stopping safely comes first"
+    assert voice.follow_up_for({"assessment": {"severity": "warning"}, "tool_trace": []}) == ""
+
+
+def test_the_follow_up_is_spoken_after_the_alert(monkeypatch) -> None:
+    queued = []
+
+    class Inline:
+        def submit(self, fn, *args):
+            queued.append(args[0])
+
+    monkeypatch.setenv("BLAZE_API_TOKEN", "t")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "v")
+    monkeypatch.setattr(voice, "_pool", lambda: Inline())
+    voice.announce_alert("Nước làm mát nóng.", severity="warning", dedupe_key="follow-up-1", follow_up="Garage gần nhất là A.")
+    assert queued == ["Cảnh báo. Nước làm mát nóng. Garage gần nhất là A."]
+
+
+def test_what_is_read_never_switches_language_mid_sentence() -> None:
+    vi = voice.spoken_form("Tình trạng là critical: ECT/EOT cao trong batch, hard_safety_guardrail yêu cầu dừng. Garage Minh Quân (đối tác quen).", "vi")
+    assert vi == "Tình trạng là nguy hiểm: nhiệt độ nước làm mát và dầu cao trong đợt dữ liệu, giới hạn an toàn bắt buộc yêu cầu dừng. Garage Minh Quân."
+    assert voice.spoken_form("ECT reached 108°C (hard_safety_guardrail).", "en") == "coolant temperature reached 108 degrees Celsius."
+
+
+def test_a_drowsy_driver_hears_rest_first_not_a_choice_of_garages() -> None:
+    trace = _garage_trace()
+    vi = tool_options_line(trace, rest=True)
+    assert vi.startswith("Hãy nghỉ trước.") and "gọi cứu hộ" in vi and "Bạn muốn chọn" not in vi
+    assert vi.count("cách") == 1, "only the nearest garage, as information"
+    en = tool_options_line(trace, "en", rest=True)
+    assert en.startswith("Rest first.") and "roadside assistance" in en and "You can choose" not in en
+    assert tool_options_line([], rest=True) == ""
+
+
+def test_the_same_garages_at_slightly_different_distances_are_the_same_alert() -> None:
+    near = "Quanh bạn có 3 garage: Garage A cách 0,8 kilômét, Garage B cách 1,3 kilômét."
+    drifted = "Quanh bạn có 3 garage: Garage A cách 1,0 kilômét, Garage B cách 1,4 kilômét."
+    other = "Quanh bạn có 3 garage: Garage A cách 0,8 kilômét, Garage C cách 1,3 kilômét."
+    key = voice.alert_dedupe_key("bmw-m2", "warning", "vi", near)
+    assert key == voice.alert_dedupe_key("bmw-m2", "warning", "vi", drifted)
+    assert key != voice.alert_dedupe_key("bmw-m2", "warning", "vi", other)
+
+
+def test_an_alert_is_spoken_once_per_episode_not_every_ninety_seconds(monkeypatch) -> None:
+    voice.clear_alert_history("once-car")
+    assert voice._claim("once-car:warning:vi", once=True)
+    later = voice.time.monotonic() + 3600
+    monkeypatch.setattr(voice.time, "monotonic", lambda: later)
+    assert not voice._claim("once-car:warning:vi", once=True), "an hour later it is still the same episode"
+    voice.clear_alert_history("once-car")  # a normal assessment ends the episode
+    assert voice._claim("once-car:warning:vi", once=True)
+    voice.clear_alert_history("once-car")

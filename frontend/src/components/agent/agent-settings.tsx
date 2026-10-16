@@ -1,10 +1,11 @@
 "use client";
 import {useSyncExternalStore} from "react";
-import {Languages, Volume2, VolumeX} from "lucide-react";
-import {useAgentLang, useLang, useVoiceVolume} from "@/hooks/use-preferences";
+import {Languages, Play, RotateCcw, ScanFace, Square, Volume2, VolumeX} from "lucide-react";
+import {useAgentLang, useDriverVoice, useLang, useVoiceRate, useVoiceVolume} from "@/hooks/use-preferences";
+import {useVoiceOptions} from "@/hooks/use-voice-options";
 import {muteStore} from "@/lib/agent/mute";
 import {presence} from "@/lib/agent/presence";
-import {VOICE_VOLUMES, type AgentLang, type VoiceVolume} from "@/lib/preferences";
+import {VOICE_RATES, VOICE_VOLUMES, type AgentLang, type VoiceRate, type VoiceVolume} from "@/lib/preferences";
 import styles from "./agent-settings.module.css";
 
 const LANGUAGES: {value: AgentLang; vi: string; en: string}[] = [
@@ -15,15 +16,20 @@ const LANGUAGES: {value: AgentLang; vi: string; en: string}[] = [
 
 /**
  * What the agent answers in and how it sounds: the language of its words and of its voice (one setting, because
- * the voice reads the same words), the voice on or off, and its volume. The horn is the camera's own switch.
+ * the voice reads the same words), the voice on or off, which Blaze voice reads (per language, with a preview), and its volume. The horn is the camera's own switch.
  * The language only changes the wording: levels and mandatory steps are the same in both.
  */
 export default function AgentSettings() {
   const {t} = useLang();
   const {setting, resolved, setAgentLang} = useAgentLang();
   const [volume, setVolume] = useVoiceVolume();
+  const [rate, setRate] = useVoiceRate();
+  const [driverVoice, setDriverVoice] = useDriverVoice();
   const muted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
   const voice = useSyncExternalStore(presence.subscribe, presence.get, presence.get).voice;
+  const voices = useVoiceOptions(resolved);
+  const options = voices.options;
+  const current = options?.voices.find(voice => voice.id === options.selected);
   const spoken = resolved === "en" ? t("tiếng Anh", "English") : t("tiếng Việt", "Vietnamese");
   // `voice.enabled` says whether the backend has a voice for the language the page last polled with.
   const known = voice.lang === resolved ? voice.enabled : null;
@@ -80,6 +86,81 @@ export default function AgentSettings() {
           <output>{volume}%</output>
         </label>
       </div>
+      <div className={styles.row}>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-pressed={driverVoice}
+          onClick={() => setDriverVoice(!driverVoice)}
+          disabled={muted}
+          data-testid="agent-driver-voice-toggle"
+        >
+          <ScanFace size={15} aria-hidden="true" />
+          {driverVoice ? t("Đọc cảnh báo tài xế: bật", "Read driver alerts: on") : t("Đọc cảnh báo tài xế: tắt", "Read driver alerts: off")}
+        </button>
+        <span className={styles.hint}>{t("Cảnh báo xe vẫn được đọc; còi camera bật/tắt riêng.", "Car alerts are still read; the camera horn has its own switch.")}</span>
+      </div>
+      {options && options.voices.length > 0 && (
+        <div className={styles.row} data-testid="agent-voice-picker">
+          <label className={styles.label} htmlFor="agent-voice-select">{t(`Giọng đọc (${spoken})`, `Voice (${spoken})`)}</label>
+          <span className={styles.picker}>
+            <select
+              id="agent-voice-select"
+              className={styles.select}
+              value={options.selected}
+              onChange={event => void voices.choose(event.target.value)}
+              data-testid="agent-voice-select"
+            >
+              {options.voices.map(voice => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.name}{voice.gender ? ` · ${voice.gender === "Female" ? t("nữ", "female") : t("nam", "male")}` : ""}{voice.id === options.fallback ? t(" · mặc định", " · default") : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => current && voices.preview(current.id)}
+              aria-label={t("Nghe thử giọng này", "Preview this voice")}
+              title={t("Nghe thử giọng này", "Preview this voice")}
+              data-testid="agent-voice-preview"
+            >
+              {voices.previewing === options.selected ? <Square size={13} aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}
+            </button>
+            {options.selected !== options.fallback && (
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => void voices.choose(null)}
+                aria-label={t("Về giọng mặc định", "Back to the default voice")}
+                title={t("Về giọng mặc định", "Back to the default voice")}
+                data-testid="agent-voice-reset"
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+      <div className={styles.row}>
+        <span className={styles.label} id="agent-rate-label">{t("Tốc độ đọc", "Speaking speed")}</span>
+        <div className={styles.segments} role="radiogroup" aria-labelledby="agent-rate-label">
+          {VOICE_RATES.map(option => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={rate === option}
+              className={styles.segment}
+              onClick={() => setRate(option as VoiceRate)}
+              data-testid={`agent-voice-rate-${option}`}
+            >
+              {Number(option) / 100}×
+            </button>
+          ))}
+        </div>
+      </div>
+      {voices.failed && <p className={styles.status} role="alert" data-testid="agent-voice-error">{t("Chưa lấy hoặc đổi được giọng đọc. Thử lại sau.", "Could not load or change the voice. Try again later.")}</p>}
       <p className={styles.status} role="status" data-testid="agent-voice-status">{status}</p>
     </section>
   );

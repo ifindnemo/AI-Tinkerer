@@ -15,9 +15,9 @@ warning or critical assessment. It returns immediately. Synthesis runs on one
 background worker, and a failure never changes the assessment.
 
 The alert is spoken in the language it is written in ("vi" or "en"). Each language has
-its own Blaze voice: BLAZE_SPEAKER_ID (Vietnamese) and BLAZE_SPEAKER_ID_EN (English, with
-BLAZE_TTS_LANGUAGE_EN, default "en"). A language without a voice is not spoken at all:
-an English sentence is never read by a Vietnamese voice.
+its own Blaze voice: BLAZE_SPEAKER_ID (Vietnamese) and BLAZE_SPEAKER_ID_EN (English, default Helen,
+with BLAZE_TTS_LANGUAGE_EN, default "en"); the person can pick another on the page (voice_options.py).
+A language without a voice is not spoken at all: an English sentence is never read by a Vietnamese voice.
 """
 
 import hashlib
@@ -41,6 +41,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from lang import normalize
+from voice_options import selected
 
 log = logging.getLogger("car_neuron.voice")
 
@@ -117,16 +118,24 @@ def alert_script(
     return spoken
 
 
-def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: bool = False) -> str:
+def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: bool = False, rest: bool = False) -> str:
     """Spoken choices taken only from tool results. Empty when no garage list came back.
 
     `hold` means the driver must stop first: the line lists choices for after the stop
-    and does not invite them to drive on.
+    and does not invite them to drive on. `rest` means the camera sees a drowsy driver: the line tells them to
+    rest first and offers a pick-up or roadside help, with only the nearest garage as information.
     """
     lang = normalize(lang)
     found = _nearby_garages(trace)
     if not found:
         return ""
+    if rest:
+        near = found[0]
+        if lang == "en":
+            return (f"Rest first. If you do not feel alert enough to drive on, ask someone to pick you up or call roadside assistance. "
+                    f"The nearest garage is {near['name']}, {_km(near['km'], lang)} away, for when you are ready.")
+        return (f"Hãy nghỉ trước. Nếu bạn không đủ tỉnh táo để lái tiếp, hãy nhờ người đến đón hoặc gọi cứu hộ. "
+                f"Garage gần nhất là {near['name']}, cách {_km(near['km'], lang)}, để dùng khi bạn đã sẵn sàng.")
     spoken = found[:3]
     listed = _join_names(
         [
@@ -231,6 +240,61 @@ def _join_names(parts: list[str], lang: str) -> str:
     return ", ".join(parts[:-1]) + conjunction + parts[-1]
 
 
+_CELSIUS = re.compile(r"\s*[°º˚]\s*C\b|\s*℃")
+
+
+_ASIDE = re.compile(r"\s*\([^)]*\)")  # "(đối tác quen)": a label from the data, read aloud in the wrong language
+_JARGON = {
+    "vi": [
+        (re.compile(r"\bECT\s*/\s*EOT\b"), "nhiệt độ nước làm mát và dầu"),
+        (re.compile(r"\bECT\b"), "nhiệt độ nước làm mát"),
+        (re.compile(r"\bEOT\b"), "nhiệt độ dầu"),
+        (re.compile(r"hard_safety_guardrail"), "giới hạn an toàn bắt buộc"),
+        (re.compile(r"\bbatch(?:es)?\b", re.IGNORECASE), "đợt dữ liệu"),
+        (re.compile(r"\bcritical\b", re.IGNORECASE), "nguy hiểm"),
+        (re.compile(r"\bRPM\b"), "vòng tua"),
+    ],
+    "en": [
+        (re.compile(r"\bECT\s*/\s*EOT\b"), "coolant and oil temperature"),
+        (re.compile(r"\bECT\b"), "coolant temperature"),
+        (re.compile(r"\bEOT\b"), "oil temperature"),
+        (re.compile(r"hard_safety_guardrail"), "the safety limit"),
+        (re.compile(r"\bRPM\b"), "engine speed"),
+    ],
+}
+
+
+def spoken_form(text: str, lang: str = "vi") -> str:
+    """The text as it should be read. The degree sign is read badly, so a temperature becomes
+    "108 độ C" (vi) or "108 degrees Celsius" (en); sensor codes and field names the model sometimes lets
+    through ("ECT", "batch", "hard_safety_guardrail") become words of the same language, so the voice
+    never switches language mid-sentence; a bracketed label is dropped. The words shown on screen keep all of it."""
+    lang = normalize(lang)
+    text = _CELSIUS.sub(" degrees Celsius" if lang == "en" else " độ C", text)
+    for pattern, words in _JARGON[lang]:
+        text = pattern.sub(words, text)
+    return _ASIDE.sub("", text)
+
+
+def follow_up_for(result: dict[str, Any], lang: str = "vi") -> str:
+    """One short sentence after the alert: the booking the agent proposes, which the driver must confirm on
+    screen. Nothing for a critical alert (stopping safely comes first) or without a proposal; the nearby
+    garages are spoken by `tool_options_line`."""
+    try:
+        if (result.get("assessment") or {}).get("severity") != "warning":
+            return ""
+        pending = result.get("pending_action") or {}
+        garage = str((pending.get("payload") or {}).get("garage_id") or "").strip()
+        if garage and pending.get("status") == "pending_confirmation":
+            garage = garage[:70]
+            if normalize(lang) == "en":
+                return f"I suggest booking at {garage}. Please confirm on the screen."
+            return f"Tôi đề xuất đặt lịch tại {garage}. Bạn xác nhận trên màn hình nhé."
+    except Exception:
+        log.warning("could not build the spoken follow-up", exc_info=True)
+    return ""
+
+
 def _first_sentences(text: str, limit: int) -> str:
     """Whole sentences up to `limit` characters, so speech never stops mid-word."""
     if len(text) <= limit:
@@ -282,9 +346,12 @@ def announce_alert(
     session_id: str | None = None,
     lang: str = "vi",
     options: str | None = None,
+    follow_up: str = "",
+    once: bool = False,
 ) -> None:
     """Queue TTS for a warning or critical alert. No-op for any other severity, and for a language
-    that has no voice configured.
+    that has no voice configured. With `once` the alert is spoken one time for the whole episode (until
+    `clear_alert_history`); without it the same key is quiet for `_REPEAT_SECONDS`.
 
     Never raises: a voice failure must not change the assessment that triggered it.
     """
@@ -295,8 +362,10 @@ def announce_alert(
         if severity == "warning" and session_id and _recently_critical(session_id):
             return
         script = alert_script(text, severity, recommendations, lang, options)
+        if follow_up:
+            script = f"{script.rstrip()} {follow_up.strip()}"
         key = dedupe_key or f"{severity}:{script}"
-        if not _claim(key):
+        if not _claim(key, once):
             return
         if severity == "critical" and session_id:
             with _lock:
@@ -307,8 +376,9 @@ def announce_alert(
 
 
 def alert_dedupe_key(session_id: str, severity: str, lang: str, options: str) -> str:
-    """A changed garage result is a new useful warning; identical batches stay quiet."""
-    choice_id = hashlib.sha256(options.encode("utf-8")).hexdigest()[:12]
+    """A changed garage result is a new useful warning; identical batches stay quiet. The distances are left out:
+    they drift by a few hundred metres from one batch to the next and must not make the same alert speak again."""
+    choice_id = hashlib.sha256(re.sub(r"[\d.,]+", "", options).encode("utf-8")).hexdigest()[:12]
     return f"{session_id}:{severity}:{normalize(lang)}:{choice_id}"
 
 
@@ -328,9 +398,10 @@ class BlazeTTS:
         *,
         token: str,
         speaker_id: str,
-        model: str = "v2.0_flash",
+        model: str = "v2.0_pro",
         language: str = "vi",
         audio_format: str = "mp3",
+        audio_speed: float | None = None,
         base_url: str = BLAZE_BASE_URL,
         timeout: float = 20.0,
         poll_interval: float = 0.4,
@@ -340,6 +411,7 @@ class BlazeTTS:
         self.model = model
         self.language = language
         self.audio_format = audio_format
+        self.audio_speed = audio_speed
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.poll_interval = poll_interval
@@ -367,6 +439,7 @@ class BlazeTTS:
                 "speaker_id": self.speaker_id,
                 "model": self.model,
                 "audio_format": self.audio_format,
+                **({"audio_speed": self.audio_speed} if self.audio_speed is not None else {}),
             },
         )
         _raise_for_status(response)
@@ -458,9 +531,9 @@ def _speak(script: str, severity: str, key: str, session_id: str | None = None, 
     try:
         with _client_from_env(lang) as client:
             for part in _tts_parts(script):
-                speech = client.synthesize(part)
+                speech = client.synthesize(spoken_form(part, lang))
                 path = _write(speech, severity)
-                _register(session_id, severity, speech.text, path, speech.content_type, lang, group=key)
+                _register(session_id, severity, part, path, speech.content_type, lang, group=key)
                 log.info("spoke %s alert (%s bytes) %s", severity, len(speech.audio), path)
     except Exception:
         log.warning("Blaze TTS failed for a %s alert", severity, exc_info=True)
@@ -478,16 +551,25 @@ def _speak(script: str, severity: str, key: str, session_id: str | None = None, 
 
 def _client_from_env(lang: str = "vi") -> BlazeTTS:
     english = normalize(lang) == "en"
-    model = os.getenv("BLAZE_TTS_MODEL", "v2.0_flash").strip() or "v2.0_flash"
+    model = os.getenv("BLAZE_TTS_MODEL", "v2.0_pro").strip() or "v2.0_pro"
     return BlazeTTS(
         token=os.environ["BLAZE_API_TOKEN"].strip(),
-        speaker_id=os.environ["BLAZE_SPEAKER_ID_EN" if english else "BLAZE_SPEAKER_ID"].strip(),
+        speaker_id=selected(lang),  # the person's choice on the page, else the default (voice_options.py)
         model=(os.getenv("BLAZE_TTS_MODEL_EN", "").strip() or model) if english else model,
         language=(os.getenv("BLAZE_TTS_LANGUAGE_EN", "en").strip() or "en") if english else (os.getenv("BLAZE_TTS_LANGUAGE", "vi").strip() or "vi"),
         audio_format=os.getenv("BLAZE_AUDIO_FORMAT", "mp3").strip() or "mp3",
+        audio_speed=_audio_speed(),
         base_url=os.getenv("BLAZE_BASE_URL", BLAZE_BASE_URL).strip() or BLAZE_BASE_URL,
         timeout=float(os.getenv("BLAZE_TTS_TIMEOUT_SECONDS", "20")),
     )
+
+
+def _audio_speed() -> float:
+    """Playback speed Blaze renders at (its range is 0.5-1.5); the alerts are read fast: the maximum."""
+    try:
+        return min(1.5, max(0.5, float(os.getenv("BLAZE_AUDIO_SPEED", "1.5"))))
+    except ValueError:
+        return 1.5
 
 
 def _write(speech: Speech, severity: str) -> Path:
@@ -523,12 +605,12 @@ def _recently_critical(session_id: str) -> bool:
         return time.monotonic() - _critical_at.get(session_id, float("-inf")) < _REPEAT_SECONDS
 
 
-def _claim(key: str) -> bool:
+def _claim(key: str, once: bool = False) -> bool:
     now = time.monotonic()
     with _lock:
         if now < _spoken.get(key, 0):
             return False
-        _spoken[key] = now + _REPEAT_SECONDS
+        _spoken[key] = math.inf if once else now + _REPEAT_SECONDS
     return True
 
 
@@ -630,7 +712,7 @@ def _extension(content_type: str) -> str:
 
 def enabled(lang: str = "vi") -> bool:
     """Whether alerts can be spoken in `lang` (a token and that language's voice are set)."""
-    return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and os.getenv(_speaker_variable(lang), "").strip())
+    return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and selected(lang))
 
 
 def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str, lang: str = "vi", *, group: str | None = None) -> dict[str, Any]:

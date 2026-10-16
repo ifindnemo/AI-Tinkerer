@@ -1,6 +1,6 @@
 "use client";
 import {useCallback, useEffect, useSyncExternalStore} from "react";
-import {agentLangStore, agentModeStore, langStore, localeOf, timeOf, voiceVolumeStore, type Lang, type PreferenceStore} from "@/lib/preferences";
+import {agentLangStore, agentModeStore, driverVoiceStore, langStore, localeOf, timeOf, voiceRateStore, voiceVolumeStore, type Lang, type PreferenceStore} from "@/lib/preferences";
 
 function usePreference<T extends string>(store: PreferenceStore<T>) {
   const fallback = useCallback(() => store.fallback, [store]);
@@ -25,6 +25,14 @@ export function useAgentLang() {
   const ui = usePreference(langStore);
   const resolved: Lang = setting === "auto" ? ui : setting;
   return {setting, resolved, setAgentLang: agentLangStore.set};
+}
+
+export function useDriverVoice() {
+  return [usePreference(driverVoiceStore) === "on", (on: boolean) => driverVoiceStore.set(on ? "on" : "off")] as const;
+}
+
+export function useVoiceRate() {
+  return [usePreference(voiceRateStore), voiceRateStore.set] as const;
 }
 
 export function useVoiceVolume() {

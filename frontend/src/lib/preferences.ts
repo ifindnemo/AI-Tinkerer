@@ -57,12 +57,21 @@ export const resolveAgentLang = (): Lang => {
   return chosen === "auto" ? langStore.get() : chosen;
 };
 
+// Whether the agent also speaks the driver-camera alerts (drowsiness, distraction). Off for now: the camera has its own
+// horn, and the voice is kept for what the car agent finds. The words still show on screen.
+export const driverVoiceStore = persistentStore<"on" | "off">("car-neuron.driver-voice", "off", ["on", "off"]);
+
 // Volume of the agent's voice, in percent steps (a text value so it fits the same store).
 export const VOICE_VOLUMES = ["20", "40", "60", "80", "100"] as const;
 export type VoiceVolume = (typeof VOICE_VOLUMES)[number];
 export const voiceVolumeStore = persistentStore<VoiceVolume>("car-neuron.voice-volume", "100", VOICE_VOLUMES);
 /** 0.2 … 1, as `HTMLMediaElement.volume` wants it. */
 export const voiceGain = () => Number(voiceVolumeStore.get()) / 100;
+
+// How fast the browser plays the agent's voice, on top of the speed Blaze renders at (percent steps; pitch is kept).
+export const VOICE_RATES = ["100", "115", "130"] as const;
+export type VoiceRate = (typeof VOICE_RATES)[number];
+export const voiceRateStore = persistentStore<VoiceRate>("car-neuron.voice-rate", "100", VOICE_RATES);
 
 // For text generated outside React (mock analysis, incident timeline, adapter errors).
 // The language is fixed when the text is created; stored history keeps its original language.

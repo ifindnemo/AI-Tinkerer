@@ -1,6 +1,6 @@
 "use client";
 import {useEffect, useState} from "react";
-import {useAgentLang, useVoiceVolume} from "@/hooks/use-preferences";
+import {useAgentLang, useDriverVoice, useVoiceRate, useVoiceVolume} from "@/hooks/use-preferences";
 import type {Lang} from "@/lib/preferences";
 
 export type VoiceClip = {id: string; seq: number; severity: "warning" | "critical" | "normal"; text: string; created_at: string; group?: string | null};
@@ -15,12 +15,14 @@ export type VoiceState = {
 };
 
 const POLL_MS = 2000;
+/** An alert that waited this long behind others is no longer news: it is skipped, not read late. Replay still plays it. */
+const STALE_MS = 45_000;
 
 type Update = (change: (current: VoiceState) => VoiceState) => void;
 
 /** One clip at a time, in order. Plain object (not hooks): `playNext` calls itself when a clip ends. */
 function createPlayer(update: Update) {
-  const m = {queue: [] as VoiceClip[], playing: null as AudioBufferSourceNode | null, loading: null as AbortController | null, context: null as AudioContext | null, gain: null as GainNode | null, last: null as VoiceClip | null, lastGroup: [] as VoiceClip[], stopped: false, on: true, blocked: false, visible: true, volume: 1};
+  const m = {queue: [] as VoiceClip[], playing: null as AudioBufferSourceNode | null, loading: null as AbortController | null, context: null as AudioContext | null, gain: null as GainNode | null, last: null as VoiceClip | null, lastGroup: [] as VoiceClip[], stopped: false, on: true, blocked: false, visible: true, volume: 1, rate: 1, replaying: new Set<string>(), driverVoice: false};
   const isOn = () => m.on;
   const groupOf = (clip: VoiceClip) => clip.group || `${clip.severity}:${clip.created_at}`;
   function audioContext() {
@@ -67,6 +69,7 @@ function createPlayer(update: Update) {
       return;
     }
     const clip = m.queue.shift()!;
+    if (!m.replaying.has(clip.id) && Date.now() - Date.parse(clip.created_at) > STALE_MS) {playNext(); return;}
     const request = new AbortController();
     m.loading = request;
     void (async () => {
@@ -79,6 +82,7 @@ function createPlayer(update: Update) {
         if (!m.visible) {m.queue.unshift(clip); return;}
         const source = context.createBufferSource();
         source.buffer = buffer;
+        source.playbackRate.value = m.rate;
         source.connect(m.gain!);
         source.onended = () => {
           if (m.playing !== source) return;
@@ -126,15 +130,27 @@ function createPlayer(update: Update) {
     },
     isStopped: () => m.stopped,
     enqueue(clips: VoiceClip[]) {
+      // Driver-camera alerts (their group starts with "driver:") are left out while that voice is off: not queued, not replayed.
+      clips = m.driverVoice ? clips : clips.filter(clip => !clip.group?.startsWith("driver:"));
       remember(clips);
       m.queue.push(...clips);
       playNext();
     },
-    remember,
+    remember: (clips: VoiceClip[]) => remember(m.driverVoice ? clips : clips.filter(clip => !clip.group?.startsWith("driver:"))),
+    setDriverVoice(on: boolean) {
+      m.driverVoice = on;
+      if (on) return;
+      m.queue = m.queue.filter(clip => !clip.group?.startsWith("driver:"));
+    },
     /** 0 … 1; also applies to the clip that is playing. */
     setVolume(volume: number) {
       m.volume = Math.min(1, Math.max(0, volume));
       if (m.gain) m.gain.gain.value = m.volume;
+    },
+    /** 1 … 1.3; also applies to the clip that is playing (Web Audio speeds the pitch up with it). */
+    setRate(rate: number) {
+      m.rate = Math.min(2, Math.max(0.5, rate));
+      if (m.playing) m.playing.playbackRate.value = m.rate;
     },
     /** Muting stops the voice now, not after the sentence. */
     setOn(on: boolean) {
@@ -153,7 +169,9 @@ function createPlayer(update: Update) {
       if (!m.last || !isOn()) return;
       cancel();
       m.queue.length = 0;
-      m.queue.push(...(m.lastGroup.length ? m.lastGroup : [m.last]));
+      const again = m.lastGroup.length ? m.lastGroup : [m.last];
+      m.replaying = new Set(again.map(clip => clip.id));
+      m.queue.push(...again);
       unlock();
     },
   };
@@ -168,6 +186,8 @@ export function useVoiceAlerts(session: string, on: boolean): VoiceState & {repl
   const [player] = useState(() => createPlayer(setState));
   const {resolved: lang} = useAgentLang();
   const [volume] = useVoiceVolume();
+  const [rate] = useVoiceRate();
+  const [driverVoice] = useDriverVoice();
 
   useEffect(() => player.setOn(on), [on, player]);
   useEffect(() => player.setVolume(Number(volume) / 100), [volume, player]);
@@ -180,6 +200,8 @@ export function useVoiceAlerts(session: string, on: boolean): VoiceState & {repl
       document.removeEventListener("keydown", retry, true);
     };
   }, [player]);
+  useEffect(() => player.setRate(Number(rate) / 100), [rate, player]);
+  useEffect(() => player.setDriverVoice(driverVoice), [driverVoice, player]);
 
   useEffect(() => {
     let after: number | null = null; // null: the first answer only sets the starting point
