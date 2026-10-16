@@ -121,21 +121,13 @@ def alert_script(
 def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: bool = False, rest: bool = False) -> str:
     """Spoken choices taken only from tool results. Empty when no garage list came back.
 
-    `hold` means the driver must stop first: the line lists choices for after the stop
-    and does not invite them to drive on. `rest` means the camera sees a drowsy driver: the line tells them to
-    rest first and offers a pick-up or roadside help, with only the nearest garage as information.
+    `hold` means the driver must stop first. `rest` also requires rest and alertness.
+    Both list garages only as choices for after the stop.
     """
     lang = normalize(lang)
     found = _nearby_garages(trace)
     if not found:
         return ""
-    if rest:
-        near = found[0]
-        if lang == "en":
-            return (f"Rest first. If you do not feel alert enough to drive on, ask someone to pick you up or call roadside assistance. "
-                    f"The nearest garage is {near['name']}, {_km(near['km'], lang)} away, for when you are ready.")
-        return (f"Hãy nghỉ trước. Nếu bạn không đủ tỉnh táo để lái tiếp, hãy nhờ người đến đón hoặc gọi cứu hộ. "
-                f"Garage gần nhất là {near['name']}, cách {_km(near['km'], lang)}, để dùng khi bạn đã sẵn sàng.")
     spoken = found[:3]
     listed = _join_names(
         [
@@ -155,7 +147,9 @@ def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: b
         head = f"Around you, the {count} {noun} are {listed}." if len(found) > len(spoken) else f"Around you there {'is' if len(spoken) == 1 else 'are'} {len(spoken)} {noun}: {listed}."
         average_line = f"Their average distance is about {average}."
         familiar = _familiar_garage(trace)
-        if hold:
+        if rest:
+            choice = f"These are choices only after you have stopped, rested and feel alert{f', including your usual garage, {familiar}' if familiar else ''}."
+        elif hold:
             choice = f"These are choices for after you have stopped{f', including your usual garage, {familiar}' if familiar else ''}."
         elif familiar:
             choice = f"You can choose one of these, or your usual garage, {familiar}."
@@ -168,7 +162,9 @@ def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: b
             head = f"Quanh bạn có {len(spoken)} garage: {listed}."
         average_line = f"Khoảng cách trung bình của các garage vừa nêu là khoảng {average}."
         familiar = _familiar_garage(trace)
-        if hold:
+        if rest:
+            choice = "Đây là các lựa chọn chỉ sau khi bạn đã dừng, nghỉ và tỉnh táo" + (f", gồm garage quen thuộc {familiar}." if familiar else ".")
+        elif hold:
             choice = "Đây là các lựa chọn sau khi bạn đã dừng" + (f", gồm garage quen thuộc {familiar}." if familiar else ".")
         elif familiar:
             choice = f"Bạn muốn chọn một garage trong số này, hay garage quen thuộc {familiar}?"
@@ -403,7 +399,17 @@ def speak_car_result(session_id: str, severity: str, lang: str, result: dict[str
     plan = result.get("plan") or {}
     follow_up = follow_up_for(result, lang)
     line = plan.get("spoken") or ""
-    if plan.get("code") == "garage_when_convenient" and follow_up:
+    choices = tool_options_line(
+        result.get("tool_trace"), lang,
+        hold=severity == "critical" or plan.get("code") in ("stop_and_get_help", "stop_rest_and_get_help"),
+        rest=plan.get("code") in ("rest_then_decide", "stop_rest_and_get_help"),
+    )
+    if choices:
+        # Keep the plan's safety steps, then read the tool list instead of repeating
+        # the nearest garage already named in plan.spoken.
+        steps = plan.get("steps") or list(recommendations)[:1]
+        line = " ".join([*(str(step).strip() for step in steps if step), choices])
+    elif plan.get("code") == "garage_when_convenient" and follow_up:
         line = ""  # the booking sentence already names the garage
     base = f"{session_id}:{severity}:{lang}"
     key = f"{base}:plan:{plan.get('code') or '-'}" + (":booking" if follow_up else "")
