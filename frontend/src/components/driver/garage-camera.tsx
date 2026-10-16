@@ -139,6 +139,7 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
     onMute: muteHorn,
     onUnmute: unmuteHorn,
     onTest: testHorn,
+    onToggleSound: () => updateSettings({sound: !sound}),
     now: event ? Date.parse(event.capturedAt) : 0,
   } : null;
   const board = boardProps ? (

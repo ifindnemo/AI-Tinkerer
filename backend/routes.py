@@ -1,13 +1,15 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from agent.orchestrator import vehicle_agent
+from booking import ics_for
 from schemas import (
     ConfirmAction,
     IncidentAction,
     TelemetryBatchInput,
 )
+from store import store
 
 
 router = APIRouter()
@@ -37,19 +39,22 @@ def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
 
         clear_alert_history(batch.vehicle_id)
     if severity in ("warning", "critical"):
-        from voice import alert_dedupe_key, announce_alert, tool_options_line
+        from voice import announce_alert, follow_up_for, tool_options_line
 
         driver = context.get("driver_attention") or {}
         hold = severity == "critical" or (driver.get("status") == "live" and bool(driver.get("must_stop")))
-        options = tool_options_line(result.get("tool_trace"), batch.lang, hold=hold)
+        # The plan (car + driver) says what to do; with no special plan, the nearby garages are offered as choices.
+        options = (result.get("plan") or {}).get("spoken") or tool_options_line(result.get("tool_trace"), batch.lang, hold=hold)
         announce_alert(
             assessment["diagnosis"],
             severity=severity,
             recommendations=assessment["recommendations"],
-            dedupe_key=alert_dedupe_key(batch.vehicle_id, severity, batch.lang, options),
+            dedupe_key=f"{batch.vehicle_id}:{severity}:{batch.lang}",
+            once=True,  # one announcement per episode: the page shows the rest; a normal assessment starts a new one
             session_id=batch.vehicle_id,
             lang=batch.lang,
             options=options,
+            follow_up=follow_up_for(result, batch.lang),
         )
     return {
         **result,
@@ -100,3 +105,16 @@ def confirm_action(incident_id: str, confirmation: ConfirmAction) -> dict:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@router.get("/appointments/{appointment_id}/calendar.ics", tags=["incidents"])
+def appointment_calendar(appointment_id: str) -> Response:
+    """The confirmed appointment as an .ics file the driver can open in any calendar app."""
+    appointment = store.get_appointment(appointment_id)
+    if appointment is None:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return Response(
+        ics_for(appointment),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{appointment_id}.ics"'},
+    )

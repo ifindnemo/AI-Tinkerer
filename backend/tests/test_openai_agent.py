@@ -63,12 +63,13 @@ def _critical_assessment() -> VehicleAssessment:
     )
 
 
-def test_agent_registers_read_tools() -> None:
+def test_agent_registers_read_tools_and_only_proposes_bookings() -> None:
     tool_names = {tool.name for tool in orchestrator.vehicle_agent.agent.tools}
     assert tool_names == {
         "get_external_environment_context",
         "get_maintenance_history",
         "search_nearby_garages",
+        "propose_booking",  # a proposal only: saving needs the driver's confirmation (test_booking.py)
     }
 
 

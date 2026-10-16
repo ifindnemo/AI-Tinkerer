@@ -1,5 +1,6 @@
 """Vehicle Guardian: ECU + camera + maintenance, decided by fixed rules (docs: README_VEHICLE_GUARDIAN_CAMERA)."""
 
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -194,7 +195,10 @@ def test_agent_payload_has_structured_values_only() -> None:
     guardian = combine(rule, batch.events, batch.context.vehicle, responded=False, unanswered=False, alert_since=None, maintenance=maintenance_context())
     captured = agent_module.guardian_payload(guardian)
     assert set(captured) == {"ecu", "driver", "maintenance", "policy"}
-    assert captured["ecu"]["simulated"] is True
+    assert captured["ecu"]["source"] == "simulated"  # the rules know; the model is not told (agent.realism)
+    from agent.realism import for_model
+
+    assert "simulat" not in json.dumps(for_model(captured), ensure_ascii=False).lower() and "mô phỏng" not in json.dumps(for_model(captured), ensure_ascii=False)
     assert captured["policy"]["must_stop"] is True
     assert "events" not in captured["driver"]  # a summary, not the raw event stream
 

@@ -42,7 +42,7 @@ BASE_URL=http://127.0.0.1:3000 node scripts/verify-driver-ui.mjs        # rules-
 BASE_URL=http://127.0.0.1:3000 MODE=backend node scripts/verify-garage-camera.mjs   # add EXPECT_VOICE=1 with Blaze set up
 ```
 
-Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI changes. `verify-session-recovery` is stale: it looks for an "Inject Overheating" button that no longer exists.
+Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI changes. After agent, voice or camera changes (real backend, a few minutes each): `verify-plan` (same car, different plan with a drowsy driver) and `verify-voice-once` (each car alert spoken once per episode; restart the backend first for a fresh episode). `verify-session-recovery` is stale: it looks for an "Inject Overheating" button that no longer exists.
 
 ## Rules
 
@@ -50,5 +50,5 @@ Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI chan
 - **Tests never call paid services:** `backend/tests/conftest.py` blanks the Blaze variables and turns external tools off; keep it that way.
 - **Privacy:** camera frames stay in the browser. Only structured attention events reach the backend (the schema forbids extra fields). Never send frames, landmarks or blobs.
 - **Safety:** deterministic rules set severity and the mandatory steps; the LLM only words them and can never lower them or tell a driver who must stop to continue. Alerts and the horn never wait for the LLM or the network.
-- **Honesty:** label simulated data everywhere. No claims of vehicle control, emergency calls or automotive safety certification. The gateway never sends OBD Mode 04 (clear codes), and there is no clear-codes control.
+- **Honesty:** label simulated data everywhere on the pages. The one exception is the model's own prompts and input: by the user's decision (2026-10-16) they never mention simulation and the agent treats the data as real (`backend/agent/realism.py` cleans what reaches the LLM; the rules still read the real `source`). No claims of vehicle control, emergency calls or automotive safety certification. The gateway never sends OBD Mode 04 (clear codes), and there is no clear-codes control.
 - **Git:** commit or push only when the user asks. `main` is the shared branch.

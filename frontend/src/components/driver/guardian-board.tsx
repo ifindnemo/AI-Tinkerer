@@ -66,7 +66,7 @@ export function EcuPicker({value, onChange}: {value: EcuScenario; onChange: (ecu
 type Row = {key: string; label: string; value: string; source: string; level?: string; testId: string; animate: boolean};
 
 /** One line per fact, each with its source: what the CEO demo board must show at a glance. */
-export function GuardianBoard({guardian, assessment, maintenance, canConfirm, onConfirm, sound, hornMuted, onMute, onUnmute, onTest, now, embedded = false, wide = false, part = "all", title}: {
+export function GuardianBoard({guardian, assessment, maintenance, canConfirm, onConfirm, sound, hornMuted, onMute, onUnmute, onTest, onToggleSound, now, embedded = false, wide = false, part = "all", title}: {
   guardian: GuardianBlock | null;
   assessment: DriverAssessment | null;
   maintenance: MaintenanceSummary | null;
@@ -78,6 +78,8 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
   onMute: () => void;
   onUnmute: () => void;
   onTest: () => void;
+  /** Turns the horn on or off for good (saved), separately from the agent's voice. */
+  onToggleSound?: () => void;
   now: number;
   /** Inside another card: no frame of its own, and rows two by two when there is room. */
   embedded?: boolean;
@@ -150,6 +152,7 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
           {sound && !hornMuted && <button type="button" className={styles.mute} onClick={onTest} data-testid="guardian-test">{t("Thử còi", "Test horn")}</button>}
           {sound && !hornMuted && ongoing && <button type="button" className={`${styles.mute} ${styles.muteStrong}`} onClick={onMute} data-testid="guardian-mute" aria-label={t("Tắt còi", "Mute the horn")}><BellOff size={14} aria-hidden="true" />{t("Tắt còi", "Mute")}</button>}
           {sound && hornMuted && <button type="button" className={styles.mute} onClick={onUnmute} data-testid="guardian-unmute">{t("Bật lại", "Unmute")}</button>}
+          {onToggleSound && <button type="button" className={styles.mute} onClick={onToggleSound} aria-pressed={!sound} data-testid="guardian-horn-toggle">{sound ? t("Tắt còi hẳn", "Turn horn off") : t("Bật còi", "Turn horn on")}</button>}
         </div>
       </div>
       </>}

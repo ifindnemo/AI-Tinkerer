@@ -196,18 +196,21 @@ class AnalysisWorker:
 
             clear_alert_history(job.vehicle_id)
         if severity in ("warning", "critical"):
-            from voice import alert_dedupe_key, announce_alert, tool_options_line
+            from voice import announce_alert, follow_up_for, tool_options_line
 
             driver = context.get("driver_attention") or {}
             hold = severity == "critical" or (driver.get("status") == "live" and bool(driver.get("must_stop")))
-            options = tool_options_line(trace, hold=hold)
+            # The plan (car + driver) says what to do; with no special plan, the nearby garages are offered as choices.
+            options = (result.get("plan") or {}).get("spoken") or tool_options_line(trace, "vi", hold=hold)
             announce_alert(
                 assessment.diagnosis,
                 severity=severity,
                 recommendations=assessment.recommendations,
-                dedupe_key=alert_dedupe_key(job.vehicle_id, severity, "vi", options),
+                dedupe_key=f"{job.vehicle_id}:{severity}:vi",
+                once=True,
                 session_id=job.vehicle_id,
                 options=options,
+                follow_up=follow_up_for(result),
             )
         return payload
 

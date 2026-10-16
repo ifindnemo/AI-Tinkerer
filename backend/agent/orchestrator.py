@@ -10,14 +10,17 @@ from agents import Agent, Runner
 import llm_provider
 from analysis.rules import batch_policy, batch_rules_assessment
 
+from agent.plan import decide as decide_plan
 from agent.prompt import build_agent_instructions
+from agent.realism import for_model
 from agent.safety import evaluate_hard_safety
 from driver.registry import attach_driver, stop_for_driver, suggests_garage_trip, vehicle_moving
 from lang import normalize, number, pick
 from agent.tools.garage_search import search_nearby_garages
 from agent.tools.maintenance_history import get_maintenance_history
+from booking import backend_name, build_proposal, timezone_name
 from agent.tools import (
-    VEHICLE_READ_TOOLS,
+    VEHICLE_TOOLS,
     VehicleToolContext,
     create_google_calendar_event,
 )
@@ -57,7 +60,7 @@ class VehicleAgent:
                 instructions=build_agent_instructions(lang),
                 model=self.model,
                 model_settings=llm_provider.model_settings(parallel_tool_calls=True),
-                tools=VEHICLE_READ_TOOLS,
+                tools=VEHICLE_TOOLS,
                 output_type=VehicleAssessment,
             )
         return self._agents[lang]
@@ -117,7 +120,7 @@ class VehicleAgent:
         }
         result = Runner.run_sync(
             self._agent_for(telemetry_context.get("lang", "vi")),
-            json.dumps(input_data, ensure_ascii=False),
+            json.dumps(for_model(input_data), ensure_ascii=False),
             context=context,
             max_turns=6,
         )
@@ -207,6 +210,7 @@ class VehicleAgent:
         severity = assessment.severity if SEVERITY_RANK[assessment.severity] >= SEVERITY_RANK[floor] else floor
         # Keep the origin for callers; the combined vehicle assessment is still spoken.
         telemetry_context["driver_policy_raised"] = severity != assessment.severity
+        telemetry_context["driver_must_rest"] = drowsy  # the spoken garage line then says "rest first" (voice.tool_options_line)
         steps = [step for step in assessment.recommendations if not suggests_garage_trip(step)]
         stop = stop_for_driver(lang)
         if drowsy:
@@ -505,6 +509,11 @@ class VehicleAgent:
             assessment=assessment_data,
             tool_trace=trace,
         )
+        # Car and driver together decide what to do now (and whether an appointment may be proposed).
+        result["plan"] = decide_plan(assessment.severity.value, telemetry_context, trace, normalize(telemetry_context.get("lang")))
+        if result["plan"] and not result["plan"]["booking"]:
+            telemetry_context["plan_forbids_booking"] = True
+        result.update(VehicleAgent._booking_state(incident, assessment, trace, telemetry_context))
         result.update(
             {
                 "status": "incident_created",
@@ -517,6 +526,44 @@ class VehicleAgent:
             }
         )
         return result
+
+    @staticmethod
+    def _booking_state(
+        incident: dict[str, Any],
+        assessment: VehicleAssessment,
+        trace: list[dict[str, Any]],
+        telemetry_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """The appointment the agent proposed for this incident, waiting for the driver's confirmation,
+        or the one already confirmed. A proposal is never an action: it is stored as a pending action
+        and only `confirm_action` saves it. A stop-now alert (critical, or a drowsy driver in a moving
+        car) never gets one: the driver is not going to a garage then."""
+        state: dict[str, Any] = {"pending_action": None, "appointment": None}
+        booked = store.appointment_for_incident(incident["id"])
+        if booked:
+            state["appointment"] = booked
+            return state
+        pending = store.pending_action_for(incident["id"], "book_appointment")
+        stop_now = assessment.severity == Severity.CRITICAL or telemetry_context.get("driver_policy_raised") or telemetry_context.get("driver_must_rest") or telemetry_context.get("plan_forbids_booking")
+        if stop_now:
+            return state
+        if pending is None:
+            for item in reversed(trace):
+                result = item.get("result") or {}
+                if item.get("tool") == "propose_booking" and result.get("proposed"):
+                    try:
+                        proposal = build_proposal(**item["arguments"], trace=trace)
+                    except ValueError:
+                        break
+                    pending = store.create_pending_action(
+                        incident["id"],
+                        "book_appointment",
+                        {**proposal, "lang": normalize(telemetry_context.get("lang"))},
+                    )
+                    store.update_incident_memory_status(incident["id"], "waiting_confirmation")
+                    break
+        state["pending_action"] = pending
+        return state
 
     @staticmethod
     def get_incident(incident_id: str):
@@ -565,16 +612,22 @@ class VehicleAgent:
             )
             if start.tzinfo is None:
                 raise ValueError("Booking slot must include a timezone offset")
-            calendar_event = create_google_calendar_event(
-                summary=f"Bảo dưỡng xe {incident['vehicle_id']}",
-                start_time=start.isoformat(),
-                end_time=(start + timedelta(hours=1)).isoformat(),
-                time_zone=os.getenv("GOOGLE_CALENDAR_TIME_ZONE", "Asia/Ho_Chi_Minh"),
-                description=f"Vehicle Guardian incident {incident_id}",
-                location=pending["payload"]["garage_id"],
-            )
+            if start <= datetime.now(start.tzinfo):
+                raise ValueError("The proposed appointment time has already passed")
+            if backend_name() == "google":
+                calendar_event = create_google_calendar_event(
+                    summary=f"Bảo dưỡng xe {incident['vehicle_id']}",
+                    start_time=start.isoformat(),
+                    end_time=(start + timedelta(hours=1)).isoformat(),
+                    time_zone=timezone_name(),
+                    description=f"Vehicle Guardian incident {incident_id}",
+                    location=pending["payload"]["garage_id"],
+                )
+            else:
+                calendar_event = None  # kept here and offered as an .ics file
             result = store.create_appointment(incident, pending["payload"])
             result["calendar_event"] = calendar_event
+            result["calendar"] = backend_name()
         elif pending["action_type"] == "remind_later":
             result = store.create_reminder(incident, pending["payload"])
         else:

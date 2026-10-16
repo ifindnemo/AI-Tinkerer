@@ -218,6 +218,7 @@ export default function DriverPage() {
                 onMute={muteHorn}
                 onUnmute={unmuteHorn}
                 onTest={testHorn}
+                onToggleSound={() => updateSettings({sound: !store.settings.sound})}
                 now={event ? Date.parse(event.capturedAt) : 0}
               />
               <AgentCard assessment={assessment} offline={view.sendError} />

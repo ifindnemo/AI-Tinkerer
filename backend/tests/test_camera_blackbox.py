@@ -184,3 +184,14 @@ def test_device_analysis_includes_the_drowsy_driver(tmp_path, monkeypatch) -> No
     assert payload["severity"] == "critical"
     assert assessment["recommendations"][0] == STOP_FOR_DRIVER
     assert assessment["evidence"][0].startswith("Camera tài xế:")
+
+
+def test_a_drowsy_driver_is_told_to_rest_and_gets_no_booking_proposal() -> None:
+    DriverService().process(_driver_batch([_event(0, "drowsy", 1600)]))
+    context = attach_driver(_context())
+    VehicleAgent._apply_driver_policy(_raw(Severity.WARNING, ["Kiểm tra két nước."]), context)
+    assert context["driver_must_rest"] is True
+    DriverService().process(_driver_batch([_event(0, "distracted", 1600)]))
+    distracted = attach_driver(_context())
+    VehicleAgent._apply_driver_policy(_raw(Severity.WARNING, ["Kiểm tra két nước."]), distracted)
+    assert distracted.get("driver_must_rest") is False

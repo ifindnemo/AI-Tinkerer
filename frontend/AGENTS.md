@@ -135,3 +135,16 @@ The user chose `/garage` (blackbox + camera, API mode, real LLM) as the one demo
 - The robot is small and tucked into the corner on `/garage` and `/driver` (`AgentDock quietOver`), and its bubble is drawn only while the camera card (`quietRatio` 0.1) or the Guardian board is on screen; it stays in the DOM for screen readers. After a driver confirmation the robot says the car is still warning while the engine is.
 - `?reset=1` on `/garage` and `/driver` clears the app's `localStorage` keys (`lib/demo-reset.ts`) and reloads without the parameter.
 - Backend: `/api/telemetry/batch` honours `AGENT_MODE=rules` and falls back to rules on an LLM error or after `BATCH_AGENT_TIMEOUT_SECONDS` (reply carries `engine` and `fallback_reason`); a coolant at or above the warning line for the last 8 samples sets a warning floor (`analysis.rules.batch_policy`), because rule R1 needs 20 s of history and a batch holds at most 15.
+
+### Agent tools and booking (2026-10-16)
+
+The blackbox/OBD vehicle agent calls tools: weather, maintenance history, nearby garages and `propose_booking` (`backend/agent/tools/openai_tools.py`, `backend/booking.py`). The driver/Guardian agent that words the camera alert has no tools: it must stay fast (8 s) and never wait on the network. A proposal is only a pending action; the browser shows it as `BookingCard` in `components/backend-agent-panel.tsx` (garage, time, "Xác nhận đặt lịch" / "Để sau") and nothing is saved until the driver confirms. The proxy allows exactly one write, `POST incidents/inc_…/confirm` with `{pending_action_id}` and nothing else (`tests/booking-proxy.test.ts`); `GET /api/vehicle/appointments/apt_…` passes the `.ics` file through. A critical alert, or a drowsy driver in a moving car, never gets a proposal. The appointment is kept in Car Neuron and the garage is not contacted: say so wherever it is shown.
+
+### Choosing the voice (2026-10-16)
+
+The Agent settings card has a voice picker for the language the agent answers in, with a preview button. Blaze lists its voices at `GET /v1/tts/options` (all languages; `/v1/voices` only lists the account's own, all Vietnamese). `backend/voice_options.py` offers Blaze's own voices for the language (and the community English ones), keeps the choice in `var/voice_preference.json`, and every path that speaks (`voice._client_from_env`) reads it. English defaults to Helen (`UK-Nu-1-TM`) when `BLAZE_SPEAKER_ID_EN` is empty; Vietnamese keeps `BLAZE_SPEAKER_ID`. Only a voice listed for that language can be chosen; the browser reaches it through `/api/voice/voices` (list, choose) and `/api/voice/voices/<id>/preview`. Tests never write the real preference file (`conftest.py`).
+
+### The model is not told the data is simulated (2026-10-16)
+
+The user wants the agent to act as if the car were real. The prompts (`agent/prompt.py`, `driver/agent.py`) no longer mention simulation, and `backend/agent/realism.py` removes `simulated` / `source: "simulated"` / the history file's source note and "(mô phỏng)" tags from everything sent to the LLM (batch input, tool results, Guardian payload). Rules and tests still read the real values, the pages keep their simulated-data labels, and the tool trace shown in the UI is unchanged.
+
