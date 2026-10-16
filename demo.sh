@@ -60,6 +60,7 @@ trap 'trap - EXIT INT TERM; kill 0 2>/dev/null' EXIT INT TERM
 
 say "Starting the backend on 127.0.0.1:$BACKEND_PORT (no reload)"
 (cd "$ROOT/backend" && exec "$VENV/bin/python" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --timeout-graceful-shutdown 3) &
+backend_pid=$!
 for _ in $(seq 1 30); do
   curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1 && break
   kill -0 $! 2>/dev/null || die "The backend exited during startup. See the log above."
@@ -69,6 +70,7 @@ curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1 || die "The bac
 
 say "Starting the frontend on 127.0.0.1:$FRONTEND_PORT"
 (cd "$ROOT/frontend" && BACKEND_URL="http://127.0.0.1:$BACKEND_PORT" exec node_modules/.bin/next start --hostname 127.0.0.1 --port "$FRONTEND_PORT") &
+frontend_pid=$!
 for _ in $(seq 1 20); do
   curl -sf -o /dev/null "http://127.0.0.1:$FRONTEND_PORT/garage" 2>/dev/null && break
   sleep 1
@@ -77,5 +79,8 @@ VOICE=$(curl -sf "http://127.0.0.1:$FRONTEND_PORT/api/voice/clips?session=bmw-m2
 say "Ready ($VOICE). Open in Chrome or Edge:"
 say "  http://localhost:$FRONTEND_PORT/garage?presenter=1&reset=1"
 say "Checklist: docs/demo-runbook.md. Ctrl+C stops everything."
-wait -n
+# wait -n needs bash 4.3. macOS ships bash 3.2, where that option exits the script and the trap stops both servers.
+while kill -0 "$frontend_pid" 2>/dev/null && kill -0 "$backend_pid" 2>/dev/null; do
+  sleep 1
+done
 warn "A service stopped; shutting down the other one."

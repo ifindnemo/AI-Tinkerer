@@ -57,6 +57,72 @@ def test_rules_mode_does_not_call_the_llm_and_warns_above_the_threshold(monkeypa
     assert any("Quạt" in line for line in reply["assessment"]["evidence"])
 
 
+def test_warning_voice_uses_garage_and_history_tool_results(monkeypatch) -> None:
+    import voice
+
+    monkeypatch.setenv("AGENT_MODE", "rules")
+    monkeypatch.setenv("EXTERNAL_TOOLS", "on")
+    monkeypatch.setattr(orchestrator, "get_maintenance_history", lambda vehicle_id: {"records": [
+        {"garage": "Garage Thành Phát"},
+        {"garage": "Garage Minh Quân (đối tác quen)"},
+        {"garage": "Garage Thành Phát"},
+    ]})
+    monkeypatch.setattr(orchestrator, "search_nearby_garages", lambda **kwargs: {"options": [
+        {"name": "Thành Phát", "distance_km": 2.4},
+        {"name": "An Bình Auto", "distance_km": 1.2},
+        {"name": "Minh Quân", "distance_km": 1.8},
+    ]})
+    calls = []
+    monkeypatch.setattr(voice, "announce_alert", lambda *args, **kwargs: calls.append((args, kwargs)))
+    reply = _post(_body([106, 106.5, 107, 107.5, 108, 108.5, 109, 109.5], vehicle_id="voice-tool-options"))
+    assert reply["assessment"]["severity"] == "warning"
+    assert {step["tool"] for step in reply["tool_trace"]} >= {"get_maintenance_history", "search_nearby_garages"}
+    assert len(calls) == 1
+    script = voice.alert_script(calls[0][0][0], calls[0][1]["severity"],
+                                calls[0][1]["recommendations"], options=calls[0][1]["options"])
+    assert script.index("nước làm mát") < script.index("An Bình Auto")
+    assert "An Bình Auto cách 1,2 kilômét" in script
+    assert "Minh Quân cách 1,8 kilômét" in script
+    assert "Thành Phát cách 2,4 kilômét" in script
+    assert "garage quen thuộc Garage Minh Quân (đối tác quen)" in script
+
+
+def test_garage_failure_keeps_the_spoken_diagnosis(monkeypatch) -> None:
+    import voice
+
+    monkeypatch.setenv("AGENT_MODE", "rules")
+    monkeypatch.setenv("EXTERNAL_TOOLS", "on")
+    def unavailable(**kwargs):
+        raise RuntimeError("LOCATIONIQ_ACCESS_TOKEN is not configured")
+    monkeypatch.setattr(orchestrator, "search_nearby_garages", unavailable)
+    calls = []
+    monkeypatch.setattr(voice, "announce_alert", lambda *args, **kwargs: calls.append((args, kwargs)))
+    reply = _post(_body([106, 106.5, 107, 107.5, 108, 108.5, 109, 109.5], vehicle_id="garage-unavailable"))
+    assert reply["assessment"]["severity"] == "warning"
+    assert len(calls) == 1 and calls[0][1]["options"] == ""
+    assert "nước làm mát" in voice.alert_script(calls[0][0][0], "warning", calls[0][1]["recommendations"])
+
+
+def test_camera_raised_alert_still_reads_the_vehicle_assessment(monkeypatch) -> None:
+    import routes
+    import voice
+
+    calls = []
+    def analysis(context):
+        context["driver_policy_raised"] = True
+        context["driver_attention"] = {"status": "live", "must_stop": True}
+        return {"assessment": {"severity": "critical", "diagnosis": "Xe nóng và tài xế cần dừng.",
+                               "recommendations": ["Dừng xe ở vị trí an toàn."]},
+                "tool_trace": [{"tool": "search_nearby_garages", "result": {"options": [
+                    {"name": "An Bình Auto", "distance_km": 1.2}]}}]}
+    monkeypatch.setattr(routes, "_run_agent", analysis)
+    monkeypatch.setattr(voice, "announce_alert", lambda *args, **kwargs: calls.append(kwargs))
+    reply = _post(_body([106], vehicle_id="camera-and-car"))
+    assert reply["assessment"]["severity"] == "critical"
+    assert len(calls) == 1
+    assert "sau khi bạn đã dừng" in calls[0]["options"]
+
+
 def test_rules_mode_stays_normal_for_a_stable_engine(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_MODE", "rules")
     _fail_if_model_called(monkeypatch)

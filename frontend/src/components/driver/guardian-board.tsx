@@ -144,7 +144,7 @@ export function GuardianBoard({guardian, assessment, maintenance, canConfirm, on
       <div className={styles.hornRow} data-state={!sound ? "off" : hornMuted ? "muted" : "on"} data-testid="guardian-horn">
         <span>
           {!sound ? <BellOff size={14} aria-hidden="true" /> : <Bell size={14} aria-hidden="true" />}
-          {!sound ? t("Âm thanh đang tắt", "Sound is off") : hornMuted ? t("Còi đã tắt cho cảnh báo này", "Horn muted for this alert") : t("Còi và giọng nói bật", "Horn and voice on")}
+          {!sound ? t("Còi camera tắt", "Camera horn off") : hornMuted ? t("Còi đã tắt cho cảnh báo này", "Horn muted for this alert") : t("Còi camera bật", "Camera horn on")}
         </span>
         <div className={styles.respondActions}>
           {sound && !hornMuted && <button type="button" className={styles.mute} onClick={onTest} data-testid="guardian-test">{t("Thử còi", "Test horn")}</button>}

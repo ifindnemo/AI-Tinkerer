@@ -191,15 +191,23 @@ class AnalysisWorker:
                  previous and previous["at"])
         self.broker.publish(job.vehicle_id, "analysis", payload)
         self.broker.publish(job.vehicle_id, "trip", get_trip(self.telemetry, job.trip_id))
-        if severity in ("warning", "critical") and not context.get("driver_policy_raised"):
-            from voice import announce_alert
+        if severity == "normal":
+            from voice import clear_alert_history
 
+            clear_alert_history(job.vehicle_id)
+        if severity in ("warning", "critical"):
+            from voice import alert_dedupe_key, announce_alert, tool_options_line
+
+            driver = context.get("driver_attention") or {}
+            hold = severity == "critical" or (driver.get("status") == "live" and bool(driver.get("must_stop")))
+            options = tool_options_line(trace, hold=hold)
             announce_alert(
                 assessment.diagnosis,
                 severity=severity,
                 recommendations=assessment.recommendations,
-                dedupe_key=f"{job.vehicle_id}:{severity}",
+                dedupe_key=alert_dedupe_key(job.vehicle_id, severity, "vi", options),
                 session_id=job.vehicle_id,
+                options=options,
             )
         return payload
 

@@ -28,6 +28,7 @@ export default function AgentSettings() {
   // `voice.enabled` says whether the backend has a voice for the language the page last polled with.
   const known = voice.lang === resolved ? voice.enabled : null;
   const status = muted ? t("Giọng nói đang tắt: agent vẫn hiện chữ.", "Voice is off: the agent still shows its words.")
+    : voice.blocked ? t("Trình duyệt chặn phát tiếng. Bấm vào trang một lần để nghe cảnh báo.", "The browser blocked audio. Tap the page once to hear the alert.")
     : known === false ? t(`Giọng ${spoken} chưa cấu hình trên backend: agent vẫn hiện chữ.`, `No ${spoken} voice is configured on the backend: the agent still shows its words.`)
     : known === true ? t(`Agent trả lời và đọc bằng ${spoken}.`, `The agent answers and speaks in ${spoken}.`)
     : t(`Agent trả lời bằng ${spoken}.`, `The agent answers in ${spoken}.`);

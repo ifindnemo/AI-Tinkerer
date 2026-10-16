@@ -15,6 +15,7 @@ from telemetry.db import telemetry_store  # noqa: E402
 from telemetry.routes import get_worker, router as telemetry_router  # noqa: E402
 from driver.routes import router as driver_router  # noqa: E402
 from stt import router as stt_router  # noqa: E402
+from talk import router as talk_router  # noqa: E402
 from voice import router as voice_router  # noqa: E402
 
 
@@ -39,6 +40,7 @@ app.include_router(router, prefix="/api")
 app.include_router(telemetry_router, prefix="/api")
 app.include_router(driver_router, prefix="/api")
 app.include_router(stt_router, prefix="/api")
+app.include_router(talk_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
 
 

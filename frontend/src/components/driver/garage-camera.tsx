@@ -5,6 +5,7 @@ import Link from "next/link";
 import {ArrowUpRight, AudioLines, Bell, BellOff, Camera, RefreshCw, ScanFace} from "lucide-react";
 import {useDriverMonitor} from "@/hooks/use-driver-monitor";
 import {presence} from "@/lib/agent/presence";
+import {muteStore} from "@/lib/agent/mute";
 import {useLang} from "@/hooks/use-preferences";
 import {pick} from "@/lib/preferences";
 import {canConfirm} from "@/lib/guardian/policy";
@@ -36,6 +37,7 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
   const monitor = useDriverMonitor(options);
   const agent = useSyncExternalStore(presence.subscribe, presence.get, presence.get);
   const voice = agent.voice;
+  const voiceMuted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
   const {view, live, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, acknowledge, muteHorn, unmuteHorn, testHorn} = monitor;
   const {phase, event, store, reply} = view;
   const active = phase === "calibrating" || phase === "running";
@@ -64,7 +66,7 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
   const responded = !!guardian?.driver.responded;
 
   // Tell the robot what the camera sees; a new alert goes into its bubble at once (the agent's
-  // spoken words replace it when the clip arrives). A muted horn silences the robot's voice too.
+  // spoken words replace it when the clip arrives). The horn and agent voice have separate controls.
   useEffect(() => {
     presence.set({camera: {active, sound: sound && !hornMuted, severity: active ? driverSeverity : "normal", responded, vehicleAlert}});
   }, [active, sound, hornMuted, driverSeverity, responded, vehicleAlert]);
@@ -88,8 +90,7 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
   const sharing = view.sendError
     ? t("Chưa gửi được cảnh báo · còi trên thiết bị vẫn hoạt động", "Alert not sent · on-device sound still works")
     : reply || view.sentEvents > 0 ? t("Đã gửi cảnh báo cho agent", "Alert sent to the agent") : t("Theo dõi trên thiết bị · chỉ gửi khi có cảnh báo", "Watching on this device · posts only on alerts");
-  const voiceLine = !sound ? t("Giọng nói tắt (đang tắt âm)", "Voice off (muted)")
-    : hornMuted ? t("Còi và giọng nói đã tắt cho cảnh báo này", "Horn and voice muted for this alert")
+  const voiceLine = voiceMuted ? t("Giọng agent đang tắt trong cài đặt", "Agent voice is off in settings")
     : voice.enabled === false ? (voice.lang === "en" ? t("Giọng tiếng Anh chưa cấu hình trên backend (BLAZE_SPEAKER_ID_EN): chỉ hiện chữ", "English voice not configured on the backend (BLAZE_SPEAKER_ID_EN): text only") : t("Giọng nói chưa cấu hình trên backend (Blaze)", "Voice not configured on the backend (Blaze)"))
     : voice.blocked ? t("Trình duyệt chặn phát âm thanh: bấm vào trang một lần", "The browser blocked audio: click the page once")
     : voice.speaking ? t("Agent đang đọc cảnh báo", "The agent is speaking the alert")
@@ -201,10 +202,10 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
             <button type="button" className={styles.scenario} onClick={() => startSimulation("attentive")} data-testid="garage-camera-sim-attentive">{t("Mô phỏng: tỉnh táo", "Simulate: alert")}</button>
           </div>
           <div className={styles.hornRow} data-state={sound ? "on" : "off"} data-testid="garage-camera-sound">
-            <span>{sound ? <Bell size={14} aria-hidden="true" /> : <BellOff size={14} aria-hidden="true" />}{sound ? t("Còi và giọng nói bật", "Horn and voice on") : t("Âm thanh đang tắt", "Sound is off")}</span>
+            <span>{sound ? <Bell size={14} aria-hidden="true" /> : <BellOff size={14} aria-hidden="true" />}{sound ? t("Còi camera bật", "Camera horn on") : t("Còi camera tắt", "Camera horn off")}</span>
             <div className={styles.respondActions}>
               {sound && <button type="button" className={styles.mute} onClick={testHorn} data-testid="garage-camera-test-horn">{t("Thử còi", "Test horn")}</button>}
-              <button type="button" className={styles.mute} onClick={() => updateSettings({sound: !sound})} aria-pressed={!sound} data-testid="garage-camera-sound-toggle">{sound ? t("Tắt âm", "Mute") : t("Bật âm", "Unmute")}</button>
+              <button type="button" className={styles.mute} onClick={() => updateSettings({sound: !sound})} aria-pressed={!sound} data-testid="garage-camera-sound-toggle">{sound ? t("Tắt còi", "Mute horn") : t("Bật còi", "Unmute horn")}</button>
             </div>
           </div>
           <details className={styles.garageCamTips}>

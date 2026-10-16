@@ -119,7 +119,7 @@ def test_rules_mode_speaks_the_rule_text_at_once(spoken, monkeypatch) -> None:
     assert len(spoken) == 1 and spoken[0][1] == "bmw-m2"
 
 
-def test_car_agent_stays_quiet_when_only_the_driver_raised_the_alert(spoken, monkeypatch) -> None:
+def test_car_agent_reads_the_combined_assessment_when_driver_raised_the_alert(spoken, monkeypatch) -> None:
     from agent.orchestrator import vehicle_agent
     from routes import router
     from schemas import Severity, VehicleAssessment
@@ -138,7 +138,8 @@ def test_car_agent_stays_quiet_when_only_the_driver_raised_the_alert(spoken, mon
             "sampleIntervalMs": 1000, "recordCount": 1, "records": [record]}
     reply = TestClient(app).post("/api/telemetry/batch", json=body).json()
     assert reply["assessment"]["severity"] == "critical"  # raised by the drowsy driver …
-    assert spoken == []  # … whose own alert was already spoken
+    assert len(spoken) == 1 and "Camera cho thấy người lái" in spoken[0][0]
+    assert "Dừng" in spoken[0][0]
 
     hot = normal.model_copy(update={"severity": Severity.WARNING, "diagnosis": "Nhiệt độ động cơ cao. Cần theo dõi."})
     monkeypatch.setattr(vehicle_agent, "model_assessment", lambda context, memory: (hot, []))
