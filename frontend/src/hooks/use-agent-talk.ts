@@ -65,10 +65,12 @@ export function useAgentTalk(session: string, suspended = false) {
   const langRef = useRef(lang);
   const tRef = useRef(t);
   const sessionRef = useRef(session);
-  suspendedRef.current = suspended;
-  langRef.current = lang;
-  tRef.current = t;
-  sessionRef.current = session;
+  useEffect(() => {
+    suspendedRef.current = suspended;
+    langRef.current = lang;
+    tRef.current = t;
+    sessionRef.current = session;
+  }, [suspended, lang, t, session]);
 
   const setTalkPhase = (next: TalkPhase) => {
     phaseRef.current = next;
@@ -157,6 +159,7 @@ export function useAgentTalk(session: string, suspended = false) {
     listenAgain();
   };
 
+  const sendingNow = () => phaseRef.current === "sending";
   const start = async (limit: number) => {
     if (phaseRef.current === "recording" || phaseRef.current === "sending") return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -166,7 +169,7 @@ export function useAgentTalk(session: string, suspended = false) {
     }
     try {
       const live = await navigator.mediaDevices.getUserMedia({audio: true});
-      if (phaseRef.current === "sending") {
+      if (sendingNow()) {
         live.getTracks().forEach(track => track.stop());
         return;
       }

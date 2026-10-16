@@ -64,7 +64,7 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
   const {t, lang} = useLang();
   const state = useSyncExternalStore(presence.subscribe, presence.get, presence.get);
   const muted = useSyncExternalStore(muteStore.subscribe, muteStore.get, () => false);
-  const soundOn = (state.camera?.sound ?? true) && !muted;
+  const soundOn = !muted;
   const voice = useVoiceAlerts(session, soundOn);
   const talk = useAgentTalk(session, voice.speaking !== null);
   const [now, setNow] = useState(0);

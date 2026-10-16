@@ -15,6 +15,7 @@ from agent.safety import evaluate_hard_safety
 from driver.registry import attach_driver, stop_for_driver, suggests_garage_trip, vehicle_moving
 from lang import normalize, number, pick
 from agent.tools.garage_search import search_nearby_garages
+from agent.tools.maintenance_history import get_maintenance_history
 from agent.tools import (
     VEHICLE_READ_TOOLS,
     VehicleToolContext,
@@ -142,8 +143,31 @@ class VehicleAgent:
         if policy:
             assessment = self._apply_detector_policy(assessment, telemetry_context, safety, policy)
         assessment = self._apply_driver_policy(assessment, telemetry_context)
+        self._ensure_maintenance_history(assessment, telemetry_context, trace)
         self._ensure_nearby_garages(assessment, telemetry_context, trace)
         return assessment, safety.model_dump(mode="json")
+
+    @staticmethod
+    def _ensure_maintenance_history(
+        assessment: VehicleAssessment,
+        telemetry_context: dict[str, Any],
+        trace: list[dict[str, Any]],
+    ) -> None:
+        """Include the local history even when the model falls back to rules."""
+        if assessment.severity == Severity.NORMAL or any(
+            item.get("tool") == "get_maintenance_history" for item in trace
+        ):
+            return
+        vehicle_id = str(telemetry_context["vehicle_id"])
+        try:
+            result = get_maintenance_history(vehicle_id)
+        except Exception as error:
+            result = {"error": str(error)}
+        trace.append({
+            "tool": "get_maintenance_history",
+            "arguments": {"vehicle_id": vehicle_id},
+            "result": result,
+        })
 
     def _run_analysis(
         self,
@@ -181,7 +205,7 @@ class VehicleAgent:
                      "; the driver confirmed the alert." if driver.get("responded") else ".")
         floor = Severity.CRITICAL if driver.get("severity") == "critical" else Severity.WARNING
         severity = assessment.severity if SEVERITY_RANK[assessment.severity] >= SEVERITY_RANK[floor] else floor
-        # Raised only because of the driver: the camera alert already speaks, so the car agent stays quiet.
+        # Keep the origin for callers; the combined vehicle assessment is still spoken.
         telemetry_context["driver_policy_raised"] = severity != assessment.severity
         steps = [step for step in assessment.recommendations if not suggests_garage_trip(step)]
         stop = stop_for_driver(lang)

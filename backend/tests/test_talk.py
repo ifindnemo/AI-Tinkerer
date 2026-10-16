@@ -35,7 +35,7 @@ def test_rules_mode_stores_both_turns_in_the_script(tmp_path, monkeypatch) -> No
         raise AssertionError("rules mode must not call the model")
 
     monkeypatch.setattr("talk._model_reply", explode)
-    response = _post(_app())
+    response = _post(_app(), session="talk-rules-vi")
 
     assert response.status_code == 200
     body = response.json()
@@ -43,7 +43,7 @@ def test_rules_mode_stores_both_turns_in_the_script(tmp_path, monkeypatch) -> No
     assert body["spoken"] is False
     assert "chỉ tư vấn" in body["reply"]
     assert called["model"] is False
-    document = json.loads((tmp_path / "bmw-m2.json").read_text(encoding="utf-8"))
+    document = json.loads((tmp_path / "talk-rules-vi.json").read_text(encoding="utf-8"))
     assert [turn["role"] for turn in document["turns"]] == ["driver", "agent"]
     assert document["turns"][0]["source"] == "stt"
     assert document["turns"][1]["source"] == "reply"
@@ -62,7 +62,7 @@ def test_talk_transcribes_in_the_requested_language(tmp_path, monkeypatch) -> No
         return "How is the car?"
 
     monkeypatch.setattr("talk.transcribe", transcribe)
-    response = _post(_app(), lang="en")
+    response = _post(_app(), lang="en", session="talk-rules-en")
     assert response.status_code == 200
     assert seen["language"] == "en"
     assert "I heard" in response.json()["reply"]

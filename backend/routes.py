@@ -32,16 +32,24 @@ def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
     result = _run_agent(context)
     assessment = result["assessment"]
     severity = assessment["severity"]  # result["status"] is the incident status, not the severity
-    if severity in ("warning", "critical") and not context.get("driver_policy_raised"):
-        from voice import announce_alert
+    if severity == "normal":
+        from voice import clear_alert_history
 
+        clear_alert_history(batch.vehicle_id)
+    if severity in ("warning", "critical"):
+        from voice import alert_dedupe_key, announce_alert, tool_options_line
+
+        driver = context.get("driver_attention") or {}
+        hold = severity == "critical" or (driver.get("status") == "live" and bool(driver.get("must_stop")))
+        options = tool_options_line(result.get("tool_trace"), batch.lang, hold=hold)
         announce_alert(
             assessment["diagnosis"],
             severity=severity,
             recommendations=assessment["recommendations"],
-            dedupe_key=f"{batch.vehicle_id}:{severity}" + ("" if batch.lang == "vi" else f":{batch.lang}"),
+            dedupe_key=alert_dedupe_key(batch.vehicle_id, severity, batch.lang, options),
             session_id=batch.vehicle_id,
             lang=batch.lang,
+            options=options,
         )
     return {
         **result,

@@ -6,7 +6,8 @@ import httpx
 import pytest
 
 import voice
-from voice import BlazeError, BlazeTTS, Speech, alert_script, announce_alert
+from driver.registry import suggests_garage_trip
+from voice import BlazeError, BlazeTTS, Speech, alert_script, announce_alert, tool_options_line
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +37,8 @@ def test_alert_script_states_the_severity_once() -> None:
     )
     assert spoken == "Cảnh báo nguy hiểm. Nhiệt độ nước làm mát cao. Dừng xe ở vị trí an toàn."
     assert alert_script("Cảnh báo. Đã hạ nhiệt.", "warning") == "Cảnh báo. Đã hạ nhiệt."
+    assert alert_script("Cảnh báo. Nước làm mát quá nóng.", "critical").startswith("Cảnh báo nguy hiểm.")
+    assert alert_script("Cảnh báo nguy hiểm. Nước làm mát ấm.", "warning").startswith("Cảnh báo. Nước")
 
 
 def test_announce_skips_normal_and_missing_credentials(monkeypatch) -> None:
@@ -48,6 +51,102 @@ def test_announce_skips_normal_and_missing_credentials(monkeypatch) -> None:
     announce_alert("Nóng.", severity="warning")
     assert queued == []
     assert voice._missing_logged is True
+
+
+def _garage_trace() -> list[dict]:
+    return [
+        {
+            "tool": "get_maintenance_history",
+            "arguments": {},
+            "result": {"records": [
+                {"garage": "Garage Thành Phát"},
+                {"garage": "Garage Minh Quân (đối tác quen)"},
+                {"garage": "Garage Thành Phát"},
+            ]},
+        },
+        {
+            "tool": "search_nearby_garages",
+            "arguments": {},
+            "result": {"options": [
+                {"name": "An Bình Auto", "distance_km": 1.2},
+                {"name": "Thành Phát", "distance_km": 2.4},
+                {"name": "Minh Quân", "distance_km": 1.8},
+            ]},
+        },
+    ]
+
+
+def test_spoken_options_use_only_the_tool_results() -> None:
+    spoken = tool_options_line(_garage_trace(), "vi")
+    assert "An Bình Auto cách 1,2 kilômét" in spoken
+    assert "Minh Quân cách 1,8 kilômét" in spoken
+    assert "Thành Phát cách 2,4 kilômét" in spoken
+    assert "trung bình" in spoken and "1,8 kilômét" in spoken
+    assert "Garage Minh Quân (đối tác quen)" in spoken
+    assert not suggests_garage_trip(spoken)
+
+    held = tool_options_line(_garage_trace(), "vi", hold=True)
+    assert "sau khi bạn đã dừng" in held
+    assert "Garage Minh Quân (đối tác quen)" in held
+    assert "Bạn muốn chọn" not in held
+    assert not suggests_garage_trip(held)
+
+    english = tool_options_line(_garage_trace(), "en")
+    assert "An Bình Auto, 1.2 kilometres away" in english
+    assert "average distance is about 1.8 kilometres" in english
+    assert "usual garage" in english
+    assert not suggests_garage_trip(english)
+    assert tool_options_line([{"tool": "search_nearby_garages", "result": {"error": "no gps"}}]) == ""
+    assert tool_options_line([]) == ""
+
+
+def test_alert_script_speaks_the_tool_options_after_the_step() -> None:
+    spoken = alert_script(
+        "Nhiệt độ nước làm mát cao.",
+        "warning",
+        ["Giảm tải và theo dõi."],
+        options=tool_options_line(_garage_trace()),
+    )
+    assert spoken.startswith("Cảnh báo. Nhiệt độ nước làm mát cao. Giảm tải và theo dõi.")
+    assert "An Bình Auto cách 1,2 kilômét" in spoken
+    assert spoken.index("Giảm tải") < spoken.index("An Bình Auto")
+
+
+def test_long_options_are_split_without_losing_the_final_choice(monkeypatch, tmp_path) -> None:
+    trace = _garage_trace()
+    for index, garage in enumerate(trace[1]["result"]["options"]):
+        garage["name"] = f"Garage {index} " + "Trung tâm bảo dưỡng " * 7
+    script = alert_script("Nhiệt độ nước làm mát cao.", "warning", ["Giảm tải và theo dõi."],
+                          options=tool_options_line(trace))
+    parts = voice._tts_parts(script)
+    assert len(parts) > 1
+    assert len(parts[0]) <= voice._FIRST_PART_CHARS
+    assert all(len(part) <= voice._MAX_CHARS for part in parts)
+    assert " ".join(parts) == script
+    assert "Bạn muốn chọn" in parts[-1]
+
+    spoken: list[str] = []
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+
+    def synthesize(self, text: str) -> Speech:
+        if spoken:
+            assert [clip["text"] for clip in voice.clips_for("long-options")] == spoken
+        spoken.append(text)
+        return Speech(text=text, audio=b"ID3file", content_type="audio/mpeg", job_id=f"job-{len(spoken)}")
+
+    monkeypatch.setattr(BlazeTTS, "synthesize", synthesize)
+    voice._speak(script, "warning", "long-options", session_id="long-options", remember=False)
+    assert spoken == parts
+    assert " ".join(clip["text"] for clip in voice.clips_for("long-options")) == script
+    assert {clip["group"] for clip in voice.clips_for("long-options")} == {"long-options"}
+
+
+def test_familiar_garage_falls_back_to_the_most_frequent_name() -> None:
+    trace = _garage_trace()
+    trace[0]["result"]["records"][1]["garage"] = "Garage khác"
+    assert "garage quen thuộc Garage Thành Phát" in tool_options_line(trace)
 
 
 def test_announce_speaks_a_warning_once(monkeypatch) -> None:
@@ -66,6 +165,25 @@ def test_announce_speaks_a_warning_once(monkeypatch) -> None:
     announce_alert("Nhiệt độ nước làm mát cao.", severity="warning", recommendations=["Giảm tải."])
 
     assert spoken == [("Cảnh báo. Nhiệt độ nước làm mát cao. Giảm tải.", "warning")]
+
+
+def test_normal_result_allows_the_same_warning_in_a_new_episode(monkeypatch) -> None:
+    scripts = []
+    class _Inline:
+        def submit(self, fn, *args):
+            fn(*args)
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setattr(voice, "_pool", lambda: _Inline())
+    monkeypatch.setattr(voice, "_speak", lambda script, *args: scripts.append(script))
+    key = voice.alert_dedupe_key("bmw-m2", "warning", "vi", "")
+    announce_alert("Nước làm mát nóng.", severity="warning", dedupe_key=key, session_id="bmw-m2")
+    announce_alert("Nước làm mát nóng.", severity="warning", dedupe_key=key, session_id="bmw-m2")
+    assert len(scripts) == 1
+    voice.clear_alert_history("bmw-m2")
+    announce_alert("Nước làm mát nóng.", severity="warning", dedupe_key=key, session_id="bmw-m2")
+    assert len(scripts) == 2
+    assert key != voice.alert_dedupe_key("bmw-m2", "warning", "vi", "Garage A cách 1 kilômét")
 
 
 def test_synthesize_polls_then_downloads() -> None:
