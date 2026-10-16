@@ -1,12 +1,11 @@
 "use client";
-import {Activity,ArrowRight,Check,CloudSun,Clock3,ExternalLink,FlaskConical,Gavel,History,ListChecks,LoaderCircle,MapPin,Radio,ShieldAlert,ShieldCheck,Sparkles,TriangleAlert,WifiOff,Wrench,X} from 'lucide-react';
+import {Activity,ArrowRight,Check,Clock3,ExternalLink,FlaskConical,History,ListChecks,LoaderCircle,MapPin,Radio,ShieldCheck,Sparkles,TriangleAlert,WifiOff,Wrench,X} from 'lucide-react';
 import {useLang} from '@/hooks/use-preferences';
-import type {AgentReply,BackendState,Severity} from '@/lib/backend/contract';
-import {historyInsight,toolSteps,type HistoryInsight,type ToolStep} from '@/lib/backend/tool-insights';
+import type {AgentReply,BackendState} from '@/lib/backend/contract';
+import BookingCard from './agent/booking-card';
+import {dateOf,severityLabel,stepView,type T} from './agent/tool-step-view';
+import {historyInsight,toolSteps,type HistoryInsight} from '@/lib/backend/tool-insights';
 import type {BlackboxTransfer} from '@/lib/blackbox/types';
-type T=(vi:string,en:string)=>string;
-const severityLabel=(s:Severity,t:T)=>s==='critical'?t('Nguy hiểm','Critical'):s==='warning'?t('Cảnh báo','Warning'):t('Bình thường','Normal');
-const dateOf=(value:string|undefined,locale:string)=>{if(!value)return '—';const d=new Date(`${value}T00:00:00`);return Number.isFinite(d.getTime())?d.toLocaleDateString(locale):value;};
 // `device` switches the panel to live OBD data (analysis on triggers instead of fixed batches).
 export type DeviceAgentInfo={simulated:boolean;engine:'agent'|'rules';fallbackReason:string|null;findings:{rule:string;message:string}[]};
 // `compact`: the evidence list starts closed (the summary line keeps the confidence); used where the panel shares a screen with the camera.
@@ -38,6 +37,7 @@ export default function BackendAgentPanel({state,transfer,connected,onInject,onV
     <div className="agent-recommendations"><h4>{t('Đề xuất cho bạn','Recommendations')}</h4>{a.recommendations.map((text,i)=><div className="agent-recommendation" key={i}><span>{i+1}</span><p>{text}</p></div>)}</div>
     {alert&&history&&<MaintenanceCard insight={history} t={t} lang={lang}/>}
     {alert&&nearbyGarages.length>0&&<section className="backend-nearby-garages" data-testid="backend-nearby-garages" aria-label={t('Garage gần xe','Nearby garages')}><div className="nearby-garages-heading"><div><h4><MapPin size={14}/>{t('Garage gần xe','Nearby garages')}</h4><p>{t('Trong bán kính 5 km · chỉ dẫn tham khảo, không đặt lịch','Within 5 km · for reference, no booking')}</p></div><span>{nearbyGarages.length} {t('địa điểm','places')}</span></div><ol>{nearbyGarages.map((garage,index)=>{const safeUrl=garage.osm_url&&/^https:\/\/www\.openstreetmap\.org\//.test(garage.osm_url)?garage.osm_url:null;return <li key={garage.place_id||`${garage.latitude}-${garage.longitude}`}><span className="garage-rank">{index+1}</span><div><strong>{garage.name}</strong>{garage.address&&<small>{garage.address}</small>}<b>{garage.distance_km.toLocaleString(lang==='en'?'en-GB':'vi-VN')} km</b></div>{safeUrl&&<a href={safeUrl} target="_blank" rel="noreferrer" aria-label={`${t('Mở trên bản đồ','Open on map')}: ${garage.name}`}><ExternalLink size={14}/></a>}</li>})}</ol><small className="garage-provider">{t('Dữ liệu LocationIQ và OpenStreetMap','Data from LocationIQ and OpenStreetMap')}</small></section>}
+    {(reply.latest.appointment||(alert&&reply.latest.pending_action))&&<BookingCard key={reply.latest.appointment?.id??reply.latest.pending_action?.id} pending={reply.latest.pending_action??null} appointment={reply.latest.appointment??null} t={t} lang={lang}/>}
     <AgentTrace key={`trace-${reply.batchId}`} reply={reply.latest} open={alert} t={t} lang={lang}/>
     <footer><Check size={12}/>{reply.accepted} {device?t('mẫu gần nhất · phân tích dữ liệu từ thiết bị','latest samples · device data analysis'):t('mẫu · Phản hồi trực tiếp từ backend','samples · Live reply from the backend')}</footer>
    </article>:<div className="agent-listening"><Radio size={25}/><h3>{t('Đang lắng nghe chiếc xe','Listening to your car')}</h3><p>{t('Agent sẽ đọc gói dữ liệu, kiểm tra môi trường và lịch sử xe trước khi phản hồi.','The agent reads each batch and checks the weather and service history before replying.')}</p></div>}
@@ -62,19 +62,7 @@ function MaintenanceCard({insight:h,t,lang}:{insight:HistoryInsight;t:T;lang:str
 }
 
 function AgentTrace({reply,open,t,lang}:{reply:AgentReply;open:boolean;t:T;lang:string}){
- const locale=lang==='en'?'en-GB':'vi-VN';
- const unavailable=t('Chưa lấy được dữ liệu','Data unavailable');
- const view=(s:ToolStep):{icon:React.ReactNode;title:string;detail:string;ok:boolean;warn?:boolean}=>{
-  switch(s.kind){
-   case 'guardrail':return {icon:<ShieldAlert size={13}/>,title:t('Luật an toàn cứng (backend)','Hard safety rule (backend)'),detail:s.triggered?`${t('Kích hoạt · tối thiểu','Triggered · minimum')} ${severityLabel(s.minimum,t).toLowerCase()}${s.reasons.length?` · ${s.reasons.join(' ')}`:''}`:t('Không kích hoạt','Not triggered'),ok:true,warn:s.triggered};
-   case 'weather':return {icon:<CloudSun size={13}/>,title:t('Thời tiết tại vị trí xe','Weather at the car'),detail:s.ok?`${s.temperature}°C · Open-Meteo`:unavailable,ok:s.ok};
-   case 'history':return {icon:<Wrench size={13}/>,title:t('Lịch sử bảo dưỡng','Service history'),detail:s.ok?t(`${s.total??0} lần ghi nhận · gần nhất ${dateOf(s.lastDate,locale)}`,`${s.total??0} records · latest ${dateOf(s.lastDate,locale)}`):unavailable,ok:s.ok};
-   case 'garages':return {icon:<MapPin size={13}/>,title:t('Tìm garage gần xe','Nearby garage search'),detail:s.ok?t(`${s.count??0} địa điểm${s.radiusKm?` trong ${s.radiusKm} km`:''}`,`${s.count??0} places${s.radiusKm?` within ${s.radiusKm} km`:''}`):unavailable,ok:s.ok};
-   case 'other':return {icon:<ListChecks size={13}/>,title:s.name,detail:s.ok?'OK':unavailable,ok:s.ok};
-   case 'verdict':return {icon:<Gavel size={13}/>,title:t('Kết luận của agent','Agent verdict'),detail:`${severityLabel(s.severity,t)} · ${t('độ tin cậy','confidence')} ${Math.round(s.confidence*100)}%`,ok:true,warn:s.severity!=='normal'};
-  }
- };
- const steps=toolSteps(reply).map(view);
+ const steps=toolSteps(reply).map(step=>stepView(step,t,lang));
  return <details className="agent-trace" open={open} data-testid="backend-trace"><summary><ListChecks size={14}/>{t('Agent đã làm gì','What the agent did')}<span>{steps.length} {t('bước','steps')}</span></summary>
   <ol>{steps.map((s,i)=><li key={i} className={!s.ok?'failed':s.warn?'warn':''}><span className="trace-icon">{s.ok?s.icon:<X size={13}/>}</span><div><b>{s.title}</b><small>{s.detail}</small></div></li>)}</ol>
  </details>;

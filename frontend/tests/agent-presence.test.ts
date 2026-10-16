@@ -3,7 +3,7 @@ import test from "node:test";
 import {firstSentences} from "../src/components/agent/use-agent-presence";
 import {AFTER_SPEECH_MS, SHOW_MS, advance, bubbleOpen, robotState, unread, type Presence} from "../src/lib/agent/presence";
 
-const base = (): Presence => ({agent: null, camera: null, message: null, voice: {enabled: true, blocked: false, speaking: null}, bubble: null, happyUntil: 0, seenId: null});
+const base = (): Presence => ({agent: null, camera: null, message: null, voice: {enabled: true, blocked: false, speaking: null}, bubble: null, report: null, reportUntil: 0, reportClosed: null, happyUntil: 0, seenId: null});
 const msg = (id: string, severity: "warning" | "critical" = "warning") => ({id, text: `text ${id}`, severity});
 
 test("the robot's face follows the page in priority order", () => {

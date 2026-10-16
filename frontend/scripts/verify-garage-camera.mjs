@@ -70,7 +70,8 @@ try {
   // The blackbox agent panel (#car-agent), not the camera card above it: the card carries the same step from the policy at once.
   await expect(page.locator("#car-agent")).toContainText(STOP, {timeout: 50_000});
   // The robot's bubble carries the alert in words at once, sound or not (hidden from view only while the Guardian band is on screen).
-  const bubble = page.getByTestId("agent-bubble");
+  // The words arrive as a bubble, or inside the report popup once the car agent has analysed the alert too.
+  const bubble = page.locator('[data-testid="agent-bubble"], [data-testid="agent-report"]').first();
   await expect(bubble).toBeVisible({timeout: 5_000});
   await expect(bubble).toHaveAttribute("data-severity", /warning|critical/);
   // EXPECT_VOICE=1 (backend with Blaze configured): the agent's words are spoken and played by the robot.
@@ -78,7 +79,7 @@ try {
     await expect(page.getByTestId("agent-dock")).toHaveAttribute("data-state", "speaking", {timeout: 40_000});
     await expect(bubble).toContainText("đang đọc");
     await expect.poll(() => audio.length, {timeout: 10_000}).toBeGreaterThan(0);
-    console.log("spoken:", (await bubble.locator("p").textContent())?.slice(0, 220));
+    console.log("spoken:", (await bubble.locator("p").first().textContent())?.slice(0, 220));
   }
   // A click on the robot opens its quick panel: last alert, replay, mute; Escape closes it.
   await page.getByTestId("agent-robot").click();

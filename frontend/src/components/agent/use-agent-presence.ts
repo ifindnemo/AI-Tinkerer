@@ -1,17 +1,28 @@
 "use client";
 import {useEffect} from "react";
 import {presence, type AgentPhase} from "@/lib/agent/presence";
+import type {AgentReply} from "@/lib/backend/contract";
 import type {DriverSeverity} from "@/lib/driver/types";
+import {firstSentences, reportFrom} from "@/lib/agent/report";
+
+export {firstSentences};
 
 /** The garage pages tell the agent dock what the car agent is doing, and put each new car alert
  * (one per analysis id) into its bubble. `null` (Mock mode) clears it. */
-export function useAgentPresence(agent: {phase: AgentPhase; severity: DriverSeverity; analysisId: string | null; diagnosis: string | null} | null) {
+export function useAgentPresence(agent: {phase: AgentPhase; severity: DriverSeverity; analysisId: string | null; diagnosis: string | null; reply?: AgentReply | null} | null) {
   const phase = agent?.phase ?? null;
   const severity = agent?.severity ?? "normal";
   useEffect(() => {
     presence.set({agent: phase ? {phase, severity} : null});
   }, [phase, severity]);
   useEffect(() => () => presence.reset(), []);
+
+  // The popup: the tools the agent called, the nearest garage and what needs the driver's confirmation.
+  const reply = agent?.reply ?? null;
+  const reportId = agent?.analysisId ?? null;
+  useEffect(() => {
+    presence.set({report: reply && reportId ? reportFrom(reply, reportId) : null});
+  }, [reply, reportId]);
 
   const id = agent?.analysisId ?? null;
   const text = agent?.diagnosis ?? null;
@@ -20,16 +31,4 @@ export function useAgentPresence(agent: {phase: AgentPhase; severity: DriverSeve
     // A new analysis id is a new message; later renders of the same analysis are not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-}
-
-/** The bubble keeps the lead of a long diagnosis; the full text stays in the agent panel. */
-export function firstSentences(text: string, limit = 240) {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= limit) return clean;
-  let out = "";
-  for (const sentence of clean.split(/(?<=[.!?])\s+/)) {
-    if (out && out.length + sentence.length + 1 > limit) break;
-    out = out ? `${out} ${sentence}` : sentence;
-  }
-  return out.length > limit ? `${out.slice(0, limit - 1).trimEnd()}…` : out;
 }

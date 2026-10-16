@@ -43,6 +43,7 @@ export type ToolStep =
   | {kind: 'weather'; ok: boolean; temperature?: number; gridKm?: number}
   | {kind: 'history'; ok: boolean; total?: number; lastDate?: string}
   | {kind: 'garages'; ok: boolean; count?: number; radiusKm?: number}
+  | {kind: 'booking'; ok: boolean; garage?: string; slot?: string}
   | {kind: 'other'; name: string; ok: boolean}
   | {kind: 'verdict'; severity: Severity; confidence: number};
 
@@ -57,6 +58,7 @@ export function toolSteps(reply: AgentReply): ToolStep[] {
     if (item.tool === 'get_external_environment_context') steps.push({kind: 'weather', ok: ok && !!r.data, temperature: r.data?.outside_temperature_c, gridKm: r.data?.weather_grid_distance_km});
     else if (item.tool === 'get_maintenance_history') steps.push({kind: 'history', ok, total: r.total_records ?? r.records?.length, lastDate: r.records?.map(x => x.date).sort().at(-1)});
     else if (item.tool === 'search_nearby_garages') steps.push({kind: 'garages', ok, count: r.options?.length, radiusKm: typeof r.radius_meters === 'number' ? r.radius_meters / 1000 : undefined});
+    else if (item.tool === 'propose_booking') steps.push({kind: 'booking', ok: ok && r.proposed === true, garage: r.garage, slot: r.slot});
     else steps.push({kind: 'other', name: item.tool, ok});
   }
   steps.push({kind: 'verdict', severity: reply.assessment.severity, confidence: reply.assessment.confidence});

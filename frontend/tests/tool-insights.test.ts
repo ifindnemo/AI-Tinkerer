@@ -40,3 +40,11 @@ test('tool trace starts with the backend guardrail, keeps call order, flags fail
  assert.equal((steps[3] as {ok:boolean}).ok,false);
  assert.deepEqual(steps[4],{kind:'verdict',severity:'critical',confidence:.82});
 });
+
+test('a booking proposal is a step of its own, ok only when the backend accepted it',()=>{
+ const steps=toolSteps(reply({},[
+  {tool:'propose_booking',arguments:{garage_name:'G',days_from_now:1,hour:9},result:{proposed:true,garage:'Garage Minh Khoa',slot:'2026-10-17T09:00:00+07:00'}},
+  {tool:'propose_booking',result:{error:'Dịch vụ chưa trả được dữ liệu.'}},
+ ]));
+ assert.deepEqual(steps.slice(1,3),[{kind:'booking',ok:true,garage:'Garage Minh Khoa',slot:'2026-10-17T09:00:00+07:00'},{kind:'booking',ok:false,garage:undefined,slot:undefined}]);
+});

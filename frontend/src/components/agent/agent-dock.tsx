@@ -5,8 +5,9 @@ import {useAgentTalk} from "@/hooks/use-agent-talk";
 import {useLang} from "@/hooks/use-preferences";
 import {useVoiceAlerts} from "@/hooks/use-voice-alerts";
 import {muteStore} from "@/lib/agent/mute";
-import {bubbleOpen, presence, robotState, unread, type RobotState} from "@/lib/agent/presence";
+import {bubbleOpen, presence, questionWaiting, reportOpen, robotState, unread, type RobotState} from "@/lib/agent/presence";
 import {RobotHead} from "@/vendor/robot-heads";
+import AgentReportCard from "./agent-report-card";
 import styles from "./agent-dock.module.css";
 
 const STATE_LABEL: Record<RobotState, {vi: string; en: string}> = {
@@ -154,6 +155,7 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (panel) closePanel(true);
+      else if (reportOpen(presence.get(), Date.now())) presence.dismissReport();
       else if (bubbleOpen(presence.get(), Date.now())) presence.dismiss();
     };
     const onDown = (event: PointerEvent) => {
@@ -168,10 +170,12 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
   }, [panel, closePanel]);
 
   const awake = robotState(state, now < state.happyUntil);
-  const visible = !panel && bubbleOpen(state, now) ? state.bubble!.message : null;
-  const napping = awake === "idle" && !visible && !panel && lastActivity > 0 && now - lastActivity > DOZE_MS && talk.phase !== "recording" && talk.phase !== "sending";
+  const popup = !panel && reportOpen(state, now) ? state.report : null;
+  // The popup carries the car agent's words itself; the bubble stays for anything else (the driver camera).
+  const visible = !panel && bubbleOpen(state, now) && !(popup && state.bubble!.message.id.startsWith("car:")) ? state.bubble!.message : null;
+  const napping = awake === "idle" && !visible && !popup && !panel && lastActivity > 0 && now - lastActivity > DOZE_MS && talk.phase !== "recording" && talk.phase !== "sending";
   const face: RobotState = talk.phase === "recording" ? "listening" : talk.phase === "sending" ? "thinking" : napping ? "sleeping" : awake;
-  const badge = !panel && unread(state, now);
+  const badge = !panel && (unread(state, now) || questionWaiting(state, now));
   // A smile after the driver's confirmation must not read "all good" while the car is still warning.
   const stillWarning = face === "happy" && !!state.camera?.responded && !!state.camera.vehicleAlert;
   const label = talk.phase === "recording" ? t("Đang nghe bạn nói · bấm lại để gửi", "Listening · tap again to send")
@@ -209,10 +213,13 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
             </div>
             <button type="button" className={styles.iconButton} onClick={() => closePanel(true)} aria-label={t("Đóng", "Close")}><X size={15} /></button>
           </div>
-          <div className={styles.panelMessage} data-severity={last?.severity ?? "normal"}>
-            <span className={styles.bubbleTag}>{last ? tag(last.severity) : t("Chưa có cảnh báo", "No alerts yet")}</span>
-            <p>{last ? last.text : t("Agent sẽ nói và hiện ở đây khi xe hoặc tài xế cần chú ý.", "The agent speaks and shows here when the car or the driver needs attention.")}</p>
-          </div>
+          {!(state.report && last?.id.startsWith("car:")) && (
+            <div className={styles.panelMessage} data-severity={last?.severity ?? "normal"}>
+              <span className={styles.bubbleTag}>{last ? tag(last.severity) : t("Chưa có cảnh báo", "No alerts yet")}</span>
+              <p>{last ? last.text : t("Agent sẽ nói và hiện ở đây khi xe hoặc tài xế cần chú ý.", "The agent speaks and shows here when the car or the driver needs attention.")}</p>
+            </div>
+          )}
+          {state.report && <AgentReportCard report={state.report} t={t} lang={lang} />}
           <div className={styles.panelActions}>
             <button type="button" className={styles.action} onClick={talk.toggle} disabled={talk.phase === "sending"} aria-pressed={talk.phase === "recording"} data-testid="agent-talk-panel" data-talk-manual=""><Mic size={15} />{talk.phase === "recording" ? t("Gửi", "Send") : t("Nói", "Talk")}</button>
             <button type="button" className={styles.action} onClick={voice.replay} disabled={!voice.last || !soundOn} data-testid="agent-replay"><RotateCcw size={15} />{t("Nghe lại", "Replay")}</button>
@@ -222,6 +229,7 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
           <p className={styles.panelFoot}>{t("Nói “hey neuron”, dừng một nhịp, rồi hỏi. ", "Say “hey neuron”, pause, then ask. ")}{voiceNote}</p>
         </div>
       )}
+      {popup && <AgentReportCard report={popup} t={t} lang={lang} onClose={presence.dismissReport} onDetails={openDetails} speaking={!!state.voice.speaking} />}
       {visible && (
         <div className={`${styles.bubble} ${covered ? styles.bubbleQuiet : ""}`} data-quiet={covered} data-severity={visible.severity} role="status" aria-live={visible.severity === "critical" ? "assertive" : "polite"} data-testid="agent-bubble">
           <div className={styles.bubbleHead}>
@@ -258,9 +266,9 @@ export default function AgentDock({session, anchor, quietOver, quietRatio = 0.45
           title={label}
           data-testid="agent-robot"
         >
-          <RobotHead shape="circle" state={face} size={compact ? 76 : quietOver ? 44 : 112} floorShadow={false} color={colors.shell} trimColor={colors.trim} screenColor={colors.screen} paused={software && face !== "speaking"} aria-hidden="true" />
+          <RobotHead shape="circle" state={face} size={compact ? 76 : quietOver ? 72 : 112} floorShadow={false} color={colors.shell} trimColor={colors.trim} screenColor={colors.screen} paused={software && face !== "speaking"} aria-hidden="true" />
         </button>
-        {badge && <span className={styles.badge} data-severity={state.bubble?.message.severity} data-testid="agent-badge" aria-hidden="true" />}
+        {badge && <span className={styles.badge} data-severity={state.report && questionWaiting(state, now) ? state.report.severity : state.bubble?.message.severity} data-testid="agent-badge" aria-hidden="true" />}
       </div>
       <span className={styles.status} aria-hidden="true">{label}</span>
     </aside>

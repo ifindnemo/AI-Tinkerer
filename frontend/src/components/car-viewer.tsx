@@ -115,10 +115,7 @@ export default function CarViewer({
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     el.appendChild(renderer.domElement);
-    renderer.domElement.setAttribute(
-      "aria-label",
-      `Model ${vehicle.brand} ${vehicle.name} 3D. Kéo để xoay, cuộn để phóng to.`,
-    );
+    renderer.domElement.setAttribute("aria-label", `${vehicle.brand} ${vehicle.name} 3D`); // the sentence follows the language: see the effect below
     renderer.domElement.setAttribute("role", "img");
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -414,6 +411,10 @@ export default function CarViewer({
     initialColor.current = color;
     api.current?.paint(color);
   }, [color]);
+  // The 3D canvas is created once per car; its description changes with the interface language.
+  useEffect(() => {
+    host.current?.querySelector("canvas")?.setAttribute("aria-label", `${t("Model", "Model")} ${vehicle.brand} ${vehicle.name} 3D. ${t("Kéo để xoay, cuộn để phóng to.", "Drag to rotate, scroll to zoom.")}`);
+  }, [t, vehicle, retry]);
   const fullscreen = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();

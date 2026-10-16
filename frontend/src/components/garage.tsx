@@ -119,6 +119,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
     severity: latest?.severity ?? "normal",
     analysisId: backend.reply?.batchId ?? null,
     diagnosis: latest?.diagnosis ?? null,
+    reply: backend.reply?.latest ?? null,
   } : null);
   const busy = backend?.phase === "sending";
   const weatherResult = backend?.reply?.latest.tool_trace.find(t => t.tool === "get_external_environment_context")?.result;

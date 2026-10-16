@@ -93,6 +93,7 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
     severity: analysis?.reply.assessment.severity ?? "normal",
     analysisId: analysis?.id ?? null,
     diagnosis: analysis?.reply.assessment.diagnosis ?? null,
+    reply: analysis?.reply ?? null,
   });
   const backendState: BackendState = {
     phase: connected ? (analysis ? "ready" : "collecting") : "paused",
