@@ -129,3 +129,20 @@ def test_talk_rejects_an_empty_clip(monkeypatch) -> None:
         files={"file": ("speech.webm", b"", "audio/webm")},
     )
     assert response.status_code == 400
+
+
+def test_transcribe_first_then_talk_with_the_text_stores_one_stt_turn(tmp_path, monkeypatch) -> None:
+    """The page shows the question as soon as it is transcribed, then asks for the answer."""
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_CONVERSATION_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENT_MODE", "rules")
+    seen = []
+    monkeypatch.setattr("talk.transcribe", lambda audio, filename, content_type, language=None: seen.append(language) or "Hey neuron là gì?")
+    client = _app()
+    heard = client.post("/api/voice/transcribe", data={"lang": "en"}, files={"file": ("speech.webm", b"RIFFaudio", "audio/webm")})
+    assert heard.status_code == 200 and heard.json() == {"text": "Hey neuron là gì?"} and seen == ["en"]
+    assert not list(tmp_path.glob("*.json")), "transcribing alone stores nothing"
+    reply = client.post("/api/voice/talk", data={"sessionId": "talk-two-step", "lang": "vi", "text": "Hey neuron là gì?", "transcribed": "true"})
+    assert reply.status_code == 200 and reply.json()["text"] == "Hey neuron là gì?", "a transcript is not stripped like a wake phrase"
+    document = json.loads((tmp_path / "talk-two-step.json").read_text(encoding="utf-8"))
+    assert [(turn["role"], turn["source"]) for turn in document["turns"]] == [("driver", "stt"), ("agent", "reply")]

@@ -14,4 +14,7 @@ os.environ["EXTERNAL_TOOLS"] = "off"
 os.environ["BLAZE_API_TOKEN"] = ""
 os.environ["BLAZE_SPEAKER_ID"] = ""
 os.environ["BLAZE_SPEAKER_ID_EN"] = ""
+# English has a built-in default voice (Helen), so a test that sets a fake token could still reach Blaze:
+# point every Blaze call at a closed local port instead.
+os.environ["BLAZE_BASE_URL"] = "http://127.0.0.1:9"
 os.environ["BLAZE_VOICE_PREFERENCE_FILE"] = os.path.join(os.path.dirname(os.environ["DATABASE_PATH"]), "voice_preference.json")

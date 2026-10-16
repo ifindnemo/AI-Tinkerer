@@ -461,7 +461,7 @@ class BlazeTTS:
         audio_speed: float | None = None,
         base_url: str = BLAZE_BASE_URL,
         timeout: float = 20.0,
-        poll_interval: float = 0.4,
+        poll_interval: float = 0.15,  # Blaze finishes a short line in ~1.5 s: check often
         client: httpx.Client | None = None,
     ) -> None:
         self.speaker_id = speaker_id

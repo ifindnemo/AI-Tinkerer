@@ -144,7 +144,7 @@ class BlazeSTT:
         language: str = "vi",
         base_url: str = BLAZE_BASE_URL,
         timeout: float = 30.0,
-        poll_interval: float = 0.4,
+        poll_interval: float = 0.15,  # a short question is ready in a few seconds: check often
         client: httpx.Client | None = None,
     ) -> None:
         self.model = model

@@ -22,6 +22,7 @@ export async function POST(request: Request) {
   if (text) forward.set("text", text);
   forward.set("sessionId", session);
   forward.set("lang", lang);
+  if (form.get("transcribed") === "true") forward.set("transcribed", "true");
   try {
     const response = await fetch(`${backendBase()}/api/voice/talk`, {method: "POST", body: forward, signal: AbortSignal.timeout(60_000)});
     if (!response.ok) return Response.json({error: safeApiError(response.status)}, {status: response.status});

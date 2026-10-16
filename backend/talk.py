@@ -226,12 +226,28 @@ def _reply(safe_session: str, text: str, lang: str, source: str) -> dict[str, An
     }
 
 
+@router.post("/voice/transcribe", tags=["voice"])
+def transcribe_only(
+    file: UploadFile = File(...),
+    lang: str = Form("vi"),
+) -> dict[str, Any]:
+    """Speech to text only, so the page can show the driver's question while the agent is still thinking.
+    Nothing is stored; the page then sends the text to /voice/talk with `transcribed`."""
+    audio, filename, content_type = read_clip(file)
+    try:
+        return {"text": transcribe(audio, filename=filename, content_type=content_type, language=normalize(lang))}
+    except BlazeSttError as error:
+        log.warning("Blaze STT failed: %s", error)
+        raise HTTPException(status_code=502, detail="Speech recognition is temporarily unavailable.") from error
+
+
 @router.post("/voice/talk", tags=["voice"])
 def talk(
     file: UploadFile | None = File(None),
     uttered: str = Form("", alias="text"),
     session_id: str = Form("default", alias="sessionId"),
     lang: str = Form("vi"),
+    transcribed: bool = Form(False),
 ) -> dict[str, Any]:
     """Transcribe one clip, or accept the question that followed "hey neuron", then answer."""
     lang = normalize(lang)
@@ -247,6 +263,8 @@ def talk(
             log.warning("Blaze STT failed: %s", error)
             raise HTTPException(status_code=502, detail="Speech recognition is temporarily unavailable.") from error
         source = "stt"
+    elif transcribed:
+        text, source = " ".join(uttered.split())[:800], "stt"  # already transcribed by /voice/transcribe
     else:
         text = strip_wake(uttered)
         source = "wake"

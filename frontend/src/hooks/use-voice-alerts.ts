@@ -14,7 +14,7 @@ export type VoiceState = {
   blocked: boolean;
 };
 
-const POLL_MS = 2000;
+const POLL_MS = 1000; // a new alert clip is usually ready ~2 s after the batch: look every second
 /** An alert that waited this long behind others is no longer news: it is skipped, not read late. Replay still plays it. */
 const STALE_MS = 45_000;
 

@@ -131,9 +131,35 @@ export function useAgentTalk(session: string, suspended = false) {
       listenAgain();
       return;
     }
-    const body = new FormData();
+    // Two steps so the driver sees their question as soon as it is transcribed (a few seconds), not only
+    // once the agent has also answered: speech to text first, then the answer for that text.
+    const clip = new FormData();
     const kind = blob.type.includes("mp4") ? "mp4" : "webm";
-    body.set("file", blob, `speech.${kind}`);
+    clip.set("file", blob, `speech.${kind}`);
+    clip.set("lang", langRef.current);
+    let text = "";
+    try {
+      const response = await fetch("/api/voice/transcribe", {method: "POST", body: clip});
+      text = response.ok ? String(((await response.json()) as {text?: string}).text ?? "").trim() : "";
+      if (!response.ok) {
+        say(`talk-failed-${Date.now()}`, tRef.current("Chưa nhận được câu trả lời. Thử lại.", "No answer came back. Try again."));
+        listenAgain();
+        return;
+      }
+    } catch {
+      say(`talk-failed-${Date.now()}`, tRef.current("Chưa nhận được câu trả lời. Thử lại.", "No answer came back. Try again."));
+      listenAgain();
+      return;
+    }
+    if (!text) {
+      say(`talk-silent-${Date.now()}`, tRef.current("Không nghe rõ. Nói gần micro rồi bấm lại.", "I could not hear that. Speak closer and tap again."));
+      listenAgain();
+      return;
+    }
+    say(`talk-heard-${Date.now()}`, `${tRef.current("Bạn hỏi", "You asked")}: “${text}” · ${tRef.current("đang trả lời…", "answering…")}`);
+    const body = new FormData();
+    body.set("text", text);
+    body.set("transcribed", "true");
     body.set("sessionId", sessionRef.current);
     body.set("lang", langRef.current);
     await post(body);
