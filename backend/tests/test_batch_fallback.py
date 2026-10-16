@@ -77,14 +77,12 @@ def test_warning_voice_uses_garage_and_history_tool_results(monkeypatch) -> None
     reply = _post(_body([106, 106.5, 107, 107.5, 108, 108.5, 109, 109.5], vehicle_id="voice-tool-options"))
     assert reply["assessment"]["severity"] == "warning"
     assert {step["tool"] for step in reply["tool_trace"]} >= {"get_maintenance_history", "search_nearby_garages"}
-    assert len(calls) == 1
-    script = voice.alert_script(calls[0][0][0], calls[0][1]["severity"],
-                                calls[0][1]["recommendations"], options=calls[0][1]["options"])
-    assert script.index("nước làm mát") < script.index("An Bình Auto")
-    assert "An Bình Auto cách 1,2 kilômét" in script
-    assert "Minh Quân cách 1,8 kilômét" in script
-    assert "Thành Phát cách 2,4 kilômét" in script
-    assert "garage quen thuộc Garage Minh Quân (đối tác quen)" in script
+    # Rules first: a short line before the agent answers, then what to do (the plan) after it.
+    assert len(calls) == 2 and calls[0][1]["dedupe_key"].endswith(":fast")
+    assert "nước làm mát" in calls[0][0][0].lower()
+    script = voice.alert_script(calls[1][0][0], calls[1][1]["severity"], calls[1][1]["recommendations"], options=calls[1][1]["options"])
+    assert "Garage gần nhất là An Bình Auto, cách 1,2 kilômét." in script
+    assert "garage quen Garage Minh Quân (đối tác quen)" in script
 
 
 def test_garage_failure_keeps_the_spoken_diagnosis(monkeypatch) -> None:
@@ -99,8 +97,8 @@ def test_garage_failure_keeps_the_spoken_diagnosis(monkeypatch) -> None:
     monkeypatch.setattr(voice, "announce_alert", lambda *args, **kwargs: calls.append((args, kwargs)))
     reply = _post(_body([106, 106.5, 107, 107.5, 108, 108.5, 109, 109.5], vehicle_id="garage-unavailable"))
     assert reply["assessment"]["severity"] == "warning"
-    assert len(calls) == 1 and calls[0][1]["options"] == ""
-    assert "nước làm mát" in voice.alert_script(calls[0][0][0], "warning", calls[0][1]["recommendations"])
+    assert len(calls) == 2 and calls[1][1]["options"] is None, "no garage: nothing invented"
+    assert "nước làm mát" in voice.alert_script(calls[0][0][0], "warning", calls[0][1]["recommendations"]).lower()
 
 
 def test_camera_raised_alert_still_reads_the_vehicle_assessment(monkeypatch) -> None:
@@ -119,8 +117,8 @@ def test_camera_raised_alert_still_reads_the_vehicle_assessment(monkeypatch) -> 
     monkeypatch.setattr(voice, "announce_alert", lambda *args, **kwargs: calls.append(kwargs))
     reply = _post(_body([106], vehicle_id="camera-and-car"))
     assert reply["assessment"]["severity"] == "critical"
-    assert len(calls) == 1
-    assert "sau khi bạn đã dừng" in calls[0]["options"]
+    assert len(calls) == 1  # one record: the rules alone see nothing, so only the agent's alert is spoken
+    assert calls[0]["recommendations"] == ["Dừng xe ở vị trí an toàn."]
 
 
 def test_rules_mode_stays_normal_for_a_stable_engine(monkeypatch) -> None:

@@ -37,6 +37,8 @@ async function run(drowsy) {
 }
 
 try {
+  // A camera alert from an earlier run stays "live" for 60 s on the backend (driver/registry.py): let it expire.
+  await new Promise(resolve => setTimeout(resolve, 65_000));
   const alert = await run(false);
   const drowsy = await run(true);
   console.log(`PASS: same car, different plan: no camera alert → ${alert}; drowsy driver → ${drowsy}`);

@@ -24,3 +24,7 @@ Every warning or critical result carries a `plan`, decided by rules from the car
 | critical (the car itself) | any | `stop_and_get_help` / `stop_rest_and_get_help`: stop, engine off, do not drive; tow to the nearest garage or a pick-up | never |
 
 The plan's `spoken` sentence replaces the spoken garage list; the popup shows its title and options. Advice only: Car Neuron never calls anyone.
+
+## Spoken timing: rules first, the plan after
+
+On a browser batch the rules decide the level at once, so a short line (level, one sentence, the mandatory step) is spoken before the LLM starts (`voice.speak_car_fast`). When the agent answers 10–20 s later, only the plan and the booking question are added (`voice.speak_car_result`), never the diagnosis again; both once per episode. On the page a critical clip cuts a milder one and the clips waiting behind it, and a batch that arrives while the agent is busy waits as the single newest one instead of being dropped.

@@ -52,9 +52,10 @@ def test_a_critical_car_is_towed_not_driven_and_names_only_found_garages() -> No
     assert "kéo xe về garage" in without["options"][0]
 
 
-def test_an_alert_driver_gets_the_usual_garage_too_and_the_spoken_list_is_left_to_the_voice() -> None:
+def test_an_alert_driver_hears_the_nearest_and_the_usual_garage_in_one_short_line() -> None:
     plan = decide("warning", _context(), TRACE)
-    assert plan["spoken"] == "" and any("Garage Minh Quân" in option for option in plan["options"])
+    assert plan["spoken"] == "Garage gần nhất là Garage An Phú, cách 0,8 kilômét. Hoặc về garage quen Garage Minh Quân."
+    assert any("Garage Minh Quân" in option for option in plan["options"])
 
 
 def test_driver_state_reads_only_a_live_summary() -> None:

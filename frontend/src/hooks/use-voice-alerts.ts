@@ -132,6 +132,11 @@ function createPlayer(update: Update) {
     enqueue(clips: VoiceClip[]) {
       // Driver-camera alerts (their group starts with "driver:") are left out while that voice is off: not queued, not replayed.
       clips = m.driverVoice ? clips : clips.filter(clip => !clip.group?.startsWith("driver:"));
+      // A critical alert does not wait behind older, milder lines: those are dropped and the one playing is cut.
+      if (clips.some(clip => clip.severity === "critical")) {
+        m.queue = m.queue.filter(clip => clip.severity === "critical");
+        if (m.last && m.last.severity !== "critical" && (m.playing || m.loading)) cancel();
+      }
       remember(clips);
       m.queue.push(...clips);
       playNext();

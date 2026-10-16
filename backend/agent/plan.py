@@ -106,8 +106,15 @@ def decide(severity: str, context: dict[str, Any], trace: list[dict[str, Any]] |
     if familiar and (not nearest or familiar != nearest["name"]):
         options.append(say(f"Hoặc về garage quen {familiar}", f"Or go to your usual garage, {familiar}"))
     options.append(say("Nếu nhiệt độ tiếp tục tăng: dừng xe và tắt máy", "If the temperature keeps rising: stop and switch off the engine"))
-    # The spoken garage choice for this plan is the existing list of nearby garages (voice.tool_options_line).
-    return _plan(code, state, title, steps, options, "", booking=True)
+    spoken = ""
+    if nearest:
+        spoken = say(f"Garage gần nhất là {nearest['name']}, cách {_km(nearest['km'], lang)}.",
+                     f"The nearest garage is {nearest['name']}, {_km(nearest['km'], lang)} away.")
+        if familiar and familiar != nearest["name"]:
+            spoken += say(f" Hoặc về garage quen {familiar}.", f" Or your usual garage, {familiar}.")
+    if state == "distracted":
+        spoken = say("Nhìn lại phía trước. ", "Look back at the road. ") + spoken
+    return _plan(code, state, title, steps, options, spoken.strip(), booking=True)
 
 
 def _plan(code: str, state: str, title: str, steps: list[str], options: list[str], spoken: str, *, booking: bool) -> dict[str, Any]:

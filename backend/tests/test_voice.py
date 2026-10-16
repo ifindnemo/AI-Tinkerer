@@ -396,3 +396,28 @@ def test_an_alert_is_spoken_once_per_episode_not_every_ninety_seconds(monkeypatc
     voice.clear_alert_history("once-car")  # a normal assessment ends the episode
     assert voice._claim("once-car:warning:vi", once=True)
     voice.clear_alert_history("once-car")
+
+
+def test_after_the_fast_rule_line_only_the_plan_is_added(monkeypatch) -> None:
+    queued = []
+
+    class _Inline:
+        def submit(self, fn, *args):
+            queued.append(args[0])
+
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setattr(voice, "_pool", lambda: _Inline())
+    voice.clear_alert_history("fast-car")
+    voice.speak_car_fast("fast-car", "critical", "vi", "Nước làm mát 121°C, vượt ngưỡng nguy hiểm. Chi tiết dài.", "Dừng xe ở vị trí an toàn.")
+    assert queued == ["Cảnh báo nguy hiểm. Nước làm mát 121°C, vượt ngưỡng nguy hiểm. Dừng xe ở vị trí an toàn."]
+    result = {"assessment": {"severity": "critical"}, "plan": {"code": "stop_and_get_help", "spoken": "Đừng tự lái xe đến garage."}}
+    voice.speak_car_result("fast-car", "critical", "vi", result, "Chẩn đoán dài của agent.", ["Dừng xe."])
+    assert queued[1] == "Đừng tự lái xe đến garage.", "no second lead, no repeated diagnosis"
+    voice.speak_car_result("fast-car", "critical", "vi", result, "Chẩn đoán dài của agent.", ["Dừng xe."])
+    assert len(queued) == 2, "once per episode"
+    voice.clear_alert_history("fast-car")
+    voice.speak_car_fast("fast-car", "warning", "vi", "Theo các luật kiểm tra: nước làm mát 109.7°C, vượt ngưỡng.", None)
+    assert queued[2] == "Cảnh báo. Nước làm mát 109.7°C, vượt ngưỡng."
+    assert voice.spoken_form(queued[2]) == "Cảnh báo. Nước làm mát 109,7 độ C, vượt ngưỡng."
+    voice.clear_alert_history("fast-car")

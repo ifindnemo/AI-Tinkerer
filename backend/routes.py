@@ -27,10 +27,24 @@ def _run_agent(telemetry_context: dict) -> dict:
         ) from error
 
 
+def _speak_rules_first(vehicle_id: str, lang: str, context: dict) -> None:
+    """The rules know the level at once; the LLM takes 10-20 s. Speak the short rule line now."""
+    try:
+        from analysis.rules import batch_rules_assessment
+        from voice import speak_car_fast
+
+        rules = batch_rules_assessment(dict(context))
+        if rules.severity.value in ("warning", "critical"):
+            speak_car_fast(vehicle_id, rules.severity.value, lang, rules.diagnosis, (rules.recommendations or [None])[0])
+    except Exception:
+        log.warning("could not speak the rule alert first", exc_info=True)
+
+
 @router.post("/telemetry/batch", tags=["telemetry"])
 def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
     """Validate a frontend black-box batch and send it directly to the agent."""
     context = batch.to_agent_context()
+    _speak_rules_first(batch.vehicle_id, batch.lang, context)
     result = _run_agent(context)
     assessment = result["assessment"]
     severity = assessment["severity"]  # result["status"] is the incident status, not the severity
@@ -39,23 +53,9 @@ def receive_telemetry_batch(batch: TelemetryBatchInput) -> dict:
 
         clear_alert_history(batch.vehicle_id)
     if severity in ("warning", "critical"):
-        from voice import announce_alert, follow_up_for, tool_options_line
+        from voice import speak_car_result
 
-        driver = context.get("driver_attention") or {}
-        hold = severity == "critical" or (driver.get("status") == "live" and bool(driver.get("must_stop")))
-        # The plan (car + driver) says what to do; with no special plan, the nearby garages are offered as choices.
-        options = (result.get("plan") or {}).get("spoken") or tool_options_line(result.get("tool_trace"), batch.lang, hold=hold)
-        announce_alert(
-            assessment["diagnosis"],
-            severity=severity,
-            recommendations=assessment["recommendations"],
-            dedupe_key=f"{batch.vehicle_id}:{severity}:{batch.lang}",
-            once=True,  # one announcement per episode: the page shows the rest; a normal assessment starts a new one
-            session_id=batch.vehicle_id,
-            lang=batch.lang,
-            options=options,
-            follow_up=follow_up_for(result, batch.lang),
-        )
+        speak_car_result(batch.vehicle_id, severity, batch.lang, result, assessment["diagnosis"], assessment["recommendations"])
     return {
         **result,
         "batch_id": batch.batch_id,

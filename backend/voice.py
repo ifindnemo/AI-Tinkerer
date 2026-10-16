@@ -270,6 +270,8 @@ def spoken_form(text: str, lang: str = "vi") -> str:
     through ("ECT", "batch", "hard_safety_guardrail") become words of the same language, so the voice
     never switches language mid-sentence; a bracketed label is dropped. The words shown on screen keep all of it."""
     lang = normalize(lang)
+    if lang == "vi":
+        text = re.sub(r"(?<=\d)\.(?=\d)", ",", text)  # "109.7" is read as a Vietnamese decimal: "109,7"
     text = _CELSIUS.sub(" degrees Celsius" if lang == "en" else " độ C", text)
     for pattern, words in _JARGON[lang]:
         text = pattern.sub(words, text)
@@ -370,6 +372,58 @@ def announce_alert(
         if severity == "critical" and session_id:
             with _lock:
                 _critical_at[session_id] = time.monotonic()
+        _pool().submit(_speak, script, severity, key, session_id, lang)
+    except Exception:
+        log.warning("could not queue Blaze TTS", exc_info=True)
+
+
+def _first_sentence(text: str) -> str:
+    """Only the first sentence (whole, at most ~170 characters): the rest stays on screen."""
+    clean = " ".join(str(text or "").split()).strip()
+    return _first_sentences(re.split(r"(?<=[.!?])\s+", clean, maxsplit=1)[0], 170) if clean else ""
+
+
+def speak_car_fast(session_id: str, severity: str, lang: str, diagnosis: str, step: str | None) -> None:
+    """Rules first: as soon as a batch arrives and the rules see a warning or critical car, a short line
+    (level, one sentence, the mandatory step) is spoken without waiting for the LLM. Once per episode."""
+    if severity not in ALERT_SEVERITIES:
+        return
+    words = re.sub(r"^(Theo các luật kiểm tra|According to the rules)[:,]\s*", "", " ".join(str(diagnosis or "").split()))
+    words = words[:1].upper() + words[1:]
+    announce_alert(_first_sentence(words), severity=severity, recommendations=[step] if step else None,
+                   dedupe_key=f"{session_id}:{severity}:{normalize(lang)}:fast", once=True, session_id=session_id, lang=lang)
+
+
+def speak_car_result(session_id: str, severity: str, lang: str, result: dict[str, Any], diagnosis: str, recommendations: Sequence[str]) -> None:
+    """After the agent: what to do now (the plan) and the booking question, once per episode. When the fast
+    rule line already announced this level, only the plan is added, so the driver hears no repeat; otherwise
+    one sentence of the diagnosis comes first. The full text stays on screen."""
+    lang = normalize(lang)
+    plan = result.get("plan") or {}
+    follow_up = follow_up_for(result, lang)
+    line = plan.get("spoken") or ""
+    if plan.get("code") == "garage_when_convenient" and follow_up:
+        line = ""  # the booking sentence already names the garage
+    key = f"{session_id}:{severity}:{lang}"
+    if _claimed(f"{key}:fast"):
+        script = " ".join(part for part in (line, follow_up) if part).strip()
+        if script:
+            _say_once(script, severity, key, session_id, lang)
+        return
+    announce_alert(_first_sentence(diagnosis), severity=severity, recommendations=None if line else list(recommendations)[:1],
+                   dedupe_key=key, once=True, session_id=session_id, lang=lang, options=line or None, follow_up=follow_up)
+
+
+def _claimed(key: str) -> bool:
+    with _lock:
+        return time.monotonic() < _spoken.get(key, 0)
+
+
+def _say_once(script: str, severity: str, key: str, session_id: str, lang: str) -> None:
+    """A line that is not an alert lead (no "Cảnh báo." in front), spoken once per episode."""
+    try:
+        if not _configured(lang) or not _claim(key, True):
+            return
         _pool().submit(_speak, script, severity, key, session_id, lang)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)

@@ -17,7 +17,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  private listeners=new Set<()=>void>();
  private running=false;private timer:ReturnType<typeof setInterval>|null=null;private tick=0;
  private generation=0;private request:AbortController|null=null;private health:AbortController|null=null;
- private busy=false;private handled:string|null=null;
+ private busy=false;private waiting:BlackboxBatch|null=null;private handled:string|null=null;
  private stream:BlackboxBatchStream;
  constructor(private vehicle:Vehicle){
   this.initial={scenario:'normal',telemetry:{...getMockTelemetry('normal',vehicle.id),connected:false,capturedAt:'',operatingSource:'scenario'},samples:[],result:null,history:[],incident:null,blackbox:initialTransfer(),agentCycle:initialAgentCycle(),backend:initialBackendState(),failNext:false,restoring:true,recoveryNotice:'',storageError:''};
@@ -36,7 +36,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   this.state={...this.initial,restoring:false};this.stream.start();this.sample(false);
   this.timer=setInterval(()=>this.sample(true),1000);void this.checkConnection();void this.restoreIncident();
  };
- dispose=()=>{this.running=false;this.generation++;if(this.timer)clearInterval(this.timer);this.timer=null;this.request?.abort();this.health?.abort();this.request=null;this.busy=false;this.stream.dispose();};
+ dispose=()=>{this.running=false;this.generation++;if(this.timer)clearInterval(this.timer);this.timer=null;this.request?.abort();this.health?.abort();this.request=null;this.busy=false;this.waiting=null;this.stream.dispose();};
  private sample(count:boolean){
   if(!this.running||this.state.scenario==='offline')return;
   const telemetry=liveSample(this.state.scenario,this.vehicle.id,this.tick++,new Date());
@@ -44,7 +44,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  }
  setScenario=(scenario:ScenarioId)=>{
   if(!this.running||scenario===this.state.scenario)return;
-  this.generation++;this.request?.abort();this.request=null;this.busy=false;this.tick=0;
+  this.generation++;this.request?.abort();this.request=null;this.busy=false;this.waiting=null;this.tick=0;
   this.state={...this.state,scenario,result:null,samples:[],telemetry:{...this.state.telemetry,scenario,connected:false},backend:{...this.state.backend!,phase:scenario==='offline'?'paused':'collecting',error:'',reply:null}};
   // Send the first batch of the new scenario early so the agent reacts within seconds.
   this.stream.breakSequence(scenario==='offline'?BLACKBOX_BATCH_SIZE:BLACKBOX_EARLY_BATCH_SIZE);this.sample(false);
@@ -78,7 +78,8 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  }
  private async submit(batch:BlackboxBatch){
   if(!this.running||this.state.scenario==='offline')return;
-  if(this.busy){this.update({skipped:this.state.backend!.skipped+1});return;}
+  // Busy: keep only the newest batch and send it as soon as the reply arrives (no gap, no pile-up).
+  if(this.busy){if(this.waiting)this.update({skipped:this.state.backend!.skipped+1});this.waiting=batch;return;}
   this.busy=true;const generation=this.generation;const controller=new AbortController();this.request=controller;
   this.update({phase:'sending',error:''});
   try{
@@ -91,7 +92,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
    this.state={...this.state,result:report,history:report?[report,...this.state.history].slice(0,20):this.state.history};
    this.update({phase:'ready',api:'online',reply,incident,history:[reply,...this.state.backend!.history].slice(0,5)});
   }catch(error){if(this.running&&!controller.signal.aborted&&generation===this.generation)this.update({phase:'error',api:'offline',error:apiFailureMessage(error)});}
-  finally{if(generation===this.generation){this.busy=false;this.request=null;}}
+  finally{if(generation===this.generation){this.busy=false;this.request=null;const next=this.waiting;this.waiting=null;if(next&&this.running)void this.submit(next);}}
  }
  private report(reply:BatchReply):Analysis{
   const a=reply.latest.assessment;
