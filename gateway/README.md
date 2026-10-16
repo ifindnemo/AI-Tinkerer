@@ -24,7 +24,7 @@ Token chỉ đọc từ biến môi trường, không truyền qua tham số dò
 
 | Mục đích | Lệnh |
 |---|---|
-| Xe thật, cục OBD USB | `.venv/bin/python -m car_neuron_gateway --source obd --port /dev/ttyUSB0 --fixed-location 10.8023,106.7311` |
+| Xe thật, cục OBD USB | `.venv/bin/python -m car_neuron_gateway --source obd --port /dev/ttyUSB0 --fixed-location 16.0878,108.221` |
 | Xe thật, Bluetooth thường | ghép đôi, `rfcomm bind` ra `/dev/rfcomm0`, rồi `--port /dev/rfcomm0` |
 | Xe thật, cục OBD WiFi | `--port socket://192.168.0.10:35000` (địa chỉ tùy thiết bị, cần kiểm tra) |
 | Có GPS USB | thay `--fixed-location` bằng `--gps-port /dev/ttyACM0` |

@@ -37,6 +37,13 @@ export default function AgentReportCard({report, t, lang, onClose, onDetails, sp
         </div>
       ) : report.stopFirst && <p className={styles.reportStop} data-testid="agent-report-stop"><TriangleAlert size={13} aria-hidden="true" />{t("Dừng xe ở nơi an toàn trước. Garage chỉ để tham khảo sau đó.", "Stop somewhere safe first. The garage is for afterwards.")}</p>}
       {(report.pending || report.appointment) && <BookingCard pending={report.pending} appointment={report.appointment} t={t} lang={lang} />}
+      {report.appointment && report.plan && !report.plan.booking && (
+        <p className={styles.reportPlanWhy} data-testid="agent-report-appointment-note">
+          {report.plan.code === "rest_then_decide"
+            ? t("Lịch hẹn vẫn giữ, nhưng chỉ lái tới đó sau khi bạn đã nghỉ và thấy tỉnh táo.", "The appointment stands, but drive there only once you have rested and feel alert.")
+            : t("Lịch hẹn vẫn giữ, nhưng đừng tự lái xe tới: xe nên được kéo tới garage.", "The appointment stands, but do not drive there yourself: the car should be towed.")}
+        </p>
+      )}
       {garage && (sameAsProposal ? (
         <p className={styles.reportNearest} data-testid="agent-report-garage"><MapPin size={13} aria-hidden="true" />{t("Đây là garage gần xe nhất", "This is the garage nearest to the car")} · {garage.distance_km.toLocaleString(locale)} km</p>
       ) : (

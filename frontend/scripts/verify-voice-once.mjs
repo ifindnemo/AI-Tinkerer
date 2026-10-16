@@ -15,7 +15,11 @@ try {
   await context.addInitScript(() => {try {localStorage.setItem("car-neuron.agent-mode", "backend"); localStorage.setItem("car-neuron.lang", "vi");} catch { /* blocked storage */ }});
   const page = await context.newPage();
   await page.goto(`${base}/garage?presenter=1&reset=1`);
-  await page.getByLabel("Kịch bản mô phỏng").selectOption("engine");
+  // Choosing before the page has hydrated is lost (the scenario stays "normal"): choose until it holds.
+  const scenario = page.getByLabel("Kịch bản mô phỏng");
+  for (let tries = 0; tries < 10 && (await scenario.inputValue()) !== "engine"; tries++) { await page.waitForTimeout(1000); await scenario.selectOption("engine"); }
+  await page.waitForTimeout(1500);
+  if ((await scenario.inputValue()) !== "engine") await scenario.selectOption("engine");
   await page.waitForTimeout(180_000);
 } finally {
   await browser.close();

@@ -4,9 +4,9 @@ export type ServiceAssessment = Omit<Analysis, "score">;
 
 export const bookingStorageKey = "autolink.service-bookings.v1";
 export const garages = [
-  { id: "cooling-lab", name: "Cooling Lab", area: "Khu vực Thảo Điền", specialty: "Hệ thống làm mát · động cơ", description: "Phù hợp kiểm tra quạt, bơm nước và rò rỉ khi có dấu hiệu quá nhiệt.", causes: ["engine", "environment"] },
-  { id: "auto-care", name: "Auto Care Studio", area: "Khu vực An Phú", specialty: "Chẩn đoán tổng quát · bảo dưỡng", description: "Phù hợp kiểm tra cảm biến và theo dõi tình trạng vận hành.", causes: ["environment", "normal", "unclassified"] },
-  { id: "ev-service", name: "EV Service Lab", area: "Khu vực Bình Thạnh", specialty: "Pin · motor · làm mát xe điện", description: "Phù hợp kiểm tra hệ truyền động điện và hệ thống quản lý nhiệt.", causes: ["traction"] },
+  { id: "cooling-lab", name: "Cooling Lab", area: "Khu vực Hải Châu", specialty: "Hệ thống làm mát · động cơ", description: "Phù hợp kiểm tra quạt, bơm nước và rò rỉ khi có dấu hiệu quá nhiệt.", causes: ["engine", "environment"] },
+  { id: "auto-care", name: "Auto Care Studio", area: "Khu vực Sơn Trà", specialty: "Chẩn đoán tổng quát · bảo dưỡng", description: "Phù hợp kiểm tra cảm biến và theo dõi tình trạng vận hành.", causes: ["environment", "normal", "unclassified"] },
+  { id: "ev-service", name: "EV Service Lab", area: "Khu vực Thanh Khê", specialty: "Pin · motor · làm mát xe điện", description: "Phù hợp kiểm tra hệ truyền động điện và hệ thống quản lý nhiệt.", causes: ["traction"] },
 ] as const;
 export const appointmentSlots = ["09:00", "11:00", "14:00", "16:00"];
 export type Booking = {

@@ -77,9 +77,9 @@ export function getMockTelemetry(
     fan: 0,
     dtc: [],
     location: {
-      name: "Thảo Điền, TP. Hồ Chí Minh",
-      lat: 10.8023,
-      lon: 106.7328,
+      name: "2 Như Nguyệt, Hải Châu, Đà Nẵng",
+      lat: 16.0878,
+      lon: 108.221,
     },
     connected: true,
   };

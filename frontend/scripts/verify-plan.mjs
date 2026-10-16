@@ -17,11 +17,17 @@ async function run(drowsy) {
     try { replies.push((await response.json()).latest); } catch { /* not JSON */ }
   });
   await page.goto(`${base}/garage?presenter=1&reset=1`);
-  await page.getByLabel("Kịch bản mô phỏng").selectOption("warm");
+  // Choosing before the page has hydrated is lost (the scenario stays "normal"): choose until it holds.
+  const scenario = page.getByLabel("Kịch bản mô phỏng");
+  for (let tries = 0; tries < 10 && (await scenario.inputValue()) !== "warm"; tries++) { await page.waitForTimeout(1000); await scenario.selectOption("warm"); }
+  await page.waitForTimeout(1500);
+  if ((await scenario.inputValue()) !== "warm") await scenario.selectOption("warm");
   if (drowsy) await page.getByTestId("garage-camera-sim-drowsy").click();
-  // The first warning or critical reply carries the plan.
-  for (let waited = 0; waited < 150_000 && !replies.some(reply => reply?.plan); waited += 2000) await page.waitForTimeout(2000);
-  const reply = replies.find(item => item?.plan);
+  // The first warning or critical reply carries the plan; with the camera, the first one that already saw the
+  // drowsy driver (the camera alert can land a batch after the car's first warning).
+  const wanted = item => item?.plan && (!drowsy || item.plan.driver === "drowsy");
+  for (let waited = 0; waited < 150_000 && !replies.some(wanted); waited += 2000) await page.waitForTimeout(2000);
+  const reply = replies.find(wanted);
   assert.ok(reply, `${drowsy ? "drowsy" : "no camera"}: no warning reply with a plan within 150 s`);
   const plan = reply.plan;
   if (drowsy) {

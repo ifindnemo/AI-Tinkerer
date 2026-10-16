@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,17 @@ def _osm_url(latitude: float, longitude: float) -> str:
     )
 
 
+# OpenStreetMap tags many motorbike and bicycle shops as car_repair. A car agent must not send a BMW there.
+_NOT_FOR_CARS = re.compile(
+    r"\b(moto\w*|motorbikes?|motorcycles?|bikes?|bicycles?|scooters?|xe máy|xe đạp|honda head|head honda|yamaha town)\b",
+    re.IGNORECASE,
+)
+
+
+def for_cars(name: str) -> bool:
+    return not _NOT_FOR_CARS.search(name or "")
+
+
 def search_nearby_garages(
     latitude: float,
     longitude: float,
@@ -82,7 +94,7 @@ def search_nearby_garages(
             "lon": longitude,
             "tag": "shop:car_repair",
             "radius": radius_meters,
-            "limit": max_results,
+            "limit": min(50, max_results * 3),  # room for the motorbike shops that are left out
             "dedupe": 1,
             "format": "json",
         },
@@ -112,6 +124,8 @@ def search_nearby_garages(
         except (KeyError, TypeError, ValueError):
             continue
 
+        if not for_cars(str(place.get("name") or "")):
+            continue
         garage = {
             "place_id": str(place.get("place_id", "")),
             "name": place.get("name") or "Garage chưa có tên",
@@ -140,6 +154,9 @@ def search_nearby_garages(
         )
 
     garages.sort(key=lambda garage: garage["distance_meters"])
+    garages = garages[:max_results]
+    kept = {garage["place_id"] for garage in garages}
+    markers = [marker for marker in markers if marker["type"] == "vehicle" or marker["id"] in kept]
     return {
         "gps": {"latitude": latitude, "longitude": longitude},
         "radius_meters": radius_meters,

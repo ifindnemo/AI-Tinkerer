@@ -32,7 +32,7 @@ try{
  await page.getByRole('button',{name:'Mô phỏng xe đã dừng',exact:true}).click();
  await page.getByRole('button',{name:'Xác nhận cứu hộ & chia sẻ (demo)',exact:true}).waitFor();
  await agent.locator('.agent-share-details summary').click();
- assert.match(await agent.locator('.agent-share-details').innerText(),/10.8023/);
+ assert.match(await agent.locator('.agent-share-details').innerText(),/16.0878/);
  await page.waitForTimeout(2200);
  assert.equal(await agent.getByText('Cứu hộ demo đã xác nhận',{exact:true}).count(),0,'no rescue without confirmation');
  await page.screenshot({path:'docs/screenshots/agent-consent.png',fullPage:true});

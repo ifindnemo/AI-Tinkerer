@@ -421,3 +421,23 @@ def test_after_the_fast_rule_line_only_the_plan_is_added(monkeypatch) -> None:
     assert queued[2] == "Cảnh báo. Nước làm mát 109.7°C, vượt ngưỡng."
     assert voice.spoken_form(queued[2]) == "Cảnh báo. Nước làm mát 109,7 độ C, vượt ngưỡng."
     voice.clear_alert_history("fast-car")
+
+
+def test_a_changed_plan_is_spoken_but_the_level_is_not_repeated(monkeypatch) -> None:
+    queued = []
+
+    class _Inline:
+        def submit(self, fn, *args):
+            queued.append(args[0])
+
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setattr(voice, "_pool", lambda: _Inline())
+    voice.clear_alert_history("plan-car")
+    garage = {"assessment": {"severity": "warning"}, "plan": {"code": "garage_when_convenient", "spoken": "Garage gần nhất là A."}}
+    rest = {"assessment": {"severity": "warning"}, "plan": {"code": "rest_then_decide", "spoken": "Hãy nghỉ trước."}}
+    voice.speak_car_result("plan-car", "warning", "vi", garage, "Nhiệt độ cao. Chi tiết.", ["Giảm tải."])
+    voice.speak_car_result("plan-car", "warning", "vi", garage, "Nhiệt độ cao. Chi tiết.", ["Giảm tải."])
+    voice.speak_car_result("plan-car", "warning", "vi", rest, "Nhiệt độ cao. Chi tiết.", ["Giảm tải."])
+    assert queued == ["Cảnh báo. Nhiệt độ cao. Garage gần nhất là A.", "Hãy nghỉ trước."]
+    voice.clear_alert_history("plan-car")

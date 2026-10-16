@@ -43,7 +43,7 @@ function warmSample(base: Telemetry, tick: number, now: Date): Telemetry {
     tps: round(28 + drive * 0.5), consumption: round(8.5 + drive * 0.1),
     battery: round(14.1 + Math.sin(tick * 0.25) * 0.05),
     fan: 35, fault: 0, dtc: [],
-    location: {...base.location, lat: Math.round((base.location.lat + moved * 0.0001) * 1e5) / 1e5, lon: Math.round((base.location.lon + moved * 0.00012) * 1e5) / 1e5},
+    location: {...base.location, lat: Math.round((base.location.lat - moved * 0.0001) * 1e5) / 1e5, lon: Math.round((base.location.lon + moved * 0.00002) * 1e5) / 1e5},
   };
 }
 
@@ -61,7 +61,7 @@ function overheatSample(base: Telemetry, tick: number, now: Date): Telemetry {
     tps: round(17 + drive * 0.5), consumption: round(6.4 + drive * 0.1),
     battery: round(14.1 + Math.sin(tick * 0.25) * 0.05),
     fan: 0, fault: 1, dtc: coolant >= OVERHEAT_DTC_AT ? ["P0217"] : [],
-    location: {...base.location, lat: Math.round((base.location.lat + moved * 0.0001) * 1e5) / 1e5, lon: Math.round((base.location.lon + moved * 0.00012) * 1e5) / 1e5},
+    location: {...base.location, lat: Math.round((base.location.lat - moved * 0.0001) * 1e5) / 1e5, lon: Math.round((base.location.lon + moved * 0.00002) * 1e5) / 1e5},
   };
 }
 

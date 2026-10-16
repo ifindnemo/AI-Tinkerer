@@ -3,7 +3,9 @@
 #   ./demo.sh            real agent (LLM from backend/.env), production build, localhost only
 #   ./demo.sh --rules    no LLM and no paid services anywhere: rule-only answers (offline fallback)
 #   ./demo.sh --rebuild  rebuild the frontend even if a build exists
-#   ./demo.sh --keep     keep yesterday's voice clips and transcripts (default: they are deleted)
+#   ./demo.sh --keep     keep the last run's state (default: voice clips, transcripts, incidents and
+#                        appointments are cleared so every run starts like the first; the old database is
+#                        copied to backend/var/last-run.db)
 # Unlike dev.sh there is no hot reload (saving a file cannot restart the backend in the middle of the demo),
 # and both servers listen on 127.0.0.1 only. Ctrl+C stops everything. Ports: BACKEND_PORT / FRONTEND_PORT.
 set -euo pipefail
@@ -17,7 +19,7 @@ for arg in "$@"; do
     --rules) RULES=1 ;;
     --rebuild) REBUILD=1 ;;
     --keep) KEEP=1 ;;
-    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -49,7 +51,25 @@ else
   say "Tip: ./backend/.venv/bin/python backend/scripts/llm_preflight.py measures one real LLM call (a few tokens)."
 fi
 
-if (( ! KEEP )); then rm -rf "$ROOT/backend/var/voice" "$ROOT/backend/var/conversations" 2>/dev/null || true; fi
+if (( ! KEEP )); then
+  rm -rf "$ROOT/backend/var/voice" "$ROOT/backend/var/conversations" 2>/dev/null || true
+  # Incidents, proposals and appointments from a rehearsal would show up in the demo ("appointment saved",
+  # an open incident): start clean. The maintenance history (a JSON file) and OBD trips are not touched.
+  DB_NAME=$(grep -E '^DATABASE_PATH=' "$ROOT/backend/.env" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+  DB_NAME=${DB_NAME:-vehicle_guardian.db}
+  [[ $DB_NAME = /* ]] && DB=$DB_NAME || DB="$ROOT/backend/$DB_NAME"
+  if [[ -f "$DB" ]]; then
+    mkdir -p "$ROOT/backend/var" && cp "$DB" "$ROOT/backend/var/last-run.db"
+    "$VENV/bin/python" - "$DB" <<'PY' && say "Cleared the last run's incidents and appointments (copy in backend/var/last-run.db)"
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for table in ("appointments", "reminders", "pending_actions", "incident_memories", "incidents"):
+        if table in names:
+            db.execute(f"DELETE FROM {table}")
+PY
+  fi
+fi
 
 if (( REBUILD )) || [[ ! -f "$ROOT/frontend/.next/BUILD_ID" ]]; then
   say "Building the frontend (production)"

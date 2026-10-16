@@ -63,7 +63,7 @@ plays a scenario (`normal`, `city`, `overheat`, `misfire`, `lean`); that data is
 cd backend && .venv/bin/python scripts/create_device.py --vehicle bmw-m2 --label laptop
 export CAR_NEURON_DEVICE_ID=dev_...  CAR_NEURON_TOKEN=cnd_...
 cd gateway && .venv/bin/python -m car_neuron_gateway --source fake-elm --scenario overheat \
-  --server http://localhost:3000 --ingest-path /api/ingest --fixed-location 10.8023,106.7311
+  --server http://localhost:3000 --ingest-path /api/ingest --fixed-location 16.0878,108.221
 ```
 
 Then open `http://localhost:3000/garage` and press **OBD** (`?presenter=1` hides the source switch).

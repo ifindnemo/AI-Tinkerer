@@ -25,7 +25,7 @@ def _context(attention=None, state=None, severity="warning", status="live", spee
     ("warning", _context("low_attention", "distracted"), "focus_then_garage", True),
     ("warning", _context("low_attention", "drowsy"), "rest_then_decide", False),
     ("critical", _context(), "stop_and_get_help", False),
-    ("critical", _context("low_attention", "drowsy", "critical"), "stop_rest_and_get_help", False),
+    ("critical", {**_context("low_attention", "drowsy", "critical"), "records": [{"speed": 60, "coolant_temp_c": 122}]}, "stop_rest_and_get_help", False),
     ("warning", _context("low_attention", "drowsy", status="stale"), "garage_when_convenient", True),
 ])
 def test_the_plan_depends_on_both_the_car_and_the_driver(car, context, code, booking) -> None:
@@ -69,3 +69,10 @@ def test_critical_only_because_of_the_driver_means_rest_not_a_tow() -> None:
     plan = decide("critical", context, TRACE)
     assert plan["code"] == "rest_then_decide" and plan["title"].startswith("Dừng xe ngay và nghỉ")
     assert not any("kéo xe" in option for option in plan["options"]) and plan["booking"] is False
+
+
+def test_the_model_calling_it_critical_for_a_drowsy_driver_does_not_send_a_tow_truck() -> None:
+    warm = {**_context("low_attention", "drowsy", "critical"), "records": [{"speed": 65, "coolant_temp_c": 106.7}]}
+    assert decide("critical", warm, TRACE)["code"] == "rest_then_decide"
+    boiling = {**warm, "records": [{"speed": 65, "coolant_temp_c": 122}]}
+    assert decide("critical", boiling, TRACE)["code"] == "stop_rest_and_get_help"

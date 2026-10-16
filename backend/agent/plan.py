@@ -55,7 +55,9 @@ def decide(severity: str, context: dict[str, Any], trace: list[dict[str, Any]] |
         return en_text if en else vi
 
     # Critical only because of the driver (the car itself is at warning): the driver rests; the car needs no tow.
-    raised_by_driver = severity == "critical" and bool(context.get("driver_policy_raised")) and state in ("drowsy", "distracted")
+    # The model may also call it critical because of the driver; the car's own rules decide whether the car is.
+    raised_by_driver = severity == "critical" and state in ("drowsy", "distracted") and (
+        bool(context.get("driver_policy_raised")) or not _car_critical(context))
     if severity == "critical" and not raised_by_driver:
         code = STOP_REST if state == "drowsy" else STOP
         title = say("Dừng xe, tắt máy và không lái tiếp", "Stop, switch off the engine and do not drive on")
@@ -115,6 +117,16 @@ def decide(severity: str, context: dict[str, Any], trace: list[dict[str, Any]] |
     if state == "distracted":
         spoken = say("Nhìn lại phía trước. ", "Look back at the road. ") + spoken
     return _plan(code, state, title, steps, options, spoken.strip(), booking=True)
+
+
+def _car_critical(context: dict[str, Any]) -> bool:
+    """Whether the car alone is critical by the hard safety rules (coolant, oil, battery...)."""
+    try:
+        from agent.safety import evaluate_hard_safety
+
+        return evaluate_hard_safety(context).minimum_severity.value == "critical"
+    except Exception:
+        return True  # unsure: keep the stricter plan (stop and get help)
 
 
 def _plan(code: str, state: str, title: str, steps: list[str], options: list[str], spoken: str, *, booking: bool) -> dict[str, Any]:

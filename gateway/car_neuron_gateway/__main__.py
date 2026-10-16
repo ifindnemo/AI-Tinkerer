@@ -1,7 +1,7 @@
 """Car Neuron gateway.
 
     export CAR_NEURON_DEVICE_ID=dev_...  CAR_NEURON_TOKEN=cnd_...   # from backend/scripts/create_device.py
-    python -m car_neuron_gateway --source obd --port /dev/ttyUSB0 --fixed-location 10.8023,106.7311
+    python -m car_neuron_gateway --source obd --port /dev/ttyUSB0 --fixed-location 16.0878,108.221
     python -m car_neuron_gateway --source fake-elm --scenario overheat
     python -m car_neuron_gateway --source sim --scenario misfire --fast --duration 120 --dry-run
 """
