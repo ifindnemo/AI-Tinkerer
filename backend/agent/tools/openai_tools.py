@@ -4,6 +4,8 @@ from typing import Any, Callable
 
 from agents import RunContextWrapper, function_tool
 
+from agent.realism import for_model
+from booking import build_proposal
 from .environment_context import get_external_environment_context_data
 from .garage_search import search_nearby_garages
 from .maintenance_history import get_maintenance_history
@@ -33,7 +35,7 @@ def _run_and_trace(
     wrapper.context.trace.append(
         {"tool": name, "arguments": arguments, "result": result}
     )
-    return json.dumps(result, ensure_ascii=False)
+    return json.dumps(for_model(result), ensure_ascii=False)  # the trace above keeps the original
 
 
 @function_tool(name_override="get_maintenance_history")
@@ -103,12 +105,38 @@ def search_nearby_garages_tool(
     )
 
 
+@function_tool(name_override="propose_booking")
+def propose_booking_tool(
+    wrapper: RunContextWrapper[VehicleToolContext],
+    garage_name: str,
+    days_from_now: int,
+    hour: int,
+) -> str:
+    """Propose a garage appointment for the driver to confirm. This books nothing: the driver
+    sees the proposal and confirms or ignores it. Call it only after search_nearby_garages found
+    garages. garage_name must be copied exactly from that result. days_from_now is 1-14 (1 =
+    tomorrow); hour is the local start hour, 8-17."""
+    arguments = {"garage_name": garage_name, "days_from_now": days_from_now, "hour": hour}
+
+    def propose() -> dict[str, Any]:
+        proposal = build_proposal(garage_name, days_from_now, hour, wrapper.context.trace)
+        return {
+            "proposed": True,
+            "garage": proposal["garage_id"],
+            "slot": proposal["slot"],
+            "note": "Waiting for the driver to confirm. Nothing is booked yet.",
+        }
+
+    return _run_and_trace(wrapper, "propose_booking", arguments, propose)
+
+
 def _raise_missing_gps() -> dict[str, Any]:
     raise ValueError("GPS coordinates were not provided for this telemetry sample")
 
 
-VEHICLE_READ_TOOLS = [
+VEHICLE_TOOLS = [
     get_external_environment_context_tool,
     get_maintenance_history_tool,
     search_nearby_garages_tool,
+    propose_booking_tool,
 ]

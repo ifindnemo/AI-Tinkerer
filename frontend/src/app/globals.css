@@ -2226,6 +2226,44 @@ td:last-child {
   margin-top: 2px;
 }
 .agent-history-card,
+.agent-booking-card {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.agent-booking-card.booked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.agent-booking-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+.agent-booking-card p {
+  margin: 0;
+}
+.agent-booking-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.agent-booking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-block: 4px;
+}
+.agent-booking-error {
+  color: var(--danger);
+}
 .backend-nearby-garages {
   margin-top: 14px;
   padding: 12px 14px;

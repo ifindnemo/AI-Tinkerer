@@ -397,6 +397,41 @@ class Store:
                 (utc_now(), action_id),
             )
 
+    def pending_action_for(self, incident_id: str, action_type: str) -> dict[str, Any] | None:
+        """The action of this type still waiting for the driver's confirmation, if any."""
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM pending_actions
+                WHERE incident_id = ? AND action_type = ? AND status = 'pending_confirmation'
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (incident_id, action_type),
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["payload"] = json.loads(item.pop("payload_json"))
+        return item
+
+    def get_appointment(self, appointment_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM appointments WHERE id = ?", (appointment_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def appointment_for_incident(self, incident_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM appointments WHERE incident_id = ? ORDER BY created_at DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def create_appointment(self, incident: dict[str, Any], payload: dict[str, Any]):
         appointment_id = f"apt_{uuid4().hex[:12]}"
         result = {
