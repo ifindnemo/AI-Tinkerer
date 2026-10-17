@@ -103,7 +103,10 @@
 
 /* 3 · Under the hood (the film at 0:35, over the code excerpt) */
 .hoodTitle { position: absolute; left: 120px; top: 52px; right: 120px; font-size: 68px; font-weight: 800; letter-spacing: -0.045em; line-height: 1.08; white-space: nowrap; }
-.cap { position: absolute; top: 140px; font-family: var(--mono); font-size: 22px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.cap i { font-style: normal; margin: 0 4px; }
+.tech { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; color: var(--text); }
+.tech svg { width: 28px; height: 28px; flex: none; }
+.cap { position: absolute; top: 140px; white-space: nowrap; font-family: var(--mono); font-size: 22px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .sampler .label, .mediapipe .label { letter-spacing: .05em; }
 .sampler { left: 120px; top: 190px; width: 580px; height: 215px; padding: 22px 28px; }
 .cells { display: grid; grid-template-columns: repeat(15, 1fr); gap: 6px; margin-top: 18px; }
@@ -122,6 +125,7 @@
 .unit { position: relative; display: flex; align-items: center; gap: 16px; height: 80px; padding: 0 28px; border-radius: 22px; }
 .unit b { font-size: 38px; font-weight: 800; letter-spacing: -0.035em; }
 .unit span { font-size: 24px; color: var(--muted); }
+.brandMark { flex: none; display: block; width: 44px; height: 44px; margin-left: 2px; object-fit: contain; color: var(--text); }
 .layer[data-active] .unit { animation: rise 900ms var(--ease) both, lit 10s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 120ms + 120ms), calc(var(--s) * 1.7s + 1.5s); }
 .screens { position: absolute; left: 1440px; top: 190px; width: 360px; display: grid; gap: 16px; }
 .screen { position: relative; height: 222px; padding: 22px 28px; }
