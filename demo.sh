@@ -3,6 +3,8 @@
 #   ./demo.sh            real agent (LLM from backend/.env), production build, localhost only
 #   ./demo.sh --rules    no LLM and no paid services anywhere: rule-only answers (offline fallback)
 #   ./demo.sh --rebuild  rebuild the frontend even if a build exists
+#   ./demo.sh --prewarm  first speak the fixed alert lines once (about 15 paid Blaze TTS calls, cached on disk), so the
+#                        demo never waits for them; skipped with --rules or when Blaze is not configured
 #   ./demo.sh --keep     keep the last run's state (default: voice clips, transcripts, incidents and
 #                        appointments are cleared so every run starts like the first; the old database is
 #                        copied to backend/var/last-run.db)
@@ -13,13 +15,14 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BACKEND_PORT=${BACKEND_PORT:-8000}
 FRONTEND_PORT=${FRONTEND_PORT:-3000}
-RULES=0 REBUILD=0 KEEP=0
+RULES=0 REBUILD=0 KEEP=0 PREWARM=0
 for arg in "$@"; do
   case $arg in
     --rules) RULES=1 ;;
     --rebuild) REBUILD=1 ;;
+    --prewarm) PREWARM=1 ;;
     --keep) KEEP=1 ;;
-    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -43,12 +46,28 @@ if (( RULES )); then
   export AGENT_MODE=rules EXTERNAL_TOOLS=off
   warn "Rules mode: no LLM, no LocationIQ. Answers are labelled 'Đánh giá theo luật'."
 else
-  if env_set INWORLD_API_KEY; then say "LLM: Inworld ($(grep -E '^LLMMODEL' "$ROOT/backend/.env" | cut -d= -f2- | tr -d ' ' || true))"
+  if env_set OPENROUTER_API_KEY; then
+    or_model=$(grep -E '^OPENROUTER_MODEL' "$ROOT/backend/.env" | cut -d= -f2- | tr -d ' "' || true)
+    say "LLM: OpenRouter (${or_model:-deepseek/deepseek-v4.1-flash})"
+  elif env_set INWORLD_API_KEY; then say "LLM: Inworld ($(grep -E '^LLMMODEL' "$ROOT/backend/.env" | cut -d= -f2- | tr -d ' ' || true))"
   elif env_set OPENAI_API_KEY; then say "LLM: OpenAI"
-  else warn "No INWORLD_API_KEY or OPENAI_API_KEY in backend/.env: every answer will fall back to rules after the timeout. Use --rules."; fi
+  else warn "No OPENROUTER_API_KEY, INWORLD_API_KEY or OPENAI_API_KEY in backend/.env: every answer will fall back to rules after the timeout. Use --rules."; fi
   env_set BLAZE_API_TOKEN && env_set BLAZE_SPEAKER_ID && say "Voice: Blaze configured" || warn "Voice: Blaze is not configured, so alerts are silent (the horn and the text still work)."
   env_set LOCATIONIQ_ACCESS_TOKEN || warn "LocationIQ token is empty: the nearby-garage step is skipped."
+  case "${AGENT_PREFETCH_TOOLS:-0}" in 1|true|yes|on) say "Agent: weather, history and garages are looked up before the model runs (AGENT_PREFETCH_TOOLS)" ;; esac
   say "Tip: ./backend/.venv/bin/python backend/scripts/llm_preflight.py measures one real LLM call (a few tokens)."
+fi
+
+if (( PREWARM )); then
+  if (( RULES )); then warn "--prewarm ignored: rules mode makes no paid calls."
+  elif ! { env_set BLAZE_API_TOKEN && env_set BLAZE_SPEAKER_ID; }; then warn "--prewarm skipped: Blaze is not configured."
+  else
+    # Typing --prewarm is the opt-in for the paid calls. A failure only costs the saved first-play time.
+    say "Pre-warming the fixed alert lines (paid Blaze TTS, about 15 calls, cached in backend/var/voice-cache)"
+    (cd "$ROOT/backend" && CAR_NEURON_ALLOW_PAID_TTS=1 "$VENV/bin/python" scripts/prewarm_voice.py | tail -n 3) \
+      && say "Pre-warm done. Preview any time: backend/.venv/bin/python backend/scripts/prewarm_voice.py --dry-run" \
+      || warn "Pre-warm did not finish: the demo still works, the first play of a line is just slower."
+  fi
 fi
 
 if (( ! KEEP )); then

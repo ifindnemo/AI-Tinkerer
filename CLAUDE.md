@@ -24,6 +24,7 @@ Vehicle health and driver-attention agent: a blackbox/OBD stream and a webcam fe
 ./dev.sh                     # backend :8000 + frontend :3000 (dev)
 ./dev.sh --mock              # frontend only, browser-simulated agent
 ./demo.sh                     # demo: production build, localhost only, no reload; --rules = no LLM and no paid services
+./demo.sh --prewarm           # the same, after speaking the fixed alert lines once (about 15 paid TTS calls)
 cd frontend && npx next build && npx next start   # the same by hand: a demo is always a production build
 cd backend && AGENT_MODE=rules .venv/bin/python -m uvicorn main:app --port 8000   # no LLM calls (batch, OBD and driver wording)
 backend/.venv/bin/python backend/scripts/llm_preflight.py   # one tiny LLM call: provider, model, latency
@@ -43,11 +44,11 @@ BASE_URL=http://127.0.0.1:3000 node scripts/verify-driver-ui.mjs        # rules-
 BASE_URL=http://127.0.0.1:3000 MODE=backend node scripts/verify-garage-camera.mjs   # add EXPECT_VOICE=1 with Blaze set up
 ```
 
-Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI changes. After agent, voice or camera changes (real backend, a few minutes each): `verify-plan` (same car, different plan with a drowsy driver) and `verify-voice-once` (each car alert spoken once per episode; restart the backend first for a fresh episode). `verify-session-recovery` is stale: it looks for an "Inject Overheating" button that no longer exists.
+Also `verify-navigation`, `verify-camera-switch` and `verify-motion` for UI changes. After agent, voice or camera changes (real backend, a few minutes each): `verify-plan` (same car, different plan with a drowsy driver) and `verify-voice-once` (each car alert not repeated within `ALERT_REPEAT_SECONDS`, 45 s by default; restart the backend first for a fresh episode). `verify-session-recovery` is stale: it looks for an "Inject Overheating" button that no longer exists.
 
 ## Rules
 
-- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `BLAZE_SPEAKER_ID_EN`, `BLAZE_TTS_LANGUAGE_EN`, `BLAZE_TTS_MODEL_EN`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `EXTERNAL_TOOLS`, `COOLANT_WARN_C`, `BATCH_AGENT_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LOG_LEVEL`.
+- **Secrets:** service keys live only in `backend/.env` (Python). Never print its values, never put a key in a `NEXT_PUBLIC_` variable, a URL or a commit. Variables by name: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `LLM_REASONING_EFFORT`, `INWORLD_API_KEY`, `LLMMODEL`, `OPENAI_API_KEY`, `BLAZE_API_TOKEN`, `BLAZE_BASE_URL`, `BLAZE_SPEAKER_ID`, `BLAZE_SPEAKER_ID_EN`, `BLAZE_TTS_LANGUAGE_EN`, `BLAZE_TTS_MODEL_EN`, `BLAZE_AUDIO_SPEED`, `BLAZE_AUDIO_SPEED_EN`, `ALERT_VOICE_DETAIL`, `ALERT_REPEAT_SECONDS`, `LOCATIONIQ_ACCESS_TOKEN`, `GOOGLE_CALENDAR_*`, `AGENT_MODE`, `AGENT_PREFETCH_TOOLS`, `EXTERNAL_TOOLS`, `TOOL_CACHE_SECONDS`, `COOLANT_WARN_C`, `BATCH_AGENT_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LOG_LEVEL`.
 - **Tests never call paid services:** `backend/tests/conftest.py` blanks the Blaze variables and turns external tools off; keep it that way.
 - **Privacy:** camera frames stay in the browser. Only structured attention events reach the backend (the schema forbids extra fields). Never send frames, landmarks or blobs.
 - **Safety:** deterministic rules set severity and the mandatory steps; the LLM only words them and can never lower them or tell a driver who must stop to continue. Alerts and the horn never wait for the LLM or the network.
