@@ -1,9 +1,13 @@
 "use client";
 import {useEffect, useState} from "react";
 import {useAgentLang, useDriverVoice, useVoiceRate, useVoiceVolume} from "@/hooks/use-preferences";
+import {admitClip, audioFocus, clipKind, decidePlayback} from "@/lib/agent/audio-focus";
+import {HURRY_FOR_MS, clipPollDelay, hurryTrigger} from "@/lib/agent/clip-poll";
+import {presence} from "@/lib/agent/presence";
+import {demoHold} from "@/lib/demo-hold";
 import type {Lang} from "@/lib/preferences";
 
-export type VoiceClip = {id: string; seq: number; severity: "warning" | "critical" | "normal"; text: string; created_at: string; group?: string | null};
+export type VoiceClip = {id: string; seq: number; severity: "warning" | "critical" | "normal"; text: string; created_at: string; group?: string | null; part_index?: number; part_count?: number};
 export type VoiceState = {
   /** The backend has a Blaze voice for `enabledLang` (null until the first answer for the current language). */
   enabled: boolean | null;
@@ -12,9 +16,9 @@ export type VoiceState = {
   last: VoiceClip | null;
   /** The browser refused to play before any click on the page. */
   blocked: boolean;
+  failedGroup?: string | null;
 };
 
-const POLL_MS = 1000; // a new alert clip is usually ready ~2 s after the batch: look every second
 /** An alert that waited this long behind others is no longer news: it is skipped, not read late. Replay still plays it. */
 const STALE_MS = 45_000;
 
@@ -22,7 +26,10 @@ type Update = (change: (current: VoiceState) => VoiceState) => void;
 
 /** One clip at a time, in order. Plain object (not hooks): `playNext` calls itself when a clip ends. */
 function createPlayer(update: Update) {
-  const m = {queue: [] as VoiceClip[], playing: null as AudioBufferSourceNode | null, loading: null as AbortController | null, context: null as AudioContext | null, gain: null as GainNode | null, last: null as VoiceClip | null, lastGroup: [] as VoiceClip[], stopped: false, on: true, blocked: false, visible: true, volume: 1, rate: 1, replaying: new Set<string>(), driverVoice: false};
+  const m = {queue: [] as VoiceClip[], playing: null as AudioBufferSourceNode | null, loading: null as AbortController | null, current: null as VoiceClip | null, token: 0, context: null as AudioContext | null, gain: null as GainNode | null, last: null as VoiceClip | null, lastGroup: [] as VoiceClip[], stopped: false, on: true, blocked: false, visible: true, volume: 1, rate: 1, replaying: new Set<string>(), driverVoice: false};
+  let partWait: ReturnType<typeof setTimeout> | null = null;
+  const clearPartWait = () => {if (partWait !== null) clearTimeout(partWait); partWait = null;};
+  const admit = (clip: VoiceClip, replay = false) => admitClip(audioFocus.get(), clip, Date.now(), !m.on, replay || m.replaying.has(clip.id));
   const isOn = () => m.on;
   const groupOf = (clip: VoiceClip) => clip.group || `${clip.severity}:${clip.created_at}`;
   function audioContext() {
@@ -69,17 +76,23 @@ function createPlayer(update: Update) {
       return;
     }
     const clip = m.queue.shift()!;
-    if (!m.replaying.has(clip.id) && Date.now() - Date.parse(clip.created_at) > STALE_MS) {playNext(); return;}
+    const replay = m.replaying.has(clip.id);
+    if (!replay && Date.now() - Date.parse(clip.created_at) > STALE_MS) {playNext(); return;}
+    if (admit(clip, replay) === "drop") {playNext(); return;}
     const request = new AbortController();
+    const token = ++m.token;
     m.loading = request;
+    m.current = clip;
     void (async () => {
       try {
         const response = await fetch(`/api/voice/clips/${encodeURIComponent(clip.id)}/audio`, {signal: request.signal});
         if (!response.ok) throw new Error(`Voice audio HTTP ${response.status}`);
         const buffer = await context.decodeAudioData(await response.arrayBuffer());
-        if (m.loading !== request || m.stopped || !isOn()) return;
+        if (m.loading !== request || token !== m.token || m.stopped || !isOn()) return;
+        if (admit(clip, replay) === "drop") {m.loading = null; m.current = null; playNext(); return;}
         m.loading = null;
-        if (!m.visible) {m.queue.unshift(clip); return;}
+        if (!m.visible) {m.queue.unshift(clip); m.current = null; return;}
+        clearPartWait();
         const source = context.createBufferSource();
         source.buffer = buffer;
         source.playbackRate.value = m.rate;
@@ -87,8 +100,12 @@ function createPlayer(update: Update) {
         source.onended = () => {
           if (m.playing !== source) return;
           m.playing = null;
+          m.current = null;
           source.disconnect();
-          update(current => ({...current, speaking: null}));
+          const more = (clip.part_index ?? 0) + 1 < (clip.part_count ?? 1);
+          if (more && clipKind(clip) === "talk") {
+            partWait = setTimeout(() => {partWait = null; update(current => ({...current, speaking: null, failedGroup: clip.group}));}, 12_000);
+          } else update(current => ({...current, speaking: null}));
           playNext();
         };
         source.start();
@@ -96,27 +113,44 @@ function createPlayer(update: Update) {
         m.last = clip;
         update(current => ({...current, speaking: clip, last: clip, blocked: false}));
       } catch {
-        if (m.loading !== request) return;
+        if (m.loading !== request || token !== m.token) return;
         m.loading = null;
+        m.current = null;
+        clearPartWait();
+        update(current => ({...current, speaking: null, failedGroup: clip.group}));
         // A failed download or decode must not hold up the next alert.
         playNext();
       }
     })();
   }
   function cancel() {
+    clearPartWait();
+    m.token += 1;
     m.loading?.abort();
     m.loading = null;
+    m.current = null;
     const playing = m.playing;
     m.playing = null;
-    if (playing) {playing.stop(); playing.disconnect();}
+    if (playing) {
+      try { playing.stop(); playing.disconnect(); } catch { /* already stopped */ }
+    }
     update(current => ({...current, speaking: null}));
+  }
+  function drop(scope: "alerts" | "all") {
+    if (scope === "all") {
+      m.queue = [];
+      cancel();
+      return;
+    }
+    m.queue = m.queue.filter(clip => clipKind(clip) === "talk");
+    if (m.current && clipKind(m.current) !== "talk") cancel();
   }
   return {
     start() {
       m.stopped = false;
       m.last = null;
       m.lastGroup = [];
-      update(current => ({...current, last: null, speaking: null, blocked: false}));
+      update(current => ({...current, last: null, speaking: null, blocked: false, failedGroup: null}));
     },
     setVisible(visible: boolean) {
       m.visible = visible;
@@ -132,15 +166,21 @@ function createPlayer(update: Update) {
     enqueue(clips: VoiceClip[]) {
       // Driver-camera alerts (their group starts with "driver:") are left out while that voice is off: not queued, not replayed.
       clips = m.driverVoice ? clips : clips.filter(clip => !clip.group?.startsWith("driver:"));
-      // A critical alert does not wait behind older, milder lines: those are dropped and the one playing is cut.
-      if (clips.some(clip => clip.severity === "critical")) {
-        m.queue = m.queue.filter(clip => clip.severity === "critical");
-        if (m.last && m.last.severity !== "critical" && (m.playing || m.loading)) cancel();
-      }
       remember(clips);
-      m.queue.push(...clips);
+      const admitted: VoiceClip[] = [];
+      for (const clip of clips) {
+        const decision = admit(clip);
+        if (decision === "drop") continue;
+        if (decision === "cut" || clip.severity === "critical") {
+          m.queue = m.queue.filter(item => item.severity === "critical" || clipKind(item) === "talk");
+          if (m.current && clipKind(m.current) !== "talk" && m.current.severity !== "critical") cancel();
+        }
+        admitted.push(clip);
+      }
+      m.queue.push(...admitted);
       playNext();
     },
+    drop,
     remember: (clips: VoiceClip[]) => remember(m.driverVoice ? clips : clips.filter(clip => !clip.group?.startsWith("driver:"))),
     setDriverVoice(on: boolean) {
       m.driverVoice = on;
@@ -171,7 +211,7 @@ function createPlayer(update: Update) {
       unlock();
     },
     replay() {
-      if (!m.last || !isOn()) return;
+      if (!m.last || !isOn() || decidePlayback(audioFocus.get(), "replay", Date.now(), !m.on) === "drop") return;
       cancel();
       m.queue.length = 0;
       const again = m.lastGroup.length ? m.lastGroup : [m.last];
@@ -222,7 +262,7 @@ export function useVoiceAlerts(session: string, on: boolean): VoiceState & {repl
         const response = await fetch(`/api/voice/clips?session=${encodeURIComponent(session)}&lang=${lang}&after=${after ?? 0}`, {cache: "no-store"});
         if (!response.ok) return;
         const data = (await response.json()) as {enabled: boolean; latest: number; clips: VoiceClip[]};
-        if (player.isStopped()) return;
+        if (closed || player.isStopped()) return;
         setState(current => (current.enabled === data.enabled && current.enabledLang === lang ? current : {...current, enabled: data.enabled, enabledLang: lang}));
         if (after === null) {
           after = data.latest;
@@ -244,11 +284,41 @@ export function useVoiceAlerts(session: string, on: boolean): VoiceState & {repl
       if (document.visibilityState === "visible") void poll();
     };
     document.addEventListener("visibilitychange", visibilityChanged);
+    const unbind = audioFocus.bindVoice(scope => player.drop(scope));
+    let scene = demoHold.scene();
+    const unscene = demoHold.subscribe(() => {
+      const next = demoHold.scene();
+      if (next === scene) return;
+      scene = next;
+      player.drop("all");
+    });
+    let closed = false;
+    // Right after an alert is raised its clip is a couple of seconds away: ask faster for a while.
+    let hurryUntil = 0;
+    let known = presence.get();
+    const unwatch = presence.subscribe(() => {
+      const next = presence.get();
+      if (hurryTrigger(known, next)) hurryUntil = Date.now() + HURRY_FOR_MS;
+      known = next;
+    });
     void poll();
-    const timer = setInterval(() => void poll(), POLL_MS);
+    let timer = 0;
+    const loop = () => {
+      if (closed) return;
+      const hidden = document.visibilityState === "hidden";
+      const phase = audioFocus.get().phase;
+      const live = phase !== "idle" && phase !== "error";
+      const wait = clipPollDelay({hidden, live, hurryUntil, now: Date.now()});
+      timer = window.setTimeout(() => { void poll().finally(loop); }, wait);
+    };
+    loop();
     return () => {
-      clearInterval(timer);
+      closed = true;
+      window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", visibilityChanged);
+      unbind();
+      unscene();
+      unwatch();
       player.stop();
     };
     // Another language is another voice: the poll starts over (and the clip that was playing is cut off).

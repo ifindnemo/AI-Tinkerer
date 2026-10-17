@@ -23,6 +23,17 @@ export async function POST(request: Request) {
   forward.set("sessionId", session);
   forward.set("lang", lang);
   if (form.get("transcribed") === "true") forward.set("transcribed", "true");
+  const conversationId = String(form.get("conversationId") ?? "");
+  const turnId = String(form.get("turnId") ?? "");
+  const generation = String(form.get("generation") ?? "");
+  if (conversationId || turnId || generation) {
+    if (!/^[\w-]{1,64}$/.test(conversationId) || !/^[\w-]{1,64}$/.test(turnId) || !/^\d{1,7}$/.test(generation)) {
+      return Response.json({error: "Tham số không hợp lệ."}, {status: 400});
+    }
+    forward.set("conversationId", conversationId);
+    forward.set("turnId", turnId);
+    forward.set("generation", generation);
+  }
   try {
     const response = await fetch(`${backendBase()}/api/voice/talk`, {method: "POST", body: forward, signal: AbortSignal.timeout(60_000)});
     if (!response.ok) return Response.json({error: safeApiError(response.status)}, {status: response.status});

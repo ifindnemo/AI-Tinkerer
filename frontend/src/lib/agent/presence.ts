@@ -8,7 +8,8 @@ export type AgentPhase = "offline" | "nodata" | "analyzing" | "ready";
 export type AgentPresence = {phase: AgentPhase; severity: DriverSeverity};
 // `vehicleAlert`: the car itself is still warning (hot engine), whatever the driver does.
 export type CameraPresence = {active: boolean; sound: boolean; severity: DriverSeverity; responded: boolean; vehicleAlert?: boolean};
-export type AgentMessage = {id: string; text: string; severity: DriverSeverity};
+/** `car`: a clip of the car agent (not the driver camera), which keeps the car's popup open while it plays. */
+export type AgentMessage = {id: string; text: string; severity: DriverSeverity; car?: boolean};
 // `lang`: the language `enabled` is about (each language has its own voice on the backend).
 export type VoicePresence = {enabled: boolean | null; blocked: boolean; speaking: AgentMessage | null; lang?: "vi" | "en"};
 export type Presence = {
@@ -59,6 +60,9 @@ export const HAPPY_MS = 3500;
 export const SHOW_MS: Record<DriverSeverity, number> = {normal: 7000, warning: 10_000, critical: 16_000};
 export const AFTER_SPEECH_MS = 5000;
 export const REPORT_MS = 25_000;
+/** A critical popup stays longer: stopping matters more than the screen space. */
+export const REPORT_CRITICAL_MS = 45_000;
+const reportMs = (severity: DriverSeverity) => (severity === "critical" ? REPORT_CRITICAL_MS : REPORT_MS);
 
 /** The next state after a patch at time `now`: the bubble follows the newest words, the robot smiles
  * when something good happened. Pure, so the timing rules are tested without a browser. */
@@ -77,10 +81,17 @@ export function advance(before: Presence, patch: Partial<Presence>, now: number)
     const was = before.report, now_ = after.report;
     // A new report opens the popup when something new happened: first alert, a higher level, a new proposal or a saved
     // appointment. The same alert analysed again every 15 s only refreshes its content.
+    // The agent's report replacing the rules' first line keeps the popup open for a full period (not reopened if closed).
     if (now_ && (!was || RANK[now_.severity] > RANK[was.severity] || (now_.pending && now_.pending.id !== was.pending?.id) || (now_.appointment && now_.appointment.id !== was.appointment?.id))) {
-      after.reportUntil = now + REPORT_MS;
+      after.reportUntil = now + reportMs(now_.severity);
       after.reportClosed = null;
+    } else if (now_ && was?.provisional && !now_.provisional && after.reportClosed !== reportKey(was)) {
+      after.reportUntil = now + reportMs(now_.severity);
     }
+  }
+  // While the car agent is speaking, its popup stays open: what is heard is also on screen.
+  if (newSpeech?.car && after.report && after.reportClosed !== reportKey(after.report)) {
+    after.reportUntil = Math.max(after.reportUntil, now + reportMs(after.report.severity));
   }
   return after;
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import {useEffect, useMemo, useState} from "react";
-import {Activity, ArrowRight, FlaskConical, LayoutDashboard, Radio, Server, ShieldCheck, TriangleAlert} from "lucide-react";
+import {useEffect, useMemo, useRef, useState} from "react";
+import {Activity, ArrowRight, Check, FlaskConical, LayoutDashboard, Radio, Server, Settings2, ShieldCheck, TriangleAlert, X} from "lucide-react";
 import {useDeviceStream} from "@/hooks/use-device-stream";
 import {useLang} from "@/hooks/use-preferences";
 import {usePresenter} from "@/hooks/use-presenter";
@@ -15,6 +15,7 @@ import type {DeviceAnalysis, DeviceState, SignalName} from "@/lib/device/types";
 import type {Analysis} from "@/lib/telemetry";
 import {vehicles} from "@/lib/vehicles";
 import BackendAgentPanel from "../backend-agent-panel";
+import AgentSettings from "../agent/agent-settings";
 import GarageCamera from "../driver/garage-camera";
 import type {VehicleSnapshot} from "@/lib/guardian/types";
 import SiteHeader from "../site/site-header";
@@ -71,6 +72,12 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
   const state: DeviceState = useDeviceStream(vehicle.id);
   const now = useNow(2000);
   const [tab, setTab] = useState<Tab>("overview");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const modalRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (settingsOpen) modalRef.current?.showModal();
+    else modalRef.current?.close();
+  }, [settingsOpen]);
   const connected = isConnected(state, now);
   const telemetry = useMemo(() => toTelemetry(state, vehicle.id, connected), [state, vehicle.id, connected]);
   const simulated = state.trip?.simulated ?? state.analysis?.simulated ?? false;
@@ -129,6 +136,7 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
                 <button aria-pressed={mode === "mock"} onClick={() => setMode("mock")} title={t("Chạy hoàn toàn trong trình duyệt, không cần mạng", "Runs entirely in the browser, no network needed")}><FlaskConical size={12} />{t("Mô phỏng", "Mock")}</button>
               </div>
             )}
+            <button className="icon-button" data-testid="demo-settings-button" onClick={() => setSettingsOpen(true)} aria-label={t("Cài đặt demo", "Demo settings")} title={t("Cài đặt demo", "Demo settings")}><Settings2 size={17} /></button>
           </div>
         </div>
       </div>
@@ -236,6 +244,27 @@ export default function LiveGarage({mode, setMode}: {mode: AgentMode; setMode: (
         </footer>
       </main>
       <AgentDock session={vehicle.id} anchor="car-agent" />
+      <dialog
+        ref={modalRef}
+        className="modal"
+        onCancel={() => setSettingsOpen(false)}
+        onClick={(e) => {
+          if (e.target === modalRef.current) setSettingsOpen(false);
+        }}
+      >
+        <div className="modal-content">
+          <button className="modal-close icon-button" aria-label={t("Đóng", "Close")} onClick={() => setSettingsOpen(false)}>
+            <X size={19} />
+          </button>
+          <span className="section-kicker">YOUR WORKSPACE</span>
+          <h2>{t("Cài đặt Agent & Giọng nói", "Agent & Voice Settings")}</h2>
+          <p>{t("Tùy chỉnh ngôn ngữ phản hồi và giọng đọc của Car Neuron Agent.", "Customise Car Neuron Agent response language and voice.")}</p>
+          <div className="modal-agent-settings">
+            <AgentSettings />
+          </div>
+          <button className="primary-button" onClick={() => setSettingsOpen(false)}>{t("Hoàn tất", "Done")} <Check size={16} /></button>
+        </div>
+      </dialog>
     </div>
   );
 }

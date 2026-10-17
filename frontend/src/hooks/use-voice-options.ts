@@ -1,5 +1,6 @@
 "use client";
 import {useCallback, useEffect, useRef, useState} from "react";
+import {audioFocus} from "@/lib/agent/audio-focus";
 
 export type VoiceOption = {id: string; name: string; gender: string | null; type: string | null; category: string | null};
 export type VoiceOptions = {
@@ -21,6 +22,12 @@ export function useVoiceOptions(lang: "vi" | "en") {
   const [state, setState] = useState<{lang: string; options: VoiceOptions | null; failed: boolean}>({lang, options: null, failed: false});
   const audio = useRef<HTMLAudioElement | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
+
+  useEffect(() => audioFocus.bindPreview(() => {
+    audio.current?.pause();
+    audio.current = null;
+    setPreviewing(null);
+  }), []);
 
   useEffect(() => {
     let cancelled = false;

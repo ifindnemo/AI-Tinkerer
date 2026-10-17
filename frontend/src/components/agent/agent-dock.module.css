@@ -25,9 +25,45 @@
 @media (min-width: 1101px) and (max-width: 1400px) {
   .dockTight .robotWrap { transform: scale(0.5); }
 }
+/* At half size the robot's controls would be 14 px high with 5 px text, and Quiet would sit on the horn buttons.
+   Draw them at their normal 28 px (56 px here, before the half-size transform) as a column above the robot, in the page gutter. */
+@media (min-width: 1101px) and (max-width: 1400px) {
+  .dockTight .quiet, .dockTight .mic, .dockTight .pause { left: auto; right: 15px; margin: 0; height: 56px; min-width: 56px; padding: 0 14px; font-size: 22px; justify-content: center; }
+  .dockTight .mic { width: 56px; padding: 0; }
+  .dockTight .mic { bottom: calc(100% + 12px); }
+  .dockTight .quiet { bottom: calc(100% + 80px); }
+  .dockTight .pause { bottom: calc(100% + 148px); }
+  .dockTight .quiet svg, .dockTight .mic svg, .dockTight .pause svg { width: 28px; height: 28px; }
+  .dockTight .quietLabel { display: none; }
+  /* The column needs its own room, or it would sit on the microphone row and the bubble above the robot. */
+  .dockTight .robotWrap { margin-top: 72px; }
+}
 
 
 /* Talk control sits on the robot's lower-left, inside its box, so it stays off the horn and confirm buttons. */
+.quiet, .pause {
+  position: absolute;
+  z-index: 2;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(16 23 19 / 12%);
+}
+.quiet { right: 100%; margin-right: 4px; }
+/* Quiet now carries a 69 px label, so Pause sits beyond it (it used to sit 36 px out and covered the label). */
+.pause { right: calc(100% + 80px); }
+.quiet:focus-visible, .pause:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mic {
   position: absolute;
   z-index: 2;
@@ -48,6 +84,25 @@
 .mic[data-phase="armed"] { border-color: var(--accent); color: var(--accent-strong); }
 .mic[data-phase="recording"] { border-color: var(--danger-line); color: var(--danger); background: var(--danger-soft); }
 .mic[data-phase="sending"] { opacity: 0.6; cursor: progress; }
+.controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 280px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer;
+  box-shadow: 0 1px 2px rgb(16 23 19 / 12%);
+}
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pausedNote, .micLive { max-width: 260px; margin: 0; padding: 6px 8px; border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.log { max-height: 140px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
+.log li { margin: 0 0 6px; font-size: 12.5px; line-height: 1.4; }
+.log li span { display: block; color: var(--faint); font-size: 11px; }
+.log li[data-role="neuron"] p { color: var(--accent-strong); }
+.log li[data-interrupted="true"] p { opacity: 0.7; }
+.log li[data-archived="true"] p { color: var(--muted); }
+.log li[role="separator"] { margin: 12px 0 8px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.typed { display: flex; gap: 6px; margin-top: 8px; }
+.typed input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; }
+.typed button { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); padding: 6px 8px; cursor: pointer; }
 .mic:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mic:disabled { cursor: progress; }
 
@@ -304,6 +359,12 @@
   line-height: 1.4;
 }
 .reportStop svg { flex: none; margin-top: 2px; }
+.reportPending { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 12px; }
+.reportPending span { width: 12px; height: 12px; border: 2px solid var(--border-strong); border-top-color: var(--accent-strong); border-radius: 50%; animation: report-spin 0.9s linear infinite; }
+@keyframes report-spin { to { transform: rotate(360deg); } }
+/* A critical popup draws the eye once more after it opens, then stays still. */
+.report[data-severity="critical"] { animation: bubble-in 260ms var(--ease) both, report-alarm 1.2s ease-out 300ms 2; }
+@keyframes report-alarm { 0% { box-shadow: 0 0 0 0 rgb(220 38 38 / 45%); } 100% { box-shadow: 0 0 0 14px rgb(220 38 38 / 0%); } }
 .reportPlan { display: flex; flex-direction: column; gap: 6px; }
 .reportPlanTitle { margin: 0; color: var(--text); font-size: 13px; font-weight: 650; }
 .reportPlanWhy { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
@@ -350,4 +411,4 @@
 /* Inside the quick panel the report is a card of the panel, not a popup of its own: it takes the panel's width. */
 .panel .report, .dockTight .panel .report { width: auto; max-height: none; margin: 8px 0; overflow: visible; box-shadow: none; animation: none; border-radius: 14px; }
 @media (max-width: 640px) { .report { width: calc(100vw - 24px); max-height: calc(100dvh - 200px); } }
-@media (prefers-reduced-motion: reduce) { .report { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .report, .report[data-severity="critical"], .reportPending span { animation: none; } }

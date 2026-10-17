@@ -27,6 +27,7 @@ export default function AgentReportCard({report, t, lang, onClose, onDetails, sp
         {onClose && <button type="button" className={styles.bubbleClose} onClick={onClose} aria-label={t("Đóng", "Close")} data-testid="agent-report-close"><X size={14} /></button>}
       </div>
       <p className={styles.reportLead}>{report.lead}</p>
+      {report.provisional && <p className={styles.reportPending} data-testid="agent-report-provisional"><span aria-hidden="true" />{t("Agent đang phân tích chi tiết và tìm phương án…", "The agent is looking closer and working out what to do…")}</p>}
       {report.plan ? (
         <div className={styles.reportPlan} data-code={report.plan.code} data-testid="agent-report-plan">
           <p className={report.stopFirst ? styles.reportStop : styles.reportPlanTitle}>{report.stopFirst && <TriangleAlert size={13} aria-hidden="true" />}{report.plan.title}</p>

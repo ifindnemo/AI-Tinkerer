@@ -22,7 +22,26 @@ export type AgentReport = {
   stopFirst: boolean;
   /** What to do now, from the car and the driver together; null from an older backend. */
   plan: AgentPlan | null;
+  /** Shown from the rules' first spoken line, before the agent has answered (no tools, no plan yet). */
+  provisional?: boolean;
 };
+
+/** The popup as soon as the rules have spoken (a few seconds after the batch): the level and that line.
+ * The agent's full report replaces it 10-20 s later. */
+export function provisionalReport(clip: {id: string; text: string; severity: Severity}): AgentReport {
+  const lead = clip.text.replace(/^(cảnh báo nguy hiểm|cảnh báo|critical warning|warning)[.:]\s*/i, "");
+  return {id: `fast:${clip.id}`, severity: clip.severity, lead: firstSentences(lead), steps: [], garage: null, garageCount: 0,
+    pending: null, appointment: null, stopFirst: clip.severity === "critical", plan: null, provisional: true};
+}
+
+/** The driver's own answers to the proposal: "Not now" hides it, a confirmation shows the saved appointment. */
+export function withBookingChoices(report: AgentReport, choices: {saved: Record<string, Appointment>; skipped: string[]}): AgentReport {
+  const pending = report.pending;
+  if (!pending) return report;
+  if (choices.saved[pending.id]) return {...report, pending: null, appointment: report.appointment ?? choices.saved[pending.id]};
+  if (choices.skipped.includes(pending.id)) return {...report, pending: null};
+  return report;
+}
 
 /** The lead of a long diagnosis; the full text stays in the agent panel. */
 export function firstSentences(text: string, limit = 240) {

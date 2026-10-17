@@ -8,7 +8,7 @@ import { usePresenter } from "@/hooks/use-presenter";
 import { useDemoReset } from "@/hooks/use-demo-reset";
 import LiveGarage from "./live/live-garage";
 import {thermalLevel} from "@/lib/thermal-status";
-import BlackboxTransferStatus from "./blackbox-transfer";
+import BlackboxTransferStatus, { BlackboxBatchStation } from "./blackbox-transfer";
 import BackendAgentPanel from "./backend-agent-panel";
 import AgentSettings from "./agent/agent-settings";
 import GarageCamera from "./driver/garage-camera";
@@ -19,7 +19,8 @@ import VehicleLibrary from "./vehicle-library";
 import SiteHeader from "./site/site-header";
 import { VehicleMetrics, TelemetryReadings, OperatingMetrics } from "./vehicle-telemetry";
 import { vehicles, powertrainLabels, type Vehicle } from "@/lib/vehicles";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { demoHold } from "@/lib/demo-hold";
 import {
   Activity,
   ArrowDownToLine,
@@ -91,6 +92,7 @@ export default function Garage() {
 
 function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mode: AgentMode) => void}) {
   const presenter = usePresenter();
+  const demoPaused = useSyncExternalStore(demoHold.subscribe, demoHold.isPaused, () => false);
   const [vehicle, setVehicle] = useState<Vehicle>(vehicles[0]);
   const [tab, setTab] = useState<Tab>("overview");
   const {t, lang, time: timeLabel, setLang} = useLang();
@@ -149,8 +151,17 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
     setError("");
   };
   const runAnalysis = () => {
-    const {buffered, target} = snapshot.blackbox;
-    if (backend) {setTab("overview");setNotice(t(`Tự gửi theo gói · Đang gom ${buffered}/${target} mẫu.`, `Sent automatically per batch · Collecting ${buffered}/${target} samples.`));return;}
+    const {buffered} = snapshot.blackbox;
+    if (backend) {
+      setTab("overview");
+      adapter.flushNow(true);
+      setNotice(
+        buffered >= 5
+          ? t(`Đang đóng gói và gửi ngay ${buffered} mẫu cho Agent…`, `Packaging and sending ${buffered} samples to the Agent now…`)
+          : t(`Đã bật gửi sớm ở mẫu thứ 5 · hiện có ${buffered}/5 mẫu.`, `Early flush set to 5 samples · currently ${buffered}/5 samples.`),
+      );
+      return;
+    }
     try {adapter.check();setError("");setNotice(t("Đã kiểm tra gói dữ liệu mới nhất của xe.", "Checked the latest data batch."));}
     catch(error){setError(error instanceof Error?error.message:t("Chưa thể phân tích.", "Cannot analyse yet."));}
   };
@@ -215,7 +226,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
               <button aria-pressed={mode === "backend"} onClick={() => setMode("backend")} title={t("Gửi telemetry tới backend và agent AI thật", "Send telemetry to the backend and the real AI agent")}><Server size={12} />API</button>
               <button aria-pressed={mode === "mock"} onClick={() => setMode("mock")} title={t("Chạy hoàn toàn trong trình duyệt, không cần mạng", "Runs entirely in the browser, no network needed")}><FlaskConical size={12} />{t("Mô phỏng", "Mock")}</button>
             </div>}
-            <button className="icon-button" onClick={() => setModal("settings")} aria-label={t("Cài đặt demo", "Demo settings")} title={t("Cài đặt demo", "Demo settings")}><Settings2 size={17} /></button>
+            <button className="icon-button" data-testid="demo-settings-button" onClick={() => setModal("settings")} aria-label={t("Cài đặt demo", "Demo settings")} title={t("Cài đặt demo", "Demo settings")}><Settings2 size={17} /></button>
             <button className="icon-button" onClick={() => setModal("help")} aria-label={t("Hướng dẫn", "Guide")} title={t("Hướng dẫn", "Guide")}><CircleHelp size={17} /></button>
           </div>
         </div>
@@ -233,7 +244,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
             </div>
           </div>
           <div className="live-vehicle-strip" aria-label={t("Trạng thái luồng dữ liệu", "Data stream status")}>
-            <span className={`live-chip ${telemetry.connected ? "" : "off"}`}><span className={`status-dot ${telemetry.connected ? "" : "off"}`} />{telemetry.connected ? t("LIVE · mô phỏng", "LIVE · simulated") : t("Mất kết nối", "Disconnected")}</span>
+            <span className={`live-chip ${telemetry.connected && !demoPaused ? "" : "off"}`}><span className={`status-dot ${telemetry.connected && !demoPaused ? "" : "off"}`} />{demoPaused ? t("TẠM DỪNG · mô phỏng", "PAUSED · simulated") : telemetry.connected ? t("LIVE · mô phỏng", "LIVE · simulated") : t("Mất kết nối", "Disconnected")}</span>
             <span className="live-item"><small>{t("Thiết bị", "Device")}</small><b>AL–{vehicle.id.toUpperCase()}</b></span>
             <span className="live-item"><small>{t("Gói cuối", "Last packet")}</small><b data-testid="live-timestamp">{timeLabel(telemetry.capturedAt)}</b></span>
             <span className="live-item"><small>{t("Mã lỗi", "Fault")}</small><b>{!telemetry.connected ? "Fault —" : telemetry.fault === undefined ? t("Đang nhận…", "Receiving…") : telemetry.fault === 0 ? t("Fault 0 · không lỗi", "Fault 0 · none") : t(`Fault ${telemetry.fault} · có lỗi`, `Fault ${telemetry.fault} · present`)}</b></span>
@@ -321,15 +332,14 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                     <h2>{t("Thông số vận hành", "Operating data")} <span>TELEMETRY</span></h2>
                     <button className="text-button" onClick={() => setTab("telemetry")}>{t("Bảng dữ liệu đầy đủ", "Full data table")} <ArrowRight size={15} /></button>
                   </div>
-                  <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />
+                  {!backend && <BlackboxTransferStatus transfer={snapshot.blackbox} backend={backend} />}
                   <OperatingMetrics telemetry={telemetry} samples={samples} />
                   <VehicleMetrics telemetry={telemetry} samples={samples} />
                 </section>
               </div>
               <aside className="insights-column quad-agent">
-                {backend && <AgentSettings />}
-                <div ref={setGuardianSlot} className="guardian-agent-slot" />
                 {backend ? <BackendAgentPanel compact state={backend} transfer={snapshot.blackbox} connected={telemetry.connected} onInject={() => switchScenario("engine")} onViewTelemetry={() => setTab("telemetry")} onFallback={() => setMode("mock")} /> : <SafetyAgentPanel agentCycle={snapshot.agentCycle} blackbox={snapshot.blackbox} onViewTelemetry={() => setTab("telemetry")} incident={incident} telemetry={telemetry} onCommand={adapter.command} onInject={() => switchScenario("engine")} failNext={failNext} onFailNext={adapter.setFailNext} />}
+                <div ref={setGuardianSlot} className="guardian-agent-slot" />
                 <details className="vehicle-context">
                   <summary>{t("Kết nối & bối cảnh môi trường", "Connection & environment")}<ChevronDown size={15} /></summary>
                   <div className="context-grid">
@@ -356,34 +366,47 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
                 </details>
               </aside>
             </div>
-            <section className="analysis-section dash-section" aria-label={t("Báo cáo đánh giá", "Assessment report")}>
-              <div className="section-heading">
-                <h2>{t("Báo cáo đánh giá", "Assessment report")} <span>{backend ? "BACKEND" : "DEMO"}</span></h2>
-                <button className="primary-button small" onClick={runAnalysis} disabled={busy}>
-                  {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-                  <span>{busy ? t("Đang phân tích…", "Analysing…") : backend ? t("Theo dõi kết quả API", "Follow API results") : result ? t("Phân tích lại", "Analyse again") : t("Phân tích", "Analyse")}</span>
-                </button>
-              </div>
-              {error && (
-                <div className="analysis-error" role="alert">
-                  <Unplug size={20} />
-                  <div>
-                    <b>{t("Chưa thể phân tích", "Cannot analyse yet")}</b>
-                    <p>{error}</p>
+            {backend ? (
+              <BlackboxBatchStation
+                transfer={snapshot.blackbox}
+                backend={backend}
+                telemetry={telemetry}
+                onFlushNow={runAnalysis}
+                onInject={() => switchScenario("engine")}
+                onViewTelemetry={() => setTab("telemetry")}
+                onExportReport={exportReport}
+                hasReport={!!result}
+              />
+            ) : (
+              <section className="analysis-section dash-section" aria-label={t("Báo cáo đánh giá", "Assessment report")}>
+                <div className="section-heading">
+                  <h2>{t("Báo cáo đánh giá", "Assessment report")} <span>DEMO</span></h2>
+                  <button className="primary-button small" onClick={runAnalysis} disabled={busy}>
+                    {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+                    <span>{busy ? t("Đang phân tích…", "Analysing…") : result ? t("Phân tích lại", "Analyse again") : t("Phân tích", "Analyse")}</span>
+                  </button>
+                </div>
+                {error && (
+                  <div className="analysis-error" role="alert">
+                    <Unplug size={20} />
+                    <div>
+                      <b>{t("Chưa thể phân tích", "Cannot analyse yet")}</b>
+                      <p>{error}</p>
+                    </div>
+                    <button className="outline-button" onClick={runAnalysis}>{t("Thử lại", "Retry")}</button>
                   </div>
-                  <button className="outline-button" onClick={runAnalysis}>{t("Thử lại", "Retry")}</button>
-                </div>
-              )}
-              {result && <AnalysisResult result={result} onExport={exportReport} />}
-              {!busy && !result && !error && (
-                <div className="analysis-idle">
-                  <span><ShieldCheck size={14} /> {t("Phân tích theo bối cảnh", "Context-aware analysis")}</span>
-                  <span><Thermometer size={14} /> {t("Phân biệt nguồn nhiệt", "Separates heat sources")}</span>
-                  <span><Check size={14} /> {t("Đề xuất có cơ sở", "Evidence-based advice")}</span>
-                  <small>{backend ? t("Đang chờ backend xử lý gói dữ liệu đầu tiên.", "Waiting for the backend to process the first batch.") : t("Dữ liệu & quy tắc đánh giá được mô phỏng.", "Data and assessment rules are simulated.")}</small>
-                </div>
-              )}
-            </section>
+                )}
+                {result && <AnalysisResult result={result} onExport={exportReport} />}
+                {!busy && !result && !error && (
+                  <div className="analysis-idle">
+                    <span><ShieldCheck size={14} /> {t("Phân tích theo bối cảnh", "Context-aware analysis")}</span>
+                    <span><Thermometer size={14} /> {t("Phân biệt nguồn nhiệt", "Separates heat sources")}</span>
+                    <span><Check size={14} /> {t("Đề xuất có cơ sở", "Evidence-based advice")}</span>
+                    <small>{t("Dữ liệu & quy tắc đánh giá được mô phỏng.", "Data and assessment rules are simulated.")}</small>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
         {tab === "telemetry" && (
@@ -445,7 +468,7 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           <span>{t("Dữ liệu ECU mô phỏng", "Simulated ECU data")} · Frontend v0.2</span>
         </footer>
       </main>
-      {backend && <AgentDock session={vehicle.id} anchor="car-agent" quietOver="[data-testid=garage-camera]" quietRatio={0.1} />}
+      {backend && <AgentDock session={vehicle.id} anchor="car-agent" quietOver="[data-testid=garage-camera]" quietRatio={0.1} allowPause={presenter} />}
       <dialog
         ref={modalRef}
         className="modal"
@@ -458,51 +481,55 @@ function ClassicGarage({mode, setMode}: {mode: "backend" | "mock"; setMode: (mod
           <button className="modal-close icon-button" aria-label={t("Đóng", "Close")} onClick={() => setModal(null)}>
             <X size={19} />
           </button>
-          {modal === "settings" ? (
-            <>
-              <span className="section-kicker">YOUR WORKSPACE</span>
-              <h2>{t("Cài đặt demo", "Demo settings")}</h2>
-              <p>{t("Tùy chỉnh không gian garage và dữ liệu mô phỏng.", "Customise the garage and simulated data.")}</p>
-              <label className="field-label">
-                {t("Giao diện", "Theme")}
-                <select aria-label={t("Giao diện", "Theme")} value={theme} onChange={(e) => setTheme(e.target.value)}>
-                  <option value="studio">{t("Studio — Trắng & xanh rêu", "Studio — White & moss green")}</option>
-                  <option value="midnight">{t("Midnight — Garage tối", "Midnight — Dark garage")}</option>
-                  <option value="blueprint">{t("Blueprint — Xanh kỹ thuật", "Blueprint — Technical blue")}</option>
-                </select>
-              </label>
-              <label className="field-label">
-                {t("Nguồn agent", "Agent source")}
-                <select value={mode} onChange={(e) => setMode(e.target.value === "mock" ? "mock" : e.target.value === "device" ? "device" : "backend")}>
-                  <option value="device">{t("OBD — dữ liệu trực tiếp từ thiết bị", "OBD — live data from the device")}</option>
-                  <option value="backend">{t("API — backend & AI thật", "API — backend & real AI")}</option>
-                  <option value="mock">{t("Mô phỏng — chạy trong trình duyệt", "Mock — runs in the browser")}</option>
-                </select>
-              </label>
-              <label className="field-label">
-                {t("Ngôn ngữ", "Language")}
-                <select value={lang} onChange={(e) => setLang(e.target.value === "en" ? "en" : "vi")}>
-                  <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-              <label className="field-label">
-                {t("Tình huống mô phỏng", "Simulated situation")}
-                <select value={scenario} onChange={(e) => switchScenario(e.target.value as ScenarioId)}>
-                  {scenarios.map((s) => (
-                    <option value={s.id} key={s.id}>
-                      {vehicle.powertrain === "ev" && s.id === "engine" ? t("Pin / motor quá nhiệt", "Battery / motor overheating") : pick(s.label, lang)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="modal-note">
-                <Cpu size={18} />
-                <span>{backend ? t("Telemetry mô phỏng được gửi đến backend theo từng gói. Khóa API chỉ được cấu hình ở backend.", "Simulated telemetry is sent to the backend per batch. API keys live only in the backend.") : t("Chế độ local mock. Không gửi dữ liệu đến máy chủ.", "Local mock mode. No data is sent to a server.")}</span>
+          <div style={{ display: modal !== "help" ? "block" : "none" }}>
+            <span className="section-kicker">YOUR WORKSPACE</span>
+            <h2>{t("Cài đặt demo", "Demo settings")}</h2>
+            <p>{t("Tùy chỉnh không gian garage, ngôn ngữ giọng nói của agent và dữ liệu mô phỏng.", "Customise the garage, agent voice language and simulated data.")}</p>
+            {backend && (
+              <div className="modal-agent-settings">
+                <AgentSettings />
               </div>
-              <button className="primary-button" onClick={() => setModal(null)}>{t("Hoàn tất", "Done")} <Check size={16} /></button>
-            </>
-          ) : (
+            )}
+            <label className="field-label">
+              {t("Giao diện", "Theme")}
+              <select aria-label={t("Giao diện", "Theme")} value={theme} onChange={(e) => setTheme(e.target.value)}>
+                <option value="studio">{t("Studio — Trắng & xanh rêu", "Studio — White & moss green")}</option>
+                <option value="midnight">{t("Midnight — Garage tối", "Midnight — Dark garage")}</option>
+                <option value="blueprint">{t("Blueprint — Xanh kỹ thuật", "Blueprint — Technical blue")}</option>
+              </select>
+            </label>
+            <label className="field-label">
+              {t("Nguồn agent", "Agent source")}
+              <select value={mode} onChange={(e) => setMode(e.target.value === "mock" ? "mock" : e.target.value === "device" ? "device" : "backend")}>
+                <option value="device">{t("OBD — dữ liệu trực tiếp từ thiết bị", "OBD — live data from the device")}</option>
+                <option value="backend">{t("API — backend & AI thật", "API — backend & real AI")}</option>
+                <option value="mock">{t("Mô phỏng — chạy trong trình duyệt", "Mock — runs in the browser")}</option>
+              </select>
+            </label>
+            <label className="field-label">
+              {t("Ngôn ngữ giao diện", "Interface language")}
+              <select value={lang} onChange={(e) => setLang(e.target.value === "en" ? "en" : "vi")}>
+                <option value="vi">Tiếng Việt</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <label className="field-label">
+              {t("Tình huống mô phỏng", "Simulated situation")}
+              <select value={scenario} onChange={(e) => switchScenario(e.target.value as ScenarioId)}>
+                {scenarios.map((s) => (
+                  <option value={s.id} key={s.id}>
+                    {vehicle.powertrain === "ev" && s.id === "engine" ? t("Pin / motor quá nhiệt", "Battery / motor overheating") : pick(s.label, lang)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="modal-note">
+              <Cpu size={18} />
+              <span>{backend ? t("Telemetry mô phỏng được gửi đến backend theo từng gói. Khóa API chỉ được cấu hình ở backend.", "Simulated telemetry is sent to the backend per batch. API keys live only in the backend.") : t("Chế độ local mock. Không gửi dữ liệu đến máy chủ.", "Local mock mode. No data is sent to a server.")}</span>
+            </div>
+            <button className="primary-button" onClick={() => setModal(null)}>{t("Hoàn tất", "Done")} <Check size={16} /></button>
+          </div>
+          {modal === "help" && (
             <>
               <span className="section-kicker">QUICK START</span>
               <h2>{t("Làm quen với Car Neuron", "Getting started with Car Neuron")}</h2>

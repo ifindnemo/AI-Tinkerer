@@ -21,15 +21,53 @@ export function hornPattern(level: "warning" | "critical"): HornNote[] {
   return notes;
 }
 
+type ToneContext = {
+  currentTime: number;
+  destination: unknown;
+  state?: string;
+  resume: () => Promise<void> | void;
+  close?: () => Promise<void> | void;
+  createDynamicsCompressor: () => {connect: (node: unknown) => void};
+  createOscillator: () => {
+    type: string;
+    frequency: {value: number};
+    connect: (node: unknown) => {connect: (target: unknown) => void};
+    start: (when: number) => void;
+    stop: (when?: number) => void;
+    disconnect: () => void;
+    onended: (() => void) | null;
+  };
+  createGain: () => {
+    gain: {
+      value: number;
+      setValueAtTime: (value: number, when: number) => void;
+      exponentialRampToValueAtTime: (value: number, when: number) => void;
+      cancelScheduledValues: (when: number) => void;
+    };
+    connect: (node: unknown) => unknown;
+    disconnect: () => void;
+  };
+};
+
+type LiveNote = {oscillator: ReturnType<ToneContext["createOscillator"]>; gain: ReturnType<ToneContext["createGain"]>};
+
 export class AlertTone {
-  private context: AudioContext | null = null;
+  private context: ToneContext | null = null;
+  private live: LiveNote[] = [];
+
+  constructor(private factory?: () => ToneContext) {}
 
   prime() {
-    if (this.context || typeof window === "undefined") return;
+    if (this.context) return;
+    if (this.factory) {
+      try { this.context = this.factory(); } catch { this.context = null; }
+      return;
+    }
+    if (typeof window === "undefined") return;
     const Context = window.AudioContext ?? (window as unknown as {webkitAudioContext?: typeof AudioContext}).webkitAudioContext;
     if (!Context) return;
     try {
-      this.context = new Context();
+      this.context = new Context() as unknown as ToneContext;
     } catch {
       this.context = null;
     }
@@ -38,7 +76,7 @@ export class AlertTone {
   play(level: "warning" | "critical") {
     const context = this.context;
     if (!context) return;
-    void context.resume().catch(() => {});
+    void Promise.resolve(context.resume()).catch(() => {});
     // A compressor keeps the sum of overlapping tails from clipping the speakers.
     const output = context.createDynamicsCompressor();
     output.connect(context.destination);
@@ -54,13 +92,38 @@ export class AlertTone {
       gain.gain.setValueAtTime(note.peak, at + note.length * 0.7);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + note.length);
       oscillator.connect(gain).connect(output);
+      oscillator.onended = () => {
+        this.live = this.live.filter(item => item.oscillator !== oscillator);
+        try { oscillator.disconnect(); gain.disconnect(); } catch { /* already stopped */ }
+      };
       oscillator.start(at);
       oscillator.stop(at + note.length + 0.03);
+      this.live.push({oscillator, gain});
+    }
+  }
+
+  /** Stop the note that is sounding and every note still scheduled. A second call is a no-op. */
+  stop() {
+    const context = this.context;
+    const notes = this.live;
+    this.live = [];
+    if (!context || !notes.length) return;
+    const now = context.currentTime;
+    for (const note of notes) {
+      try {
+        const current = Math.max(note.gain.gain.value || 0.0001, 0.0001);
+        note.gain.gain.cancelScheduledValues(now);
+        note.gain.gain.setValueAtTime(current, now);
+        note.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+        note.oscillator.stop(now + 0.04);
+      } catch { /* already stopped */ }
     }
   }
 
   close() {
-    void this.context?.close().catch(() => {});
+    this.stop();
+    const context = this.context;
     this.context = null;
+    void Promise.resolve(context?.close?.()).catch(() => {});
   }
 }

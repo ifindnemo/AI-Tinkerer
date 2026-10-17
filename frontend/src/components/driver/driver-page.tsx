@@ -1,5 +1,7 @@
 "use client";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useState, useSyncExternalStore} from "react";
+import {usePresenter} from "@/hooks/use-presenter";
+import {demoHold} from "@/lib/demo-hold";
 import AgentDock from "../agent/agent-dock";
 import {presence} from "@/lib/agent/presence";
 import {Camera, Check, ShieldCheck, Wifi, WifiOff, ArrowUpRight} from "lucide-react";
@@ -83,6 +85,8 @@ export default function DriverPage() {
   // The demo car's id: the agent dock plays this vehicle's spoken alerts, as on the garage page.
   const monitorOptions = useMemo(() => ({vehicleId: DEMO_VEHICLE}), []);
   const {t, lang} = useLang();
+  const presenter = usePresenter();
+  const demoPaused = useSyncExternalStore(demoHold.subscribe, demoHold.isPaused, () => false);
   const {view, live: channel, videoRef, cameras, selectedCamera, selectCamera, refreshCameras, startWebcam, startSimulation, stop, recalibrate, updateSettings, setEcu, acknowledge, muteHorn, unmuteHorn, testHorn} = useDriverMonitor(monitorOptions);
   const {phase, source, event, reply, store} = view;
   const active = phase === "calibrating" || phase === "running";
@@ -140,7 +144,7 @@ export default function DriverPage() {
           <div><span className={styles.kicker}>{t("CAMERA / TÀI XẾ", "CAMERA / DRIVER")}</span><p>{t("Thêm một góc nhìn. An tâm hơn trên đường.", "Another perspective. A more mindful journey.")}</p></div>
           <div className={styles.sessionStatus} data-testid="driver-connection" data-status={view.sendError ? "offline" : reply ? "connected" : "waiting"}>
             {view.sendError ? <WifiOff size={15}/> : <Wifi size={15}/>}
-            <span>{!active ? t("Sẵn sàng bắt đầu", "Ready to begin") : view.sendError ? t("Ngoại tuyến · cảnh báo cục bộ", "Offline · local alerts") : reply ? t("Đã kết nối backend", "Backend connected") : t("Đang kết nối…", "Connecting…")}</span>
+            <span>{demoPaused && source === "simulated" ? t("Đang tạm dừng đánh giá mô phỏng", "Simulated evaluation is paused") : !active ? t("Sẵn sàng bắt đầu", "Ready to begin") : view.sendError ? t("Ngoại tuyến · cảnh báo cục bộ", "Offline · local alerts") : reply ? t("Đã kết nối backend", "Backend connected") : t("Đang kết nối…", "Connecting…")}</span>
           </div>
         </div>
         <section className={styles.stage}>
@@ -279,7 +283,7 @@ export default function DriverPage() {
         <a href="#driver-agent"><div><b>{pick(SEVERITY_LABEL[overall], lang)}</b><span>{assessment.recommendations[0] ?? assessment.summary}</span></div><span className={styles.mobileAlertLink}>{t("Hướng dẫn", "Advice")} <ArrowUpRight size={16}/></span></a>
       </aside>}
 
-      <AgentDock session={DEMO_VEHICLE} anchor="driver-agent" quietOver="[data-testid=guardian-board]" />
+      <AgentDock session={DEMO_VEHICLE} anchor="driver-agent" quietOver="[data-testid=guardian-board]" allowPause={presenter && source !== "webcam"} />
 
       <footer className={styles.footer}>
         {t("Prototype. Không điều khiển xe, không gọi cứu hộ và chưa được chứng nhận an toàn ô tô.", "Prototype. It does not control the vehicle, call emergency services, or claim automotive safety certification.")}

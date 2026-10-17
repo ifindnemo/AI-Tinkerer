@@ -1,9 +1,10 @@
 "use client";
-import {useEffect} from "react";
+import {useEffect, useSyncExternalStore} from "react";
+import {bookingStore} from "@/lib/agent/booking-store";
 import {presence, type AgentPhase} from "@/lib/agent/presence";
 import type {AgentReply} from "@/lib/backend/contract";
 import type {DriverSeverity} from "@/lib/driver/types";
-import {firstSentences, reportFrom} from "@/lib/agent/report";
+import {firstSentences, reportFrom, withBookingChoices} from "@/lib/agent/report";
 
 export {firstSentences};
 
@@ -20,9 +21,12 @@ export function useAgentPresence(agent: {phase: AgentPhase; severity: DriverSeve
   // The popup: the tools the agent called, the nearest garage and what needs the driver's confirmation.
   const reply = agent?.reply ?? null;
   const reportId = agent?.analysisId ?? null;
+  // "Not now" closes the question everywhere (the popup does not wait for it again); a confirmation shows the appointment.
+  const choices = useSyncExternalStore(bookingStore.subscribe, bookingStore.get, bookingStore.get);
   useEffect(() => {
-    presence.set({report: reply && reportId ? reportFrom(reply, reportId) : null});
-  }, [reply, reportId]);
+    const report = reply && reportId ? reportFrom(reply, reportId) : null;
+    presence.set({report: report ? withBookingChoices(report, choices) : null});
+  }, [reply, reportId, choices]);
 
   const id = agent?.analysisId ?? null;
   const text = agent?.diagnosis ?? null;

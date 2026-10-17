@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {AgentReply} from "../src/lib/backend/contract";
-import {needsConfirmation, reportFrom, reportKey} from "../src/lib/agent/report";
-import {REPORT_MS, advance, questionWaiting, reportOpen, type Presence} from "../src/lib/agent/presence";
+import {needsConfirmation, provisionalReport, reportFrom, reportKey, withBookingChoices} from "../src/lib/agent/report";
+import {REPORT_CRITICAL_MS, REPORT_MS, advance, questionWaiting, reportOpen, type Presence} from "../src/lib/agent/presence";
 
 const base = (): Presence => ({agent: null, camera: null, message: null, voice: {enabled: true, blocked: false, speaking: null}, bubble: null, report: null, reportUntil: 0, reportClosed: null, happyUntil: 0, seenId: null});
 const garages = {tool: "search_nearby_garages", result: {options: [
@@ -78,4 +78,34 @@ test("a drowsy driver with a warning car gets the rest-first plan: stop first, n
   assert.equal(report.plan?.code, "rest_then_decide");
   assert.equal(report.stopFirst, true);
   assert.equal(reportFrom(reply("warning"), "ana_10")!.plan, null, "an older backend sends no plan");
+});
+
+test("the rules' first line opens the popup at once; the agent's report replaces it and keeps it open", () => {
+  const fast = provisionalReport({id: "clip_1", text: "Cảnh báo nguy hiểm. Nước làm mát 122,3°C.", severity: "critical"});
+  assert.equal(fast.provisional, true);
+  assert.equal(fast.lead, "Nước làm mát 122,3°C.", "the level is the tag, not repeated in the text");
+  let p = advance(base(), {report: fast}, 0);
+  assert.equal(reportOpen(p, REPORT_CRITICAL_MS - 1), true, "a critical popup stays longer");
+  const full = reportFrom(reply("critical"), "ana_20")!;
+  p = advance(p, {report: full}, 40_000);
+  assert.equal(reportOpen(p, 40_000 + REPORT_CRITICAL_MS - 1), true, "the agent's answer gets a full period");
+  p = advance({...p, reportClosed: reportKey(full)}, {voice: {enabled: true, blocked: false, speaking: {id: "clip_2", text: "x", severity: "critical", car: true}}}, 90_000);
+  assert.equal(reportOpen(p, 90_001), false, "speaking does not reopen what the viewer closed");
+});
+
+test("car speech keeps the popup open; driver-camera speech does not", () => {
+  let p = advance(base(), {report: reportFrom(reply("warning"), "ana_21")!}, 0);
+  p = advance(p, {voice: {enabled: true, blocked: false, speaking: {id: "c1", text: "x", severity: "warning"}}}, REPORT_MS - 10);
+  assert.equal(reportOpen(p, REPORT_MS + 10), false);
+  p = advance(p, {voice: {enabled: true, blocked: false, speaking: {id: "c2", text: "y", severity: "warning", car: true}}}, REPORT_MS - 5);
+  assert.equal(reportOpen(p, REPORT_MS + 10), true);
+});
+
+test("Not now hides the question everywhere; a confirmation shows the saved appointment", () => {
+  const report = reportFrom(reply("warning", {pending_action: pending("act_000000000009")}), "ana_22")!;
+  assert.equal(needsConfirmation(withBookingChoices(report, {saved: {}, skipped: ["act_000000000009"]})), false);
+  const confirmed = withBookingChoices(report, {saved: {act_000000000009: appointment}, skipped: []});
+  assert.equal(confirmed.pending, null);
+  assert.equal(confirmed.appointment?.id, appointment.id);
+  assert.equal(withBookingChoices(report, {saved: {}, skipped: []}), report);
 });

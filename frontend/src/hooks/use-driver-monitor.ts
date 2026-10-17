@@ -7,6 +7,8 @@ import {postDriverEvents} from "@/lib/driver/client";
 import {resolveAgentLang} from "@/lib/preferences";
 import {LiveChannel} from "@/lib/driver/live";
 import {simulatedSample, type SimulationScenario} from "@/lib/driver/simulation";
+import {audioFocus, type AlertSnapshot} from "@/lib/agent/audio-focus";
+import {demoHold} from "@/lib/demo-hold";
 import {AlertTone} from "@/lib/driver/sound";
 import {DriverSafety} from "@/lib/driver/safety";
 import {HISTORY_LIMIT, loadDriverStore, saveDriverStore, type DriverSettings, type DriverStore} from "@/lib/driver/storage";
@@ -113,6 +115,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     cameraAbort: null as AbortController | null,
     simTimer: null as ReturnType<typeof setInterval> | null,
     simStart: 0,
+    seenRemind: 0,
     scenario: null as SimulationScenario | null,
     source: null as DriverSource | null,
     phase: "idle" as MonitorPhase,
@@ -160,12 +163,20 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     return store;
   }, []);
 
-  const playTone = useCallback((level: "warning" | "critical") => {
+  const playTone = useCallback((level: "warning" | "critical", decision?: {severity: "normal" | "warning" | "critical"; action: string; vehicleLevel: "normal" | "warning" | "critical"; driverSeverity: "normal" | "warning" | "critical"} | null) => {
     const state = m.current;
-    if (!state.store?.settings.sound || state.hornMute) return;
+    const snap: AlertSnapshot = decision ? {
+      severity: decision.severity, action: decision.action, vehicleLevel: decision.vehicleLevel, driverSeverity: decision.driverSeverity,
+    } : {severity: level, action: level === "critical" ? "stop_nearest_safe" : "reduce_load", vehicleLevel: "warning", driverSeverity: level};
+    const verdict = audioFocus.considerAlert(snap, Date.now());
     state.lastTone = Date.now();
+    if (verdict === "drop") return;
+    if (verdict === "interrupt") audioFocus.acceptEscalation(snap);
+    if (!state.store?.settings.sound || state.hornMute) return;
     state.tone.play(level);
   }, []);
+
+  useEffect(() => audioFocus.bindHorn(() => m.current.tone.stop()), []);
 
   const send = useCallback(async () => {
     const state = m.current;
@@ -241,6 +252,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       return;
     }
     if (state.phase !== "running") return;
+    if (state.source === "simulated" && demoHold.isPaused()) return;
 
     const event = state.tracker.update(sample.frame);
     const read = optionsRef.current.readVehicle;
@@ -263,8 +275,23 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       hornLifted = true;
     }
     // A warm engine alone stays visual; the driver's alertness and a mandatory stop sound.
+    if (local.decision) {
+      audioFocus.noteLive({
+        severity: local.decision.severity,
+        action: local.decision.action,
+        vehicleLevel: local.decision.vehicleLevel,
+        driverSeverity: local.decision.driverSeverity,
+      });
+      audioFocus.takeExpiry(Date.now());
+      if (audioFocus.get().remindNonce !== state.seenRemind) {
+        state.seenRemind = audioFocus.get().remindNonce;
+        if (local.decision.severity !== "normal" && state.store?.settings.sound && !state.hornMute) {
+          state.tone.play(local.decision.severity === "critical" ? "critical" : "warning");
+        }
+      }
+    }
     if (local.decision ? shouldSound(state.lastDecision, local.decision) : rank[localAssessment.severity] > rank[state.severity]) {
-      playTone(localAssessment.severity === "critical" ? "critical" : "warning");
+      playTone(localAssessment.severity === "critical" ? "critical" : "warning", local.decision);
     }
     state.lastDecision = local.decision;
     const severityChanged = state.severity !== localAssessment.severity;
@@ -292,7 +319,7 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     state.driverSeverity = driverSeverity;
     if (driverRose) state.followUps = 0;
     if (optionsRef.current.alertsOnly ? driverRose : escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
-    if (state.severity === "critical" && now - state.lastTone >= CRITICAL_REPEAT_MS) playTone("critical");
+    if (state.severity === "critical" && now - state.lastTone >= CRITICAL_REPEAT_MS) playTone("critical", state.lastDecision);
 
     if (changed || severityChanged || hornLifted || now - state.lastUi >= UI_INTERVAL_MS) {
       state.lastUi = now;
@@ -394,7 +421,11 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       state.source = "simulated";
       state.phase = "running";
       state.simTimer = setInterval(() => {
-        if (state.scenario) handleSample(simulatedSample(state.scenario, Date.now() - state.simStart, Date.now()));
+        if (demoHold.isPaused()) return;
+        if (state.scenario) {
+          const clock = demoHold.now();
+          handleSample(simulatedSample(state.scenario, clock - state.simStart, clock));
+        }
       }, 66);
     }
     const fresh = state.scenario !== scenario;
@@ -420,7 +451,12 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
       state.driverSeverity = "normal";
     }
     state.scenario = scenario;
-    state.simStart = Date.now();
+    state.simStart = demoHold.now();
+    state.ecuStart = demoHold.now();
+    if (fresh) {
+      demoHold.bumpScene();
+      audioFocus.endTransient();
+    }
     setView(current => ({...current, phase: "running", error: null, source: "simulated", scenario, delegate: null, calibration: {progress: 1, failed: false, face: true}, ...(fresh ? {hornMuted: false, reply: null, event: null, localAssessment: null, guardian: null, acknowledgedAt: null, sendError: false, sentEvents: 0} : {})}));
   }, [handleSample, reset]);
 

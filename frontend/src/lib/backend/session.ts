@@ -8,6 +8,8 @@ import type {Vehicle} from '../vehicles';
 import type {SessionSnapshot,VehicleSessionAdapter} from '../vehicle-session/types';
 import {initialBackendState,isIncident,isAgentReply,type BatchReply,type Incident} from './contract';
 import {apiFailureMessage,vehicleApi} from './client';
+import {audioFocus} from '../agent/audio-focus';
+import {demoHold} from '../demo-hold';
 
 const FLUSH_MIN_MS=20000;
 export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
@@ -22,6 +24,11 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  constructor(private vehicle:Vehicle){
   this.initial={scenario:'normal',telemetry:{...getMockTelemetry('normal',vehicle.id),connected:false,capturedAt:'',operatingSource:'scenario'},samples:[],result:null,history:[],incident:null,blackbox:initialTransfer(),agentCycle:initialAgentCycle(),backend:initialBackendState(),failNext:false,restoring:true,recoveryNotice:'',storageError:''};
   this.state=this.initial;
+  this.unhold=demoHold.subscribe(()=>{
+   if(!demoHold.isPaused()||!this.running)return;
+   this.generation++;this.request?.abort();this.request=null;this.busy=false;this.waiting=null;
+   if(this.state.backend)this.update({phase:'paused'});
+  });
   this.stream=new BlackboxBatchStream(vehicle.id,blackbox=>{
    this.state={...this.state,blackbox};this.emit();
    if(blackbox.lastBatch&&blackbox.lastBatch.batchId!==this.handled){this.handled=blackbox.lastBatch.batchId;void this.submit(blackbox.lastBatch);}
@@ -36,15 +43,16 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   this.state={...this.initial,restoring:false};this.stream.start();this.sample(false);
   this.timer=setInterval(()=>this.sample(true),1000);void this.checkConnection();void this.restoreIncident();
  };
- dispose=()=>{this.running=false;this.generation++;if(this.timer)clearInterval(this.timer);this.timer=null;this.request?.abort();this.health?.abort();this.request=null;this.busy=false;this.waiting=null;this.stream.dispose();};
+ dispose=()=>{this.running=false;this.generation++;this.unhold();if(this.timer)clearInterval(this.timer);this.timer=null;this.request?.abort();this.health?.abort();this.request=null;this.busy=false;this.waiting=null;this.stream.dispose();};
  private sample(count:boolean){
-  if(!this.running||this.state.scenario==='offline')return;
+  if(!this.running||this.state.scenario==='offline'||demoHold.isPaused())return;
   const telemetry=liveSample(this.state.scenario,this.vehicle.id,this.tick++,new Date());
   this.state={...this.state,telemetry,samples:[...this.state.samples,telemetry].slice(-30)};this.emit();if(count)this.stream.push(telemetry);
  }
  setScenario=(scenario:ScenarioId)=>{
   if(!this.running||scenario===this.state.scenario)return;
   this.generation++;this.request?.abort();this.request=null;this.busy=false;this.waiting=null;this.tick=0;
+  demoHold.bumpScene();audioFocus.endTransient();
   this.state={...this.state,scenario,result:null,samples:[],telemetry:{...this.state.telemetry,scenario,connected:false},backend:{...this.state.backend!,phase:scenario==='offline'?'paused':'collecting',error:'',reply:null}};
   // Send the first batch of the new scenario early so the agent reacts within seconds.
   this.stream.breakSequence(scenario==='offline'?BLACKBOX_BATCH_SIZE:BLACKBOX_EARLY_BATCH_SIZE);this.sample(false);
@@ -52,9 +60,10 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  // The camera has just reported an alert to the backend: let the agent see car and driver together now, not after 15 s.
  // At most one early batch per FLUSH_MIN_MS: repeated alerts must not turn into a stream of small LLM calls.
  private lastFlush=0;
- flushNow=()=>{
-  if(!this.running||this.busy||this.state.scenario==='offline')return;
-  const now=Date.now();if(now-this.lastFlush<FLUSH_MIN_MS)return;
+ private unhold:()=>void=()=>{};
+ flushNow=(force=false)=>{
+  if(!this.running||this.busy||this.state.scenario==='offline'||demoHold.isPaused())return;
+  const now=Date.now();if(!force&&now-this.lastFlush<FLUSH_MIN_MS)return;
   this.lastFlush=now;this.stream.flush();
  };
  private async checkConnection(){

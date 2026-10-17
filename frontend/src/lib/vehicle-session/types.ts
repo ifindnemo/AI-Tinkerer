@@ -30,7 +30,7 @@ export interface VehicleSessionAdapter {
   dispose(): void;
   setScenario(scenario: ScenarioId): void;
   /** Sends the blackbox batch now (early) instead of waiting for it to fill; a no-op while one is being processed. */
-  flushNow(): void;
+  flushNow(force?: boolean): void;
   command(command: DriverCommand): void;
   check(): void;
   setFailNext(value: boolean): void;

@@ -5,6 +5,8 @@ import { getMockTelemetry, analyzeTelemetry, type ScenarioId } from "../telemetr
 import type { Vehicle } from "../vehicles";
 import {tr} from "../preferences";
 import {liveSample} from "../live-telemetry";
+import {audioFocus} from "../agent/audio-focus";
+import {demoHold} from "../demo-hold";
 import {createIncident, incidentReport, observeIncident, simulateIncidentPacket, transitionIncident} from "../safety-agent";
 import {executeMockSafetyTool} from "../mock-safety-tools";
 import type {DriverCommand, SessionRepository, SessionSnapshot, VehicleSessionAdapter} from "./types";
@@ -90,7 +92,7 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
     // mark it interrupted; disposal must never invent a success/failure outcome.
   };
   private receive = (sampleForBackend = false) => {
-    if(!this.running || this.state.scenario==="offline")return;
+    if(!this.running || this.state.scenario==="offline" || demoHold.isPaused())return;
     let packet=liveSample(this.state.scenario,this.vehicle.id,this.tick++);
     let incident=this.state.incident;
     let report;
@@ -111,6 +113,8 @@ export class MockVehicleSessionAdapter implements VehicleSessionAdapter {
   setScenario = (scenario: ScenarioId) => {
     if(!this.running || this.state.restoring || scenario===this.state.scenario)return;
     this.task?.abort();this.task=null;
+    demoHold.bumpScene();
+    audioFocus.endTransient();
     this.periodicAgent.pause();
     this.blackbox.breakSequence();
     let incident=this.state.incident;

@@ -18,7 +18,12 @@ export async function POST(request: Request) {
   forward.set("lang", lang);
   try {
     const response = await fetch(`${backendBase()}/api/voice/transcribe`, {method: "POST", body: forward, signal: AbortSignal.timeout(40_000)});
-    if (!response.ok) return Response.json({error: safeApiError(response.status)}, {status: response.status});
+    if (!response.ok) {
+      const headers = new Headers();
+      const retryAfter = response.headers.get("retry-after");
+      if (response.status === 429 && retryAfter && /^\d{1,3}$/.test(retryAfter)) headers.set("retry-after", retryAfter);
+      return Response.json({error: safeApiError(response.status)}, {status: response.status, headers});
+    }
     return Response.json(publicPayload(await response.json()));
   } catch {
     return Response.json({error: "Không kết nối được backend hoặc yêu cầu đã hết thời gian."}, {status: 502});
