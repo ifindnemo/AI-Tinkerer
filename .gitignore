@@ -8,3 +8,6 @@ token.json
 backend/data/private/
 backend/vehicle_guardian.db
 brag-output/
+
+# Internal notes, plans and reports stay out of the public repository
+/docs/
