@@ -27,3 +27,34 @@ export function withoutReset(search: string, pathname: string, hash = ""): strin
   const query = params.toString();
   return `${pathname}${query ? `?${query}` : ""}${hash}`;
 }
+
+export const BACKEND_RESET_PATH = "/api/vehicle/demo/reset";
+
+/**
+ * Asks the backend to forget the last run, so the first batch of this one does not inherit it. Scope "demo" (the
+ * page opened with reset=1) clears everything: newest assessment, camera summary, open incident, spoken-alert history
+ * and transcripts. Scope "car" (the scenario was switched) clears only what describes the car, because the camera and
+ * the conversation go on. Waits at most `timeoutMs`; never throws, and a backend that is down or slow leaves the
+ * browser to go ahead. Returns whether it was cleared.
+ */
+export async function resetBackendState(
+  request: (url: string, init: {method: string; headers: Record<string, string>; body: string; signal: AbortSignal}) => Promise<{ok: boolean}>,
+  timeoutMs = 2000,
+  scope: "demo" | "car" = "demo",
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await request(BACKEND_RESET_PATH, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({scope}),
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}

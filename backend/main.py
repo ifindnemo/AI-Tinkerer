@@ -8,6 +8,9 @@ from fastapi import FastAPI
 load_dotenv()
 # Without this the app's own log.info/warning lines (voice clips, agent fallbacks) never show.
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx logs every request URL at INFO, and some providers take their key in the query string (LocationIQ `?key=`).
+for _noisy in ("httpx", "httpcore"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 from routes import router  # noqa: E402
 from store import store  # noqa: E402
@@ -18,6 +21,7 @@ from stt import router as stt_router  # noqa: E402
 from talk import router as talk_router  # noqa: E402
 from voice import router as voice_router  # noqa: E402
 from voice_options import router as voice_options_router  # noqa: E402
+from demo_reset import router as demo_reset_router  # noqa: E402
 
 
 @asynccontextmanager
@@ -44,6 +48,7 @@ app.include_router(stt_router, prefix="/api")
 app.include_router(talk_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
 app.include_router(voice_options_router, prefix="/api")
+app.include_router(demo_reset_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

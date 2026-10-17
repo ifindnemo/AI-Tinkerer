@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Response
 
 from agent.orchestrator import vehicle_agent
 from booking import ics_for
+from situation import Superseded
 from schemas import (
     ConfirmAction,
     IncidentAction,
@@ -19,6 +20,8 @@ log = logging.getLogger("car_neuron.api")
 def _run_agent(telemetry_context: dict) -> dict:
     try:
         return vehicle_agent.analyze_telemetry_context(telemetry_context)
+    except Superseded as error:
+        raise HTTPException(status_code=409, detail="The scenario changed while this batch was analysed.") from error
     except Exception as error:
         log.exception("vehicle analysis failed")
         raise HTTPException(

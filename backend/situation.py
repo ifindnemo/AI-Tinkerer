@@ -13,6 +13,21 @@ _TTL_SECONDS = 15 * 60
 _FRESH_SECONDS = 60
 _MUST_STOP = {"rest_then_decide", "stop_and_get_help", "stop_rest_and_get_help"}
 _latest: dict[str, dict[str, Any]] = {}
+_epoch = 0
+
+
+class Superseded(RuntimeError):
+    """An analysis that was running when the demo was reset: its result belongs to the scenario that was left."""
+
+
+def epoch() -> int:
+    return _epoch
+
+
+def start_new_epoch() -> int:
+    global _epoch
+    _epoch += 1
+    return _epoch
 
 
 def remember_vehicle_situation(

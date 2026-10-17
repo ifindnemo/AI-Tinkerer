@@ -337,6 +337,19 @@ class Store:
             ).fetchone()
         return self._incident_from_row(row)
 
+    def close_open_incidents(self) -> int:
+        """Ends every open incident and its live memory, for a fresh demo run. Rows stay for the record; nothing is
+        deleted. Returns how many incidents were closed."""
+        self.initialize()
+        with self._lock, self.connect() as connection:
+            closed = connection.execute("UPDATE incidents SET status = 'closed' WHERE status = 'open'").rowcount
+            connection.execute(
+                "UPDATE incident_memories SET status = 'expired', updated_at = ? "
+                "WHERE status IN ('active', 'waiting_confirmation', 'action_completed')",
+                (utc_now(),),
+            )
+        return int(closed or 0)
+
     def get_open_incident(self, vehicle_id: str) -> dict[str, Any] | None:
         self.initialize()
         with self.connect() as connection:

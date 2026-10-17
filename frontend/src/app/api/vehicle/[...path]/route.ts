@@ -4,7 +4,7 @@ type Context={params:Promise<{path:string[]}>};
 async function handle(request:Request,context:Context){
   const path=(await context.params).path.join('/');
   const confirming=/^incidents\/inc_[\w-]+\/confirm$/.test(path);
-  const allowed=request.method==='GET'?/^(health|incidents\/inc_[\w-]+(?:\/memory)?|vehicles\/[\w-]{1,64}\/(?:profile|dtc))$/.test(path):/^vehicles\/[\w-]{1,64}\/profile$/.test(path)||confirming;
+  const allowed=request.method==='GET'?/^(health|incidents\/inc_[\w-]+(?:\/memory)?|vehicles\/[\w-]{1,64}\/(?:profile|dtc))$/.test(path):/^vehicles\/[\w-]{1,64}\/profile$/.test(path)||confirming||path==='demo/reset';
   if(!allowed)return Response.json({error:'Endpoint không được hỗ trợ.'},{status:404});
   if(!sameOrigin(request))return Response.json({error:'Origin không hợp lệ.'},{status:403});
   let body:unknown;

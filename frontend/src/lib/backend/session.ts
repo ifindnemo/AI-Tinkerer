@@ -10,6 +10,7 @@ import {initialBackendState,isIncident,isAgentReply,type BatchReply,type Inciden
 import {apiFailureMessage,vehicleApi} from './client';
 import {audioFocus} from '../agent/audio-focus';
 import {demoHold} from '../demo-hold';
+import {resetBackendState} from '../demo-reset';
 
 const FLUSH_MIN_MS=20000;
 export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
@@ -21,6 +22,8 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
  private generation=0;private request:AbortController|null=null;private health:AbortController|null=null;
  private busy=false;private waiting:BlackboxBatch|null=null;private handled:string|null=null;
  private stream:BlackboxBatchStream;
+ // The backend forgetting the scenario that was left; the first batch of the new one waits for it (a few ms, 2 s at most).
+ private reset:Promise<boolean>=Promise.resolve(true);
  constructor(private vehicle:Vehicle){
   this.initial={scenario:'normal',telemetry:{...getMockTelemetry('normal',vehicle.id),connected:false,capturedAt:'',operatingSource:'scenario'},samples:[],result:null,history:[],incident:null,blackbox:initialTransfer(),agentCycle:initialAgentCycle(),backend:initialBackendState(),failNext:false,restoring:true,recoveryNotice:'',storageError:''};
   this.state=this.initial;
@@ -53,6 +56,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   if(!this.running||scenario===this.state.scenario)return;
   this.generation++;this.request?.abort();this.request=null;this.busy=false;this.waiting=null;this.tick=0;
   demoHold.bumpScene();audioFocus.endTransient();
+  this.reset=resetBackendState((url,init)=>fetch(url,init),2000,'car');
   this.state={...this.state,scenario,result:null,samples:[],telemetry:{...this.state.telemetry,scenario,connected:false},backend:{...this.state.backend!,phase:scenario==='offline'?'paused':'collecting',error:'',reply:null}};
   // Send the first batch of the new scenario early so the agent reacts within seconds.
   this.stream.breakSequence(scenario==='offline'?BLACKBOX_BATCH_SIZE:BLACKBOX_EARLY_BATCH_SIZE);this.sample(false);
@@ -92,6 +96,7 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
   this.busy=true;const generation=this.generation;const controller=new AbortController();this.request=controller;
   this.update({phase:'sending',error:''});
   try{
+   await this.reset;
    const reply=await vehicleApi<BatchReply>('telemetry',{body:{...batch,lang:resolveAgentLang()},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(125000)])});
    if(!this.running||controller.signal.aborted||generation!==this.generation)return;
    if(reply.vehicleId!==this.vehicle.id||reply.batchId!==batch.batchId||reply.accepted!==batch.records.length||!isAgentReply(reply.latest,this.vehicle.id,batch.batchId,batch.records.length)||(reply.incident&&!isIncident(reply.incident,this.vehicle.id)))throw new Error(tr('Phản hồi không khớp gói dữ liệu của xe.','The reply does not match this vehicle\'s data batch.'));
