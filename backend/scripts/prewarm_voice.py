@@ -62,7 +62,10 @@ def main(argv=None) -> int:
         if value and not Path(value).is_absolute():
             os.environ[variable] = str(Path(__file__).resolve().parents[1] / value)
     import voice
-    print("Reference rules: normal=silent; warm; drowsy while moving. Spoken lines carry no figures, so the exact reading does not matter. No model calls.")
+    print("Reference rules: normal=silent; warm; drowsy while moving. No model calls.")
+    if voice.detail_full():
+        print("ALERT_VOICE_DETAIL=full: the alert lines carry the reading (106.0, 122.0 C here), so they only come from the cache when "
+              "the demo reads exactly the same figure. Plan and reply lines never change. ALERT_VOICE_DETAIL=brief makes every line cacheable.")
     for lang, scene, line in demo_lines():
         if not voice.enabled(lang):
             print(f"{lang} {scene}: unconfigured | {line}")

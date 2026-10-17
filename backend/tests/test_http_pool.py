@@ -34,3 +34,12 @@ def test_speech_to_text_shares_its_own_pool() -> None:
     a.close()
     assert not b._client.is_closed
     http_pool.close_all()
+
+
+def test_request_urls_with_a_key_in_the_query_never_reach_the_log() -> None:
+    """LocationIQ takes `?key=`; httpx would print it at INFO. main.py and the measurement scripts mute it."""
+    import logging
+    import main  # noqa: F401  (configures logging on import)
+
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+    assert logging.getLogger("httpcore").getEffectiveLevel() >= logging.WARNING

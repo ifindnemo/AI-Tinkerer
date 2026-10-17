@@ -56,11 +56,15 @@ FAILED_STATES = frozenset({"failed", "error", "cancelled", "canceled"})
 _ID_KEYS = ("id", "job_id", "request_id", "task_id")
 _STATUS_KEYS = ("status", "state")
 _URL_KEYS = ("audio_url", "download_url", "file_url", "audio_link", "url")
-_REPEAT_SECONDS = 90.0
+_CRITICAL_HOLD_SECONDS = 90.0  # a warning that arrives within this long after a critical one is outdated
+_DEFAULT_REPEAT_SECONDS = 45.0
+_SIMILAR = 0.7  # word overlap (Jaccard) from which two alerts count as the same one
 _MAX_CHARS = 500
 _FIRST_PART_CHARS = 200  # Start speaking the diagnosis while later garage details are still synthesizing.
-_SPOKEN_CHARS = 140  # a spoken alert is the level, one short line and one step; the rest stays on screen
+_SPOKEN_CHARS = 140  # brief mode: the level, one short line and one step; the rest stays on screen
 _BODY_WITH_OPTIONS = 100
+_SPOKEN_CHARS_FULL = 260  # full mode (default): the first sentences of the diagnosis, then the whole step
+_BODY_WITH_OPTIONS_FULL = 160
 
 _lock = threading.Lock()
 _spoken: dict[str, float] = {}
@@ -266,6 +270,34 @@ def _prepare_audio(client, text: str, severity: str, publish_ok=None) -> _Audio:
         return _Audio(speech, _write(speech, severity), False, elapsed)
 
 
+def detail_full() -> bool:
+    """ALERT_VOICE_DETAIL=brief reads the level, one figure-free line and one step (cacheable, short). Anything else
+    (the default) reads the diagnosis sentences with their figures, the whole step and the garage options; repeats
+    are kept out by the time window and the similarity check instead (`announce_alert`)."""
+    return os.getenv("ALERT_VOICE_DETAIL", "full").strip().lower() != "brief"
+
+
+def repeat_seconds() -> float:
+    """ALERT_REPEAT_SECONDS (default 45): an alert that was just spoken is not spoken again before this long; if it is
+    still there after it, it is spoken again. 0: once per episode, as before."""
+    try:
+        return max(0.0, float(os.getenv("ALERT_REPEAT_SECONDS", str(_DEFAULT_REPEAT_SECONDS))))
+    except ValueError:
+        return _DEFAULT_REPEAT_SECONDS
+
+
+def _already_said(step: str, spoken: str) -> bool:
+    """Whether most of the step's words are already in the line, so reading it again would only repeat the sentence.
+    Only in full mode, where the diagnosis can end with the very advice the plan carries."""
+    if not detail_full():
+        return False
+    words = _WORDS.findall(step.lower())
+    if len(words) < 4:
+        return False
+    heard = set(_WORDS.findall(spoken.lower()))
+    return sum(word in heard for word in words) / len(words) >= 0.75
+
+
 def alert_script(
     text: str,
     severity: str,
@@ -279,7 +311,8 @@ def alert_script(
     distances, a familiar garage). It is spoken after the safety step.
     """
     choice = " ".join((options or "").split()).strip()
-    body = _brief(text, lang, _BODY_WITH_OPTIONS if choice else _SPOKEN_CHARS)
+    full = detail_full()
+    body = _brief(text, lang, (_BODY_WITH_OPTIONS_FULL if full else _BODY_WITH_OPTIONS) if choice else (_SPOKEN_CHARS_FULL if full else _SPOKEN_CHARS))
     step_line = _brief_step(recommendations[0]) if recommendations else ""
     if not body and not step_line:
         if not " ".join(str(text or "").split()):
@@ -296,7 +329,7 @@ def alert_script(
         existing = re.match(r"^cảnh báo(?: nguy hiểm)?\b[^\w]*", body, re.IGNORECASE)
         correct = "cảnh báo nguy hiểm" if severity == "critical" else "cảnh báo."
         spoken = body if existing and body.lower().startswith(correct) else f"{lead} {body[existing.end():] if existing else body}"
-    if step_line and step_line.lower() not in spoken.lower():
+    if step_line and step_line.lower() not in spoken.lower() and not _already_said(step_line, spoken):
         spoken = f"{spoken.rstrip('. ')}. {step_line}."
     if choice and choice.lower() not in spoken.lower():
         spoken = f"{spoken.rstrip('. ')}. {choice}"
@@ -524,7 +557,7 @@ def _brief(text: str, lang: str, limit: int) -> str:
     fixed headline when it is one of our rule sentences, else its number-free clauses (maybe nothing, and
     then the level and the step are the whole alert)."""
     clean = _RULE_PREFIX.sub("", " ".join(str(text or "").split())).strip()
-    if _DIGIT.search(clean):
+    if _DIGIT.search(clean) and not detail_full():
         for pattern, vi, en in _HEADLINES:
             if pattern.search(clean):
                 return en if normalize(lang) == "en" else vi
@@ -536,6 +569,8 @@ def _brief(text: str, lang: str, limit: int) -> str:
 def _brief_step(step: str) -> str:
     """One step, up to its first semicolon: the "if it keeps rising..." part stays on screen."""
     one = " ".join(str(step or "").split())
+    if detail_full():
+        return one.rstrip(". ")
     return re.split(r";\s+|(?<=[.!?])\s+", one, maxsplit=1)[0].strip().rstrip(".")
 
 
@@ -580,8 +615,9 @@ def announce_alert(
     once: bool = False,
 ) -> None:
     """Queue TTS for a warning or critical alert. No-op for any other severity, and for a language
-    that has no voice configured. With `once` the alert is spoken one time for the whole episode (until
-    `clear_alert_history`); without it the same key is quiet for `_REPEAT_SECONDS`.
+    that has no voice configured. The same key is quiet for `repeat_seconds()` (45 s) and so is any alert with nearly the
+    same words; if the alert is still there afterwards it is spoken again. With ALERT_REPEAT_SECONDS=0 a `once` alert
+    is spoken one time for the whole episode (until `clear_alert_history`).
 
     Never raises: a voice failure must not change the assessment that triggered it.
     """
@@ -596,6 +632,8 @@ def announce_alert(
             script = f"{script.rstrip()} {follow_up.strip()}"
         key = dedupe_key or f"{severity}:{script}"
         if not _claim(key, once):
+            return
+        if _is_repeat(session_id, lang, severity, script):
             return
         if severity == "critical" and session_id:
             with _lock:
@@ -614,7 +652,7 @@ def _first_sentence(text: str) -> str:
 def fast_alert_line(diagnosis: str, lang: str = "vi") -> str:
     """Pure rule diagnosis body, first sentence and no figures; announce_alert adds the severity lead and step."""
     first = re.split(r"(?<=[.!?])\s+", _RULE_PREFIX.sub("", " ".join(str(diagnosis or "").split())).strip(), maxsplit=1)[0]
-    return _brief(first, lang, _SPOKEN_CHARS)
+    return _brief(first, lang, _SPOKEN_CHARS_FULL if detail_full() else _SPOKEN_CHARS)
 
 
 def speak_car_fast(session_id: str, severity: str, lang: str, diagnosis: str, step: str | None) -> None:
@@ -636,7 +674,19 @@ def speak_car_result(session_id: str, severity: str, lang: str, result: dict[str
     follow_up = follow_up_for(result, lang)
     # Only the first sentence of the plan ("Hãy nghỉ trước.", "Garage gần nhất là ..."): a longer plan was
     # still being read when the next alert arrived. The whole plan, with every garage, stays on screen.
-    line = _first_sentence(plan.get("spoken") or "")
+    if detail_full():
+        # The plan's safety steps, then the garages read from the tool results (their names and distances).
+        line = plan.get("spoken") or ""
+        choices = tool_options_line(
+            result.get("tool_trace"), lang,
+            hold=severity == "critical" or plan.get("code") in ("stop_and_get_help", "stop_rest_and_get_help"),
+            rest=plan.get("code") in ("rest_then_decide", "stop_rest_and_get_help"),
+        )
+        if choices:
+            steps = plan.get("steps") or list(recommendations)[:1]
+            line = " ".join([*(str(step).strip() for step in steps if step), choices])
+    else:
+        line = _first_sentence(plan.get("spoken") or "")
     if plan.get("code") == "garage_when_convenient" and follow_up:
         line = ""  # the booking sentence already names the garage
     base = f"{session_id}:{severity}:{lang}"
@@ -647,7 +697,8 @@ def speak_car_result(session_id: str, severity: str, lang: str, result: dict[str
             _say_once(script, severity, key, session_id, lang)
         return
     _claim(f"{base}:lead", True)
-    announce_alert(_first_sentence(diagnosis), severity=severity, recommendations=None if line else list(recommendations)[:1],
+    announce_alert(_first_sentence(diagnosis) if not detail_full() else _first_sentences(" ".join(str(diagnosis).split()), _SPOKEN_CHARS_FULL),
+                   severity=severity, recommendations=None if line else list(recommendations)[:1],
                    dedupe_key=key, once=True, session_id=session_id, lang=lang, options=line or None, follow_up=follow_up)
 
 
@@ -660,6 +711,8 @@ def _say_once(script: str, severity: str, key: str, session_id: str, lang: str) 
     """A line that is not an alert lead (no "Cảnh báo." in front), spoken once per episode."""
     try:
         if not _configured(lang) or not _claim(key, True):
+            return
+        if _is_repeat(session_id, lang, severity, script):
             return
         _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang)
     except Exception:
@@ -679,6 +732,16 @@ def clear_alert_history(session_id: str) -> None:
         for key in [key for key in _spoken if key.startswith(f"{session_id}:")]:
             _spoken.pop(key, None)
         _critical_at.pop(session_id, None)
+        for key in [key for key in _recent if key[0] == session_id]:
+            _recent.pop(key, None)
+
+
+def clear_all_alert_history() -> None:
+    """A new demo run: no alert of an earlier run counts as already spoken."""
+    with _lock:
+        _spoken.clear()
+        _critical_at.clear()
+        _recent.clear()
 
 
 class BlazeTTS:
@@ -962,18 +1025,25 @@ def _client_from_env(lang: str = "vi") -> BlazeTTS:
         model=(os.getenv("BLAZE_TTS_MODEL_EN", "").strip() or model) if english else model,
         language=(os.getenv("BLAZE_TTS_LANGUAGE_EN", "en").strip() or "en") if english else (os.getenv("BLAZE_TTS_LANGUAGE", "vi").strip() or "vi"),
         audio_format=os.getenv("BLAZE_AUDIO_FORMAT", "mp3").strip() or "mp3",
-        audio_speed=_audio_speed(),
+        audio_speed=_audio_speed(english),
         base_url=os.getenv("BLAZE_BASE_URL", BLAZE_BASE_URL).strip() or BLAZE_BASE_URL,
         timeout=float(os.getenv("BLAZE_TTS_TIMEOUT_SECONDS", "20")),
     )
 
 
-def _audio_speed() -> float:
-    """Playback speed Blaze renders at (its range is 0.5-1.5); the alerts are read fast: the maximum."""
-    try:
-        return min(1.5, max(0.5, float(os.getenv("BLAZE_AUDIO_SPEED", "1.5"))))
-    except ValueError:
-        return 1.5
+def _audio_speed(english: bool = False) -> float:
+    """Playback speed Blaze renders at (its range is 0.5-1.5). Vietnamese alerts are read fast, the maximum;
+    BLAZE_AUDIO_SPEED_EN sets English on its own (an English voice at the maximum sounded strained), falling back to
+    BLAZE_AUDIO_SPEED. A value that is not a number is ignored."""
+    for name in (("BLAZE_AUDIO_SPEED_EN",) if english else ()) + ("BLAZE_AUDIO_SPEED",):
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            continue
+        try:
+            return min(1.5, max(0.5, float(raw)))
+        except ValueError:
+            return 1.5
+    return 1.5
 
 
 def _write(speech: Speech, severity: str) -> Path:
@@ -1006,16 +1076,48 @@ def _configured(lang: str = "vi") -> bool:
 
 def _recently_critical(session_id: str) -> bool:
     with _lock:
-        return time.monotonic() - _critical_at.get(session_id, float("-inf")) < _REPEAT_SECONDS
+        return time.monotonic() - _critical_at.get(session_id, float("-inf")) < _CRITICAL_HOLD_SECONDS
 
 
 def _claim(key: str, once: bool = False) -> bool:
+    """True when `key` may be spoken now. It is then quiet for `repeat_seconds()` (45 s), and spoken again after that if
+    the alert is still there. With ALERT_REPEAT_SECONDS=0, `once` keys stay quiet for the whole episode."""
     now = time.monotonic()
+    repeat = repeat_seconds()
     with _lock:
         if now < _spoken.get(key, 0):
             return False
-        _spoken[key] = math.inf if once else now + _REPEAT_SECONDS
+        _spoken[key] = now + repeat if repeat > 0 else (math.inf if once else now + _CRITICAL_HOLD_SECONDS)
     return True
+
+
+# What was just queued per session and language: (severity, words, when). A new alert that says nearly the same as one
+# spoken less than `repeat_seconds()` ago is not spoken: a figure that changed by a tenth, or the same advice in the
+# rule's words and then the agent's, is not news.
+_recent: dict[tuple[str, str], deque] = {}
+_WORDS = re.compile(r"[^\W\d_]{3,}")
+
+
+def _signature(script: str) -> frozenset:
+    return frozenset(_WORDS.findall(script.lower()))  # letters only: the numbers never count
+
+
+def _is_repeat(session_id: str | None, lang: str, severity: str, script: str) -> bool:
+    """Whether `script` repeats an alert spoken within the window. Records it when it does not."""
+    repeat = repeat_seconds()
+    if not session_id or repeat <= 0:
+        return False
+    words, now = _signature(script), time.monotonic()
+    with _lock:
+        recent = _recent.setdefault((session_id, normalize(lang)), deque(maxlen=12))
+        while recent and now - recent[0][2] >= repeat:
+            recent.popleft()
+        for seen_severity, seen_words, _ in recent:
+            union = words | seen_words
+            if seen_severity == severity and union and len(words & seen_words) / len(union) >= _SIMILAR:
+                return True
+        recent.append((severity, words, now))
+    return False
 
 
 def _release(key: str) -> None:

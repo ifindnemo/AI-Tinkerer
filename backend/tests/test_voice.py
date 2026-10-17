@@ -562,15 +562,29 @@ def test_the_same_garages_at_slightly_different_distances_are_the_same_alert() -
     assert key != voice.alert_dedupe_key("bmw-m2", "warning", "vi", other)
 
 
-def test_an_alert_is_spoken_once_per_episode_not_every_ninety_seconds(monkeypatch) -> None:
+def test_an_alert_is_quiet_for_45_seconds_then_spoken_again_and_a_normal_reading_ends_the_episode(monkeypatch) -> None:
     voice.clear_alert_history("once-car")
+    now = voice.time.monotonic()
+    clock = {"t": now}
+    monkeypatch.setattr(voice.time, "monotonic", lambda: clock["t"])
     assert voice._claim("once-car:warning:vi", once=True)
-    later = voice.time.monotonic() + 3600
-    monkeypatch.setattr(voice.time, "monotonic", lambda: later)
-    assert not voice._claim("once-car:warning:vi", once=True), "an hour later it is still the same episode"
+    clock["t"] = now + 30
+    assert not voice._claim("once-car:warning:vi", once=True), "30 s after the first: still the same alert"
+    clock["t"] = now + 46
+    assert voice._claim("once-car:warning:vi", once=True), "45 s after the first it is spoken again"
     voice.clear_alert_history("once-car")  # a normal assessment ends the episode
     assert voice._claim("once-car:warning:vi", once=True)
     voice.clear_alert_history("once-car")
+
+
+def test_with_a_repeat_of_zero_an_alert_is_spoken_once_per_episode(monkeypatch) -> None:
+    monkeypatch.setenv("ALERT_REPEAT_SECONDS", "0")
+    voice.clear_alert_history("zero-car")
+    assert voice._claim("zero-car:warning:vi", once=True)
+    later = voice.time.monotonic() + 3600
+    monkeypatch.setattr(voice.time, "monotonic", lambda: later)
+    assert not voice._claim("zero-car:warning:vi", once=True)
+    voice.clear_alert_history("zero-car")
 
 
 def test_after_the_fast_rule_line_only_the_plan_is_added(monkeypatch) -> None:
@@ -684,3 +698,19 @@ def test_a_critical_engine_wins_over_the_driver_and_a_plan_speaks_one_sentence(m
     voice.speak_car_result("brief-plan", "critical", "vi", result, "x", ["Dừng xe."])
     assert queued == ["Cảnh báo nguy hiểm. Động cơ quá nhiệt. Dừng xe.", "Hãy nghỉ trước."]
     voice.clear_alert_history("brief-plan")
+
+
+def test_english_can_be_read_slower_than_vietnamese(monkeypatch) -> None:
+    monkeypatch.setenv("BLAZE_API_TOKEN", "t")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "v")
+    monkeypatch.delenv("BLAZE_AUDIO_SPEED", raising=False)
+    monkeypatch.setenv("BLAZE_AUDIO_SPEED_EN", "1.15")
+    assert voice._client_from_env("en").audio_speed == 1.15
+    assert voice._client_from_env("vi").audio_speed == 1.5, "Vietnamese keeps the fast default"
+    monkeypatch.setenv("BLAZE_AUDIO_SPEED", "1.3")
+    assert voice._client_from_env("vi").audio_speed == 1.3
+    assert voice._client_from_env("en").audio_speed == 1.15, "the English setting wins for English"
+    monkeypatch.setenv("BLAZE_AUDIO_SPEED_EN", "")
+    assert voice._client_from_env("en").audio_speed == 1.3, "blank: falls back to the shared speed"
+    monkeypatch.setenv("BLAZE_AUDIO_SPEED_EN", "9")
+    assert voice._client_from_env("en").audio_speed == 1.5

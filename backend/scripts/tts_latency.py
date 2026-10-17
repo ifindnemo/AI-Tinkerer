@@ -14,7 +14,7 @@ def main(argv=None) -> int:
         print("Refusing paid TTS: set CAR_NEURON_ALLOW_PAID_TTS=1 explicitly to run.")
         return 2
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repeat", type=int, choices=range(1, 4), default=3)
+    parser.add_argument("--repeat", type=int, choices=range(1, 11), default=3, help="requests per line; 4 lines, so at most 40 in all")
     args = parser.parse_args(argv)
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -37,7 +37,7 @@ def main(argv=None) -> int:
         samples = []
         try:
             with _client_from_env(lang) as client:
-                client.creation_retries = 0  # Raw latency, at most 12 creation requests including failures.
+                client.creation_retries = 0  # Raw latency, at most 4 lines x --repeat (default 3, ceiling 10 = 40) creation requests, failures included.
                 for _ in range(args.repeat):
                     started = time.monotonic()
                     client.synthesize(spoken_form(line, lang))
