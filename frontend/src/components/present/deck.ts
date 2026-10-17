@@ -1,8 +1,9 @@
 // The talk timetable: five slides, 7:00 in all. The live demo is the longest slide, as the brief asks.
+// "built" and "hood" carry the two animated diagrams of the intro film (the 0:20 and 0:35 scenes), kept as live slides.
 export const SLIDES = [
-  {id: "built", title: "What I built", seconds: 30},
-  {id: "demo", title: "Live demo", seconds: 180},
-  {id: "hood", title: "Under the hood", seconds: 90},
+  {id: "built", title: "What I built", seconds: 40},
+  {id: "demo", title: "Live demo", seconds: 160},
+  {id: "hood", title: "Under the hood", seconds: 100},
   {id: "challenges", title: "Challenges & learnings", seconds: 90},
   {id: "wrap", title: "Wrap-up", seconds: 30},
 ] as const;
