@@ -333,7 +333,7 @@ def test_announce_speaks_a_warning_once(monkeypatch) -> None:
 
     monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
     monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
-    monkeypatch.setattr(voice, "_speak", lambda script, severity, key, session_id=None, lang="vi": spoken.append((script, severity)))
+    monkeypatch.setattr(voice, "_speak", lambda script, severity, key, session_id=None, lang="vi", *args: spoken.append((script, severity)))
     monkeypatch.setattr(voice, "_pool", lambda: _Inline())
 
     announce_alert("Nhiệt độ nước làm mát cao.", severity="warning", recommendations=["Giảm tải."])

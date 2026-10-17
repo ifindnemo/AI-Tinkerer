@@ -89,7 +89,10 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
 
   const sharing = view.sendError
     ? t("Chưa gửi được cảnh báo · còi trên thiết bị vẫn hoạt động", "Alert not sent · on-device sound still works")
-    : reply || view.sentEvents > 0 ? t("Đã gửi cảnh báo cho agent", "Alert sent to the agent") : t("Theo dõi trên thiết bị · chỉ gửi khi có cảnh báo", "Watching on this device · posts only on alerts");
+    : reply || view.sentEvents > 0 ? driverSeverity === "normal"
+      ? t("Đã gửi trạng thái tài xế cho agent", "Driver state shared with the agent")
+      : t("Đã gửi cảnh báo cho agent", "Alert sent to the agent")
+    : t("Theo dõi trên thiết bị · chỉ gửi khi có cảnh báo", "Watching on this device · posts only on alerts");
   const voiceLine = voiceMuted ? t("Giọng agent đang tắt trong cài đặt", "Agent voice is off in settings")
     : voice.enabled === false ? (voice.lang === "en" ? t("Giọng tiếng Anh chưa cấu hình trên backend (BLAZE_SPEAKER_ID_EN): chỉ hiện chữ", "English voice not configured on the backend (BLAZE_SPEAKER_ID_EN): text only") : t("Giọng nói chưa cấu hình trên backend (Blaze)", "Voice not configured on the backend (Blaze)"))
     : voice.blocked ? t("Trình duyệt chặn phát âm thanh: bấm vào trang một lần", "The browser blocked audio: click the page once")
@@ -187,6 +190,12 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
       /></div>
       {cameraHint && <p className={styles.garageCamHint} role="status" data-testid="garage-camera-hint">{cameraHint}</p>}
 
+      <div className={styles.garageCamActions}>
+        {!active && <button type="button" className={styles.confirm} onClick={() => void startWebcam()} disabled={phase === "starting"} data-testid="garage-camera-start"><Camera size={15} />{phase === "starting" ? t("Đang mở…", "Opening…") : t("Bật camera", "Turn on camera")}</button>}
+        <button type="button" className={styles.scenario} onClick={() => startSimulation("drowsy")} aria-pressed={view.source === "simulated" && view.scenario === "drowsy"} data-testid="garage-camera-sim-drowsy">{t("Mô phỏng: buồn ngủ", "Simulate: drowsy")}</button>
+        <button type="button" className={styles.scenario} onClick={() => startSimulation("attentive")} aria-pressed={view.source === "simulated" && view.scenario === "attentive"} data-testid="garage-camera-sim-attentive">{t("Mô phỏng: tỉnh táo", "Simulate: alert")}</button>
+      </div>
+
       {active ? (
         <>
           {board}
@@ -197,11 +206,6 @@ export default function GarageCamera({vehicleId, vehicle, agentSlot = null, fact
         <div className={styles.garageCamIdle}>
           <p>{t("Bật camera để agent xe biết thêm trạng thái người lái. Video xử lý ngay trên máy, chỉ gửi chỉ số, không gửi hình.", "Turn on the camera so the car agent also knows the driver's state. Video is processed on this device; only measurements are sent, never images.")}</p>
           {phase === "error" && <p className={styles.garageCamError} role="alert" data-testid="garage-camera-error">{errorText[view.error ?? "other"] ?? errorText.other}</p>}
-          <div className={styles.garageCamActions}>
-            <button type="button" className={styles.confirm} onClick={() => void startWebcam()} disabled={phase === "starting"} data-testid="garage-camera-start"><Camera size={15} />{phase === "starting" ? t("Đang mở…", "Opening…") : t("Bật camera", "Turn on camera")}</button>
-            <button type="button" className={styles.scenario} onClick={() => startSimulation("drowsy")} data-testid="garage-camera-sim-drowsy">{t("Mô phỏng: buồn ngủ", "Simulate: drowsy")}</button>
-            <button type="button" className={styles.scenario} onClick={() => startSimulation("attentive")} data-testid="garage-camera-sim-attentive">{t("Mô phỏng: tỉnh táo", "Simulate: alert")}</button>
-          </div>
           <div className={styles.hornRow} data-state={sound ? "on" : "off"} data-testid="garage-camera-sound">
             <span>{sound ? <Bell size={14} aria-hidden="true" /> : <BellOff size={14} aria-hidden="true" />}{sound ? t("Còi camera bật", "Camera horn on") : t("Còi camera tắt", "Camera horn off")}</span>
             <div className={styles.respondActions}>

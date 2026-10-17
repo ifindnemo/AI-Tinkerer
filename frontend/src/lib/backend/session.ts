@@ -7,7 +7,7 @@ import {liveSample} from '../live-telemetry';
 import type {Vehicle} from '../vehicles';
 import type {SessionSnapshot,VehicleSessionAdapter} from '../vehicle-session/types';
 import {initialBackendState,isIncident,isAgentReply,type BatchReply,type Incident} from './contract';
-import {apiFailureMessage,vehicleApi} from './client';
+import {ApiError,apiFailureMessage,vehicleApi} from './client';
 import {audioFocus} from '../agent/audio-focus';
 import {demoHold} from '../demo-hold';
 import {resetBackendState} from '../demo-reset';
@@ -105,7 +105,10 @@ export class BackendVehicleSessionAdapter implements VehicleSessionAdapter {
    const report=this.report(reply);
    this.state={...this.state,result:report,history:report?[report,...this.state.history].slice(0,20):this.state.history};
    this.update({phase:'ready',api:'online',reply,incident,history:[reply,...this.state.backend!.history].slice(0,5)});
-  }catch(error){if(this.running&&!controller.signal.aborted&&generation===this.generation)this.update({phase:'error',api:'offline',error:apiFailureMessage(error)});}
+  }catch(error){if(this.running&&!controller.signal.aborted&&generation===this.generation){
+   if(error instanceof ApiError&&error.status===409)this.update({phase:'collecting',api:'online',error:''});
+   else this.update({phase:'error',api:'offline',error:apiFailureMessage(error)});
+  }}
   finally{if(generation===this.generation){this.busy=false;this.request=null;const next=this.waiting;this.waiting=null;if(next&&this.running)void this.submit(next);}}
  }
  private report(reply:BatchReply):Analysis{

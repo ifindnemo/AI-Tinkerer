@@ -613,6 +613,7 @@ def announce_alert(
     options: str | None = None,
     follow_up: str = "",
     once: bool = False,
+    publish_ok=None,
 ) -> None:
     """Queue TTS for a warning or critical alert. No-op for any other severity, and for a language
     that has no voice configured. The same key is quiet for `repeat_seconds()` (45 s) and so is any alert with nearly the
@@ -624,6 +625,8 @@ def announce_alert(
     try:
         lang = normalize(lang)
         if severity not in ALERT_SEVERITIES or not _configured(lang):
+            return
+        if publish_ok is not None and not publish_ok():
             return
         if severity == "warning" and session_id and _recently_critical(session_id):
             return
@@ -638,7 +641,7 @@ def announce_alert(
         if severity == "critical" and session_id:
             with _lock:
                 _critical_at[session_id] = time.monotonic()
-        _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang)
+        _queue_alert(script, severity, key, session_id, lang, publish_ok)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
 
@@ -714,7 +717,7 @@ def _say_once(script: str, severity: str, key: str, session_id: str, lang: str) 
             return
         if _is_repeat(session_id, lang, severity, script):
             return
-        _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang)
+        _queue_alert(script, severity, key, session_id, lang)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
 
@@ -897,6 +900,14 @@ def speak_line(text: str, *, session_id: str, lang: str = "vi", group: str | Non
     key = group or f"talk:{session_id}:{time.monotonic_ns()}"
     _talk_pool().submit(_queued_speak, script[:_MAX_CHARS], "normal", key, time.monotonic(), session_id, lang, False, publish_ok)
     return True
+
+
+def _queue_alert(script: str, severity: str, key: str, session_id: str | None, lang: str, publish_ok=None) -> None:
+    from situation import epoch
+
+    requested_epoch = epoch()
+    _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang,
+                   True, lambda: epoch() == requested_epoch and (publish_ok is None or publish_ok()))
 
 
 def _queued_speak(script: str, severity: str, key: str, queued_at: float, *args) -> None:

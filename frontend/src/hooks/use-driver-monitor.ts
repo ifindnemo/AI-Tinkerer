@@ -318,7 +318,9 @@ export function useDriverMonitor(options: DriverMonitorOptions = {}) {
     const driverRose = rank[driverSeverity] > rank[state.driverSeverity];
     state.driverSeverity = driverSeverity;
     if (driverRose) state.followUps = 0;
-    if (optionsRef.current.alertsOnly ? driverRose : escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
+    // A new simulated driver must replace the previous driver's backend summary, even when attentive.
+    const newSimulatedDriver = state.source === "simulated" && state.lastSentState === null;
+    if (optionsRef.current.alertsOnly ? driverRose || newSimulatedDriver : escalated || event.state !== state.lastSentState || now - state.lastSend >= SEND_INTERVAL_MS) void send();
     if (state.severity === "critical" && now - state.lastTone >= CRITICAL_REPEAT_MS) playTone("critical", state.lastDecision);
 
     if (changed || severityChanged || hornLifted || now - state.lastUi >= UI_INTERVAL_MS) {

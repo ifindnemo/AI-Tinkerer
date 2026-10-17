@@ -467,6 +467,13 @@ class VehicleAgent:
         raw, trace, engine, fallback = self._model_or_rules(telemetry_context, previous_memory)
         if epoch() != started_epoch:
             raise Superseded("the demo was reset while the agent was running")  # nothing of the old scenario is stored
+        from driver.registry import driver_registry
+
+        current_driver = driver_registry.get(vehicle_id)
+        previous_driver = telemetry_context.get("driver_attention") or {}
+        if any(current_driver.get(key) != previous_driver.get(key)
+               for key in ("status", "state", "attention", "must_stop", "responded", "unanswered")):
+            raise Superseded("the driver changed while the agent was running")
         assessment, safety = self.finalize(raw, telemetry_context, trace, batch_policy(telemetry_context))
         result = self.persist_assessment(
             telemetry_context, assessment, trace, safety, previous_memory
@@ -659,8 +666,18 @@ class VehicleAgent:
             raise LookupError("Incident or pending action not found")
         if pending["status"] != "pending_confirmation":
             raise ValueError("Action was already executed or is no longer pending")
+        if incident["status"] == "closed":
+            raise ValueError("This incident has ended; request a new proposal")
 
         if pending["action_type"] == "book_appointment":
+            from driver.registry import driver_registry
+            from situation import current_situation
+
+            driver = driver_registry.get(incident["vehicle_id"])
+            current = current_situation(incident["vehicle_id"]) or {}
+            if (incident["severity"] == "critical" or current.get("must_stop")
+                    or (driver.get("status") == "live" and (driver.get("must_stop") or driver.get("state") == "drowsy"))):
+                raise ValueError("The current safety assessment does not allow this booking")
             start = datetime.fromisoformat(
                 pending["payload"]["slot"].replace("Z", "+00:00")
             )

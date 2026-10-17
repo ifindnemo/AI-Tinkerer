@@ -91,6 +91,8 @@ def _fetch_catalogue() -> list[dict[str, Any]]:
 
 
 def _all_voices() -> list[dict[str, Any]]:
+    if not os.getenv("BLAZE_API_TOKEN", "").strip():
+        return [{**voice, "language": lang} for lang, items in _FALLBACK.items() for voice in items]
     with _lock:
         fresh = _catalogue["voices"] is not None and time.monotonic() - _catalogue["at"] < _CACHE_SECONDS
         if fresh:

@@ -45,6 +45,20 @@ try {
   const demo = page.getByRole("link", {name: /Open the demo/});
   assert.equal(await demo.getAttribute("href"), "/garage?presenter=1&reset=1");
   assert.equal(await demo.getAttribute("target"), "_blank");
+  // Only the tab handoff is tested here; the garage flow has its own harness.
+  await page.context().route("**/garage?presenter=1&reset=1", route => route.fulfill({contentType: "text/html", body: "<p>Demo tab fixture</p>"}));
+  const popupReady = page.waitForEvent("popup");
+  await demo.click();
+  const popup = await popupReady;
+  await popup.waitForLoadState("domcontentloaded");
+  await popup.close();
+  await page.bringToFront();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => active(page)).toBe("hood");
+  await page.keyboard.press("f");
+  await expect(page.locator("[data-fullscreen=true]")).toHaveCount(1);
+  await page.keyboard.press("f");
+  await expect(page.locator("[data-fullscreen=true]")).toHaveCount(0);
   await page.keyboard.press("t");
   await page.waitForTimeout(2300);
   assert.match(await page.getByRole("timer").innerText(), /0:0[1-3] \/ 7:00/);
@@ -53,6 +67,14 @@ try {
   await page.getByRole("button", {name: /Wrap-up/}).click();
   await expect.poll(() => active(page)).toBe("wrap");
   await page.context().close();
+
+  const reduced = await open({width: 1366, height: 768});
+  await reduced.emulateMedia({reducedMotion: "reduce"});
+  for (const key of ["1", "3"]) {
+    await reduced.keyboard.press(key);
+    await expect.poll(() => reduced.evaluate(() => document.getAnimations().filter(animation => animation.effect?.getTiming().iterations === Infinity).length)).toBe(0);
+  }
+  await reduced.context().close();
 
   // Nothing spills out of the 1920 × 1080 stage, and the code excerpt fits its panel, at the sizes a talk is given on.
   for (const size of [{width: 1920, height: 1080}, {width: 1366, height: 768}, {width: 1280, height: 720}]) {

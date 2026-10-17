@@ -64,6 +64,9 @@ class DriverService:
         return session
 
     def process(self, batch: DriverBatch) -> dict[str, Any]:
+        from situation import epoch
+
+        requested_epoch = epoch()
         vehicle = batch.context.vehicle
         # With an ECU reading, "moving" is measured, not the manual demo assumption.
         moving = vehicle.speed_kmh >= 5 if vehicle else batch.context.vehicle_moving
@@ -106,17 +109,26 @@ class DriverService:
         }
         if guardian:
             reply["guardian"] = guardian.block
+        summary = self._summary(batch, rule, guardian, list(events))
         if batch.context.vehicle_id:
-            self._registry.update(batch.context.vehicle_id, self._summary(batch, rule, guardian, list(events)))
+            self._registry.update(batch.context.vehicle_id, summary)
+
+        def publish_ok():
+            if epoch() != requested_epoch or session.agent_key != context_key:
+                return False
+            if batch.context.vehicle_id:
+                latest_summary = self._registry.get(batch.context.vehicle_id)
+                return latest_summary.get("status") == "live" and latest_summary.get("observed_at") == summary["observed_at"]
+            return True
         if severity in ("warning", "critical"):
             # The garage page plays clips by vehicle id; the camera page by its own session.
             voice_session = batch.context.vehicle_id or batch.session_id
-            self._speak(reply["assessment"], session.future, severity, f"driver:{voice_session}:{episode}:{severity}" + ("" if rule.lang == "vi" else f":{rule.lang}"), voice_session, timeout, rule.lang)
+            self._speak(reply["assessment"], session.future, severity, f"driver:{voice_session}:{episode}:{severity}" + ("" if rule.lang == "vi" else f":{rule.lang}"), voice_session, timeout, rule.lang, publish_ok)
         return reply
 
     @staticmethod
     def _speak(assessment: dict[str, Any], future: Future | None, severity: str, key: str, voice_session: str, timeout: float,
-               lang: str = "vi") -> None:
+               lang: str = "vi", publish_ok=None) -> None:
         """Speak the alert once per episode, in the agent's words when they arrive in time.
 
         With wording already there (or no LLM) it is spoken now. Otherwise the reply of the pending
@@ -127,9 +139,11 @@ class DriverService:
         text, steps = assessment["summary"], assessment["recommendations"]
 
         def say(words: str, worded_by_agent: bool = False) -> None:
+            if publish_ok is not None and not publish_ok():
+                return
             # The agent's sentence already ends with the step; the rule text gets the first step appended.
             announce_alert(words, severity=severity, recommendations=None if worded_by_agent else steps,
-                           dedupe_key=key, session_id=voice_session, lang=lang)
+                           dedupe_key=key, session_id=voice_session, lang=lang, publish_ok=publish_ok)
 
         if assessment["engine"] == "agent" or future is None:
             say(text, assessment["engine"] == "agent")

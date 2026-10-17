@@ -23,7 +23,9 @@ def spoken(monkeypatch, tmp_path):
     monkeypatch.setattr(voice, "_critical_at", {})
     lines = []
 
-    def fake_speak(script, severity, key, session_id=None, lang="vi"):
+    def fake_speak(script, severity, key, session_id=None, lang="vi", remember=True, publish_ok=None):
+        if publish_ok is not None and not publish_ok():
+            return
         lines.append((script, session_id))
         path = tmp_path / f"{len(lines)}.mp3"
         path.write_bytes(b"ID3fake")

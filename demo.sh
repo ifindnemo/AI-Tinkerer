@@ -44,6 +44,7 @@ port_busy "$BACKEND_PORT" && die "Port $BACKEND_PORT is already in use."
 say "Python $("$VENV/bin/python" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'), Node $(node --version)"
 if (( RULES )); then
   export AGENT_MODE=rules EXTERNAL_TOOLS=off
+  export BLAZE_API_TOKEN='' BLAZE_SPEAKER_ID='' BLAZE_SPEAKER_ID_EN=''
   warn "Rules mode: no LLM, no LocationIQ. Answers are labelled 'Đánh giá theo luật'."
 else
   if env_set OPENROUTER_API_KEY; then

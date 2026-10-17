@@ -37,6 +37,8 @@ def cached(key: tuple, function: Callable[[], Any]) -> Any:
         if hit and now - hit[0] < ttl:
             return copy.deepcopy(hit[1])
     result = function()
+    if isinstance(result, dict) and (result.get("success") is False or result.get("error")):
+        return result
     with _lock:
         if len(_entries) >= _MAX_ENTRIES:
             _entries.pop(min(_entries, key=lambda k: _entries[k][0]))
