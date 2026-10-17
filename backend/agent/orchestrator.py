@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
@@ -36,6 +37,16 @@ from store import store
 
 log = logging.getLogger("car_neuron.agent")
 _batch_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="batch-agent")
+
+
+def _remember_situation(vehicle_id: str, assessment: dict[str, Any], trace: list[dict[str, Any]], plan: dict[str, Any] | None) -> None:
+    """The talk path reads this snapshot. A failure here does not change the assessment."""
+    try:
+        from situation import remember_vehicle_situation
+
+        remember_vehicle_situation(vehicle_id, assessment, trace, plan)
+    except Exception:
+        log.warning("could not remember the latest situation", exc_info=True)
 
 SEVERITY_RANK = {
     Severity.NORMAL: 0,
@@ -118,15 +129,31 @@ class VehicleAgent:
             "hard_safety_guardrail": safety.model_dump(mode="json"),
             "short_term_memory": short_term_memory,
         }
+        agent = self._agent_for(telemetry_context.get("lang", "vi"))
+        started = time.monotonic()
         result = Runner.run_sync(
-            self._agent_for(telemetry_context.get("lang", "vi")),
+            agent,
             json.dumps(for_model(input_data), ensure_ascii=False),
             context=context,
             max_turns=6,
         )
+        self._log_run(agent, result, context, (time.monotonic() - started) * 1000)
         if not isinstance(result.final_output, VehicleAssessment):
             raise RuntimeError("OpenAI agent returned an invalid vehicle assessment")
         return result.final_output, context.trace
+
+    @staticmethod
+    def _log_run(agent, result, context: VehicleToolContext, total_ms: float) -> None:
+        """One line per run: where the 10-20 s go. Tools run side by side, so their times do not add up to a share
+        of the total; the model calls are what is left. Never raises."""
+        try:
+            usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
+            tokens = f" input_tokens={usage.input_tokens} output_tokens={usage.output_tokens}" if usage else ""
+            log.info("agent run total_ms=%.0f llm_calls=%d tools=%s instructions_chars=%d%s",
+                     total_ms, len(getattr(result, "raw_responses", []) or []),
+                     [f"{name}:{ms:.0f}" for name, ms in context.timings], len(str(agent.instructions or "")), tokens)
+        except Exception:
+            log.debug("could not log the agent run", exc_info=True)
 
     def finalize(
         self,
@@ -478,6 +505,7 @@ class VehicleAgent:
                 if previous_memory
                 else None
             )
+            _remember_situation(vehicle_id, assessment_data, trace, None)
             return result
 
         existing = store.get_open_incident(vehicle_id)
@@ -511,6 +539,7 @@ class VehicleAgent:
         )
         # Car and driver together decide what to do now (and whether an appointment may be proposed).
         result["plan"] = decide_plan(assessment.severity.value, telemetry_context, trace, normalize(telemetry_context.get("lang")))
+        _remember_situation(vehicle_id, assessment_data, trace, result.get("plan"))
         if result["plan"] and not result["plan"]["booking"]:
             telemetry_context["plan_forbids_booking"] = True
         result.update(VehicleAgent._booking_state(incident, assessment, trace, telemetry_context))

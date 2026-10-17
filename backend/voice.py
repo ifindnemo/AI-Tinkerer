@@ -11,8 +11,8 @@ Blaze batch TTS (https://api.blaze.vn, documented June 2026):
     GET /v1/tts/{id}/download   audio bytes
 
 `announce_alert` is what the vehicle agent and the driver agent call after a
-warning or critical assessment. It returns immediately. Synthesis runs on one
-background worker, and a failure never changes the assessment.
+warning or critical assessment. It returns immediately. Separate alert and talk
+workers synthesize ordered parts concurrently; a failure never changes the assessment.
 
 The alert is spoken in the language it is written in ("vi" or "en"). Each language has
 its own Blaze voice: BLAZE_SPEAKER_ID (Vietnamese) and BLAZE_SPEAKER_ID_EN (English, default Helen,
@@ -22,11 +22,13 @@ A language without a voice is not spoken at all: an English sentence is never re
 
 import hashlib
 import itertools
+import json
 import logging
 import math
 import os
 import re
 import threading
+import tempfile
 import time
 from collections import deque
 from collections.abc import Sequence
@@ -34,12 +36,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from weakref import WeakValueDictionary
 from urllib.parse import urljoin
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
+import http_pool
 from lang import normalize
 from voice_options import selected
 
@@ -55,8 +59,8 @@ _URL_KEYS = ("audio_url", "download_url", "file_url", "audio_link", "url")
 _REPEAT_SECONDS = 90.0
 _MAX_CHARS = 500
 _FIRST_PART_CHARS = 200  # Start speaking the diagnosis while later garage details are still synthesizing.
-_SPOKEN_CHARS = 260  # a spoken alert stays short: the first sentences, then one step
-_BODY_WITH_OPTIONS = 160
+_SPOKEN_CHARS = 140  # a spoken alert is the level, one short line and one step; the rest stays on screen
+_BODY_WITH_OPTIONS = 100
 
 _lock = threading.Lock()
 _spoken: dict[str, float] = {}
@@ -69,6 +73,16 @@ _clip_seq = itertools.count(1)
 _missing_logged = False
 _missing_logged_en = False
 _executor: ThreadPoolExecutor | None = None
+_job_clock = threading.local()
+_ALERT_WORKERS = 2
+_TALK_WORKERS = 2
+_PART_WORKERS = 3
+_talk_executor: ThreadPoolExecutor | None = None
+_part_executors: dict[bool, ThreadPoolExecutor] = {}
+_requests = threading.BoundedSemaphore(4)
+_cache_lock = threading.RLock()
+_cache_keys: WeakValueDictionary = WeakValueDictionary()
+_cache_active: dict[Path, int] = {}
 
 
 class BlazeError(RuntimeError):
@@ -81,6 +95,175 @@ class Speech:
     audio: bytes
     content_type: str
     job_id: str
+
+
+@dataclass
+class _Audio:
+    speech: Speech
+    path: Path
+    hit: bool
+    synth_ms: float
+    pinned: bool = False
+
+    def release(self) -> None:
+        with _cache_lock:
+            if not self.pinned:
+                return
+            self.pinned = False
+            left = _cache_active[self.path] - 1
+            if left:
+                _cache_active[self.path] = left
+            else:
+                _cache_active.pop(self.path)
+
+
+class _PinnedFileResponse(FileResponse):
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with _cache_lock:
+                path = Path(self.path)
+                left = _cache_active.get(path, 1) - 1
+                if left:
+                    _cache_active[path] = left
+                else:
+                    _cache_active.pop(path, None)
+
+
+def _voice_dir() -> Path:
+    return Path(os.getenv("BLAZE_VOICE_DIR", Path(__file__).resolve().parent / "var" / "voice"))
+
+
+def _cache_dir() -> Path:
+    """Next to the voice folder, not inside it: ./demo.sh clears `var/voice` at every start and the cache must
+    survive that (BLAZE_VOICE_CACHE_DIR overrides)."""
+    configured = os.getenv("BLAZE_VOICE_CACHE_DIR", "").strip()
+    if configured:
+        return Path(configured)
+    voice = _voice_dir()
+    return voice.with_name(f"{voice.name}-cache")
+
+
+def _cache_key(client, text: str) -> str | None:
+    fields = ("speaker_id", "model", "language", "audio_speed", "audio_format")
+    if os.getenv("BLAZE_VOICE_CACHE", "1") == "0" or not all(hasattr(client, field) for field in fields):
+        return None
+    body = [text, *(getattr(client, field) for field in fields)]
+    return hashlib.sha256(json.dumps(body, ensure_ascii=False).encode()).hexdigest()
+
+
+def _cache_limits() -> tuple[int, int]:
+    def positive(name, default):
+        try:
+            return max(0, int(os.getenv(name, str(default))))
+        except ValueError:
+            return default
+    return positive("BLAZE_VOICE_CACHE_MAX_FILES", 200), positive("BLAZE_VOICE_CACHE_MAX_MB", 100) * 1024 * 1024
+
+
+def _has_audio_magic(data: bytes) -> bool:
+    """A container header, or an MP3 frame sync (0xFF then three set bits: MPEG 1, 2 and 2.5, with or without CRC)."""
+    return data.startswith((b"ID3", b"RIFF", b"OggS", b"fLaC")) or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0)
+
+
+def _valid_cache_audio(data: bytes, content_type: str) -> bool:
+    if len(data) < 512:
+        return False
+    magic = _has_audio_magic(data)
+    if not (magic and content_type.lower().startswith(("audio/", "application/octet-stream"))):
+        # Never silent: a cache that quietly never stores would look like it works until the demo.
+        log.info("voice cache skipped: %s, %d bytes, starts %s", content_type or "no content type", len(data), data[:4].hex())
+        return False
+    return True
+
+
+def _prune_cache(directory: Path, reserve_files=0, reserve_bytes=0) -> bool:
+    """Called under cache lock. Registered and in-flight clips always win over the configured bound."""
+    maximum, budget = _cache_limits()
+    with _lock:
+        pinned = {Path(clip["_path"]) for clip in _clips} | set(_cache_active)
+    for orphan in directory.glob("*.audio"):
+        if orphan not in pinned and not orphan.with_suffix(".json").exists():
+            orphan.unlink(missing_ok=True)
+    entries = []
+    for meta in directory.glob("*.json"):
+        path = meta.with_suffix(".audio")
+        try:
+            entries.append((path.stat().st_mtime_ns, path, meta, path.stat().st_size + meta.stat().st_size))
+        except FileNotFoundError:
+            meta.unlink(missing_ok=True)
+    size = sum(row[3] for row in entries) + reserve_bytes
+    count = len(entries) + reserve_files
+    for _, path, meta, length in sorted(entries):
+        if count <= maximum and size <= budget:
+            break
+        if path in pinned:
+            continue
+        path.unlink(missing_ok=True)
+        meta.unlink(missing_ok=True)
+        count -= 1
+        size -= length
+    return count <= maximum and size <= budget
+
+
+def _atomic_bytes(path: Path, data: bytes) -> None:
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".tts-", delete=False) as file:
+        temp = Path(file.name)
+        try:
+            file.write(data)
+            file.flush()
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def _prepare_audio(client, text: str, severity: str, publish_ok=None) -> _Audio:
+    key = _cache_key(client, text)
+    if key is None:
+        speech, elapsed = _synthesize(client, text, publish_ok)
+        return _Audio(speech, _write(speech, severity), False, elapsed)
+    with _cache_lock:
+        key_lock = _cache_keys.setdefault(key, threading.Lock())
+    # Per-key single flight; network work never holds the shared file-index lock.
+    with key_lock:
+        directory = _cache_dir()
+        path, meta = directory / f"{key}.audio", directory / f"{key}.json"
+        with _cache_lock:
+            try:
+                info = json.loads(meta.read_text())
+                data = path.read_bytes()
+                if not _valid_cache_audio(data, info["content_type"]) or hashlib.sha256(data).hexdigest() != info["sha256"]:
+                    raise ValueError("invalid cached audio")
+                os.utime(path, None)
+                _cache_active[path] = _cache_active.get(path, 0) + 1
+                return _Audio(Speech(text, data, info["content_type"], "cache"), path, True, 0, True)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        speech, elapsed = _synthesize(client, text, publish_ok)
+        if _valid_cache_audio(speech.audio, speech.content_type):
+            try:
+                with _cache_lock:
+                    directory.mkdir(parents=True, exist_ok=True)
+                    # A corrupt entry may be replaced only when no registered clip is using it.
+                    with _lock:
+                        pinned = path in _cache_active or any(Path(c["_path"]) == path for c in _clips)
+                    if not pinned:
+                        path.unlink(missing_ok=True)
+                        meta.unlink(missing_ok=True)
+                        info = json.dumps({"content_type": speech.content_type, "sha256": hashlib.sha256(speech.audio).hexdigest()}).encode()
+                        if _prune_cache(directory, 1, len(speech.audio) + len(info)):
+                            _atomic_bytes(path, speech.audio)
+                            _atomic_bytes(meta, info)  # Commit marker, after complete audio.
+                            _cache_active[path] = _cache_active.get(path, 0) + 1
+                            return _Audio(speech, path, False, elapsed, True)
+            except OSError:
+                log.warning("voice cache write unavailable; using an uncached clip")
+        return _Audio(speech, _write(speech, severity), False, elapsed)
 
 
 def alert_script(
@@ -96,9 +279,13 @@ def alert_script(
     distances, a familiar garage). It is spoken after the safety step.
     """
     choice = " ".join((options or "").split()).strip()
-    body = _first_sentences(" ".join(text.split()).strip(), _BODY_WITH_OPTIONS if choice else _SPOKEN_CHARS)
-    if not body:
-        raise ValueError("alert text is empty")
+    body = _brief(text, lang, _BODY_WITH_OPTIONS if choice else _SPOKEN_CHARS)
+    step_line = _brief_step(recommendations[0]) if recommendations else ""
+    if not body and not step_line:
+        if not " ".join(str(text or "").split()):
+            raise ValueError("alert text is empty")
+        # Everything was a figure: still speak, never stay silent on a warning.
+        body = "See the screen for details." if normalize(lang) == "en" else "Xem chi tiết trên màn hình."
     if normalize(lang) == "en":
         lead = "Critical warning." if severity == "critical" else "Warning."
         existing = re.match(r"^(?:critical warning|warning|alert|caution)\b[^\w]*", body, re.IGNORECASE)
@@ -109,13 +296,11 @@ def alert_script(
         existing = re.match(r"^cảnh báo(?: nguy hiểm)?\b[^\w]*", body, re.IGNORECASE)
         correct = "cảnh báo nguy hiểm" if severity == "critical" else "cảnh báo."
         spoken = body if existing and body.lower().startswith(correct) else f"{lead} {body[existing.end():] if existing else body}"
-    if recommendations:
-        step = " ".join(str(recommendations[0]).split()).strip().rstrip(".")
-        if step and step.lower() not in spoken.lower():
-            spoken = f"{spoken.rstrip('. ')}. {step}."
+    if step_line and step_line.lower() not in spoken.lower():
+        spoken = f"{spoken.rstrip('. ')}. {step_line}."
     if choice and choice.lower() not in spoken.lower():
         spoken = f"{spoken.rstrip('. ')}. {choice}"
-    return spoken
+    return spoken.strip()
 
 
 def tool_options_line(trace: Sequence[dict] | None, lang: str = "vi", *, hold: bool = False, rest: bool = False) -> str:
@@ -277,7 +462,7 @@ def spoken_form(text: str, lang: str = "vi") -> str:
 def follow_up_for(result: dict[str, Any], lang: str = "vi") -> str:
     """One short sentence after the alert: the booking the agent proposes, which the driver must confirm on
     screen. Nothing for a critical alert (stopping safely comes first) or without a proposal; the nearby
-    garages are spoken by `tool_options_line`."""
+    garages are on screen, and the plan names the nearest one."""
     try:
         if (result.get("assessment") or {}).get("severity") != "warning":
             return ""
@@ -305,6 +490,53 @@ def _first_sentences(text: str, limit: int) -> str:
         if len(out) >= limit:
             break
     return out
+
+
+_DIGIT = re.compile(r"\d")
+_RULE_PREFIX = re.compile(r"^(Theo các luật kiểm tra|According to the rules)[:,]\s*", re.IGNORECASE)
+# A figure ("106.5°C", "65 km/h") changes on every batch, so a line that carries one is never the same twice:
+# it cannot be cached and it is longer to say. The voice names the situation; the numbers stay on screen.
+_HEADLINES = (
+    (re.compile(r"ngưỡng nguy hiểm|quá nhiệt nghiêm trọng|critical threshold|severe engine overheating", re.IGNORECASE),
+     "Động cơ quá nhiệt.", "Engine overheating."),
+    (re.compile(r"mất tỉnh táo|buồn ngủ|low alertness|drows", re.IGNORECASE),
+     "Bạn có dấu hiệu mất tỉnh táo.", "You show signs of low alertness."),
+    (re.compile(r"vượt ngưỡng cảnh báo|mức cảnh báo|nhiệt độ (?:động cơ )?đang tăng|above the warning threshold|warning level|temperature is rising", re.IGNORECASE),
+     "Động cơ đang nóng.", "The engine is running hot."),
+)
+
+
+def _without_figures(sentence: str) -> str:
+    """The clauses of one sentence before its first number, for text no headline recognises. Clauses after
+    a number are dropped too: "..., so check it soon" read alone is a fragment."""
+    kept = []
+    for clause in re.split(r"(?<=[,;:])\s+|\s+[-–—]\s+", _ASIDE.sub("", sentence)):
+        if _DIGIT.search(clause):
+            break
+        kept.append(clause)
+    return " ".join(kept).strip(" ,;:")
+
+
+def _brief(text: str, lang: str, limit: int) -> str:
+    """What the voice says of a diagnosis: whole sentences up to `limit`, and no figures.
+
+    Text without a number is already stable and is only cut at a sentence end. Text with a number becomes a
+    fixed headline when it is one of our rule sentences, else its number-free clauses (maybe nothing, and
+    then the level and the step are the whole alert)."""
+    clean = _RULE_PREFIX.sub("", " ".join(str(text or "").split())).strip()
+    if _DIGIT.search(clean):
+        for pattern, vi, en in _HEADLINES:
+            if pattern.search(clean):
+                return en if normalize(lang) == "en" else vi
+        kept = (_without_figures(sentence) for sentence in re.split(r"(?<=[.!?])\s+", clean))
+        clean = " ".join(sentence if sentence[-1:] in ".!?" else f"{sentence}." for sentence in kept if sentence)
+    return _first_sentences(clean[:1].upper() + clean[1:], limit)
+
+
+def _brief_step(step: str) -> str:
+    """One step, up to its first semicolon: the "if it keeps rising..." part stays on screen."""
+    one = " ".join(str(step or "").split())
+    return re.split(r";\s+|(?<=[.!?])\s+", one, maxsplit=1)[0].strip().rstrip(".")
 
 
 def _tts_parts(script: str) -> list[str]:
@@ -368,7 +600,7 @@ def announce_alert(
         if severity == "critical" and session_id:
             with _lock:
                 _critical_at[session_id] = time.monotonic()
-        _pool().submit(_speak, script, severity, key, session_id, lang)
+        _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
 
@@ -379,14 +611,18 @@ def _first_sentence(text: str) -> str:
     return _first_sentences(re.split(r"(?<=[.!?])\s+", clean, maxsplit=1)[0], 170) if clean else ""
 
 
+def fast_alert_line(diagnosis: str, lang: str = "vi") -> str:
+    """Pure rule diagnosis body, first sentence and no figures; announce_alert adds the severity lead and step."""
+    first = re.split(r"(?<=[.!?])\s+", _RULE_PREFIX.sub("", " ".join(str(diagnosis or "").split())).strip(), maxsplit=1)[0]
+    return _brief(first, lang, _SPOKEN_CHARS)
+
+
 def speak_car_fast(session_id: str, severity: str, lang: str, diagnosis: str, step: str | None) -> None:
     """Rules first: as soon as a batch arrives and the rules see a warning or critical car, a short line
-    (level, one sentence, the mandatory step) is spoken without waiting for the LLM. Once per episode."""
-    if severity not in ALERT_SEVERITIES:
-        return
-    words = re.sub(r"^(Theo các luật kiểm tra|According to the rules)[:,]\s*", "", " ".join(str(diagnosis or "").split()))
-    words = words[:1].upper() + words[1:]
-    announce_alert(_first_sentence(words), severity=severity, recommendations=[step] if step else None,
+    (level, what is wrong, the mandatory step) is spoken without waiting for the LLM. Once per episode."""
+    if severity not in ALERT_SEVERITIES or _claimed(f"{session_id}:{severity}:{normalize(lang)}:lead"):
+        return  # the agent already announced this level (it can be faster than the rules)
+    announce_alert(fast_alert_line(diagnosis, lang), severity=severity, recommendations=[step] if step else None,
                    dedupe_key=f"{session_id}:{severity}:{normalize(lang)}:fast", once=True, session_id=session_id, lang=lang)
 
 
@@ -398,18 +634,10 @@ def speak_car_result(session_id: str, severity: str, lang: str, result: dict[str
     lang = normalize(lang)
     plan = result.get("plan") or {}
     follow_up = follow_up_for(result, lang)
-    line = plan.get("spoken") or ""
-    choices = tool_options_line(
-        result.get("tool_trace"), lang,
-        hold=severity == "critical" or plan.get("code") in ("stop_and_get_help", "stop_rest_and_get_help"),
-        rest=plan.get("code") in ("rest_then_decide", "stop_rest_and_get_help"),
-    )
-    if choices:
-        # Keep the plan's safety steps, then read the tool list instead of repeating
-        # the nearest garage already named in plan.spoken.
-        steps = plan.get("steps") or list(recommendations)[:1]
-        line = " ".join([*(str(step).strip() for step in steps if step), choices])
-    elif plan.get("code") == "garage_when_convenient" and follow_up:
+    # Only the first sentence of the plan ("Hãy nghỉ trước.", "Garage gần nhất là ..."): a longer plan was
+    # still being read when the next alert arrived. The whole plan, with every garage, stays on screen.
+    line = _first_sentence(plan.get("spoken") or "")
+    if plan.get("code") == "garage_when_convenient" and follow_up:
         line = ""  # the booking sentence already names the garage
     base = f"{session_id}:{severity}:{lang}"
     key = f"{base}:plan:{plan.get('code') or '-'}" + (":booking" if follow_up else "")
@@ -433,7 +661,7 @@ def _say_once(script: str, severity: str, key: str, session_id: str, lang: str) 
     try:
         if not _configured(lang) or not _claim(key, True):
             return
-        _pool().submit(_speak, script, severity, key, session_id, lang)
+        _pool().submit(_queued_speak, script, severity, key, time.monotonic(), session_id, lang)
     except Exception:
         log.warning("could not queue Blaze TTS", exc_info=True)
 
@@ -478,13 +706,14 @@ class BlazeTTS:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.poll_interval = poll_interval
+        self.creation_retries = 1
         self._owns_client = client is None
-        self._client = client or httpx.Client(timeout=min(15.0, timeout))
+        self._client = client or http_pool.shared("blaze-tts")  # one keep-alive connection pool, see http_pool.py
+        self._request_timeout = min(15.0, timeout)
         self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        pass  # the client is shared (or the caller's): it outlives one speech
 
     def __enter__(self) -> "BlazeTTS":
         return self
@@ -493,18 +722,30 @@ class BlazeTTS:
         self.close()
 
     def synthesize(self, text: str) -> Speech:
-        response = self._client.post(
-            f"{self.base_url}/v1/tts",
-            headers=self._headers,
-            json={
-                "query": text,
-                "language": self.language,
-                "speaker_id": self.speaker_id,
-                "model": self.model,
-                "audio_format": self.audio_format,
-                **({"audio_speed": self.audio_speed} if self.audio_speed is not None else {}),
-            },
-        )
+        for attempt in range(self.creation_retries + 1):
+            try:
+                response = self._client.post(
+                    f"{self.base_url}/v1/tts",
+                    headers=self._headers,
+                    timeout=self._request_timeout,
+                    json={
+                        "query": text,
+                        "language": self.language,
+                        "speaker_id": self.speaker_id,
+                        "model": self.model,
+                        "audio_format": self.audio_format,
+                        **({"audio_speed": self.audio_speed} if self.audio_speed is not None else {}),
+                    },
+                )
+            except (httpx.ConnectTimeout, httpx.ConnectError):  # a read timeout may already have created the job
+                if attempt >= self.creation_retries:
+                    raise
+            else:
+                payload = _json_or_none(response) or {}
+                # Even an unusual error response with a job ID must never create a second job.
+                if response.status_code not in (429, 502, 503, 504) or _find(payload, _ID_KEYS) or attempt >= self.creation_retries:
+                    break
+            time.sleep(0.4)
         _raise_for_status(response)
         payload = _json_or_none(response) or {}
         job_id = _find(payload, _ID_KEYS) or ""
@@ -573,40 +814,140 @@ class BlazeTTS:
     def _get(self, url: str) -> httpx.Response:
         absolute = url if url.startswith("http") else urljoin(self.base_url + "/", url.lstrip("/"))
         headers = self._headers if absolute.startswith(self.base_url) else {}
-        return self._client.get(absolute, headers=headers)
+        return self._client.get(absolute, headers=headers, timeout=self._request_timeout)
 
 
-def speak_line(text: str, *, session_id: str, lang: str = "vi") -> bool:
+def speak_line(text: str, *, session_id: str, lang: str = "vi", group: str | None = None, publish_ok=None) -> bool:
     """Queue one conversational line in the driver's language. The caller stores the script.
 
     Returns whether a clip was queued. A missing voice is text-only, same as alerts.
+    `publish_ok` is checked before synthesis and again before the clip is published, so a
+    superseded turn does not become a clip. It cannot stop a provider call already in flight.
     """
     lang = normalize(lang)
     script = " ".join(text.split()).strip()
     if not script or not _configured(lang):
         return False
+    if publish_ok is not None and not publish_ok():
+        return False
     # A fresh key every time: the driver may ask the same thing twice and should hear it twice.
-    _pool().submit(_speak, script[:_MAX_CHARS], "normal", f"talk:{session_id}:{time.monotonic_ns()}", session_id, lang, False)
+    key = group or f"talk:{session_id}:{time.monotonic_ns()}"
+    _talk_pool().submit(_queued_speak, script[:_MAX_CHARS], "normal", key, time.monotonic(), session_id, lang, False, publish_ok)
     return True
 
 
-def _speak(script: str, severity: str, key: str, session_id: str | None = None, lang: str = "vi", remember: bool = True) -> None:
+def _queued_speak(script: str, severity: str, key: str, queued_at: float, *args) -> None:
+    _job_clock.queued_at = queued_at
     try:
-        with _client_from_env(lang) as client:
-            for part in _tts_parts(script):
-                speech = client.synthesize(spoken_form(part, lang))
-                path = _write(speech, severity)
-                _register(session_id, severity, part, path, speech.content_type, lang, group=key)
-                log.info("spoke %s alert (%s bytes) %s", severity, len(speech.audio), path)
-    except Exception:
-        log.warning("Blaze TTS failed for a %s alert", severity, exc_info=True)
+        _speak(script, severity, key, *args)
+    finally:
+        del _job_clock.queued_at
+
+
+class _SpeechCancelled(Exception):
+    pass
+
+
+def _synthesize(client, text: str, publish_ok=None) -> tuple[Speech, float]:
+    while True:
+        if publish_ok is not None and not publish_ok():
+            raise _SpeechCancelled()
+        if _requests.acquire(timeout=0.05):
+            break
+    try:
+        if publish_ok is not None and not publish_ok():
+            raise _SpeechCancelled()
+        started = time.monotonic()
+        speech = client.synthesize(text)
+        return speech, (time.monotonic() - started) * 1000
+    finally:
+        _requests.release()
+
+
+def _speak(script: str, severity: str, key: str, session_id: str | None = None, lang: str = "vi", remember: bool = True, publish_ok=None) -> None:
+    started = time.monotonic()
+    queue_ms = max(0, (started - getattr(_job_clock, "queued_at", started)) * 1000)
+    synth_ms, cache_hits = [], []
+    parts = _tts_parts(script)
+    futures = []
+    manager = None
+    cancelled = threading.Event()
+    try:
+        if publish_ok is not None and not publish_ok():
+            return
+        manager = _client_from_env(lang)
+        client = manager.__enter__()
+        pool = _part_pool(severity == "normal")
+
+        def valid():
+            return not cancelled.is_set() and (publish_ok is None or publish_ok())
+
+        def prepare(index):
+            if not valid():
+                return None
+            audio = _prepare_audio(client, spoken_form(parts[index], lang), severity, valid)
+            if not valid():
+                audio.release()
+                return None
+            return audio
+
+        for index in range(min(_PART_WORKERS, len(parts))):
+            futures.append(pool.submit(prepare, index))
+        for index, part in enumerate(parts):
+            audio = futures[index].result()
+            if audio is None:
+                return
+            try:
+                synth_ms.append(round(audio.synth_ms, 1))
+                cache_hits.append(audio.hit)
+                if publish_ok is not None and not publish_ok():
+                    return
+                _register(session_id, severity, part, audio.path, audio.speech.content_type, lang,
+                          group=key, part_index=index, part_count=len(parts),
+                          timings={"queue_wait_ms": queue_ms, "synth_ms": audio.synth_ms})
+            finally:
+                audio.release()
+            next_index = index + _PART_WORKERS
+            if next_index < len(parts):
+                futures.append(pool.submit(prepare, next_index))
+    except _SpeechCancelled:
+        return
+    except Exception as error:
+        log.warning("Blaze TTS failed for a %s alert (%s)", severity, type(error).__name__)
         _release(key)
         return
+    finally:
+        cancelled.set()
+        # Do not close a shared HTTP client while an obsolete part is still using it.
+        # Its last future closes it; every unused result releases its temporary cache lease.
+        def discard(future):
+            if not future.cancelled() and future.exception() is None:
+                audio = future.result()
+                if audio is not None:
+                    audio.release()
+        remaining = [len(futures)]
+        closing = threading.Lock()
+        def close(future=None):
+            with closing:
+                remaining[0] -= 1
+                if remaining[0] <= 0 and manager is not None:
+                    try:
+                        manager.__exit__(None, None, None)
+                    except Exception:
+                        log.warning("could not close TTS client")
+        for future in futures:
+            future.cancel()
+            future.add_done_callback(discard)
+            future.add_done_callback(close)
+        if not futures:
+            close()
+        log.info("voice job key=%s lang=%s parts=%s queue_wait_ms=%.1f synth_ms=%s total_ms=%.1f cache=%s",
+                 hashlib.sha256(key.encode()).hexdigest()[:8], normalize(lang), len(parts), queue_ms, synth_ms,
+                 queue_ms + (time.monotonic() - started) * 1000, "hit" if cache_hits and all(cache_hits) else "mixed" if any(cache_hits) else "miss")
     if not remember or not session_id:
         return
     try:
         from stt import append_turn
-
         append_turn(session_id, role="agent", text=script, source="tts", severity=severity)
     except Exception:
         log.warning("could not store the spoken turn", exc_info=True)
@@ -636,11 +977,11 @@ def _audio_speed() -> float:
 
 
 def _write(speech: Speech, severity: str) -> Path:
-    directory = Path(os.getenv("BLAZE_VOICE_DIR", Path(__file__).resolve().parent / "var" / "voice"))
+    directory = _voice_dir()
     directory.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%S")
     job = "".join(ch for ch in speech.job_id if ch.isalnum() or ch in "-_")[:40] or "audio"
-    path = directory / f"{severity}-{stamp}-{job}.{_extension(speech.content_type)}"
+    path = directory / f"{severity}-{stamp}-{time.monotonic_ns()}-{job}.{_extension(speech.content_type)}"
     path.write_bytes(speech.audio)
     return path
 
@@ -686,8 +1027,24 @@ def _pool() -> ThreadPoolExecutor:
     global _executor
     with _lock:
         if _executor is None:
-            _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="blaze-tts")
+            _executor = ThreadPoolExecutor(max_workers=_ALERT_WORKERS, thread_name_prefix="blaze-alert")
         return _executor
+
+
+def _talk_pool() -> ThreadPoolExecutor:
+    global _talk_executor
+    with _lock:
+        if _talk_executor is None:
+            _talk_executor = ThreadPoolExecutor(max_workers=_TALK_WORKERS, thread_name_prefix="blaze-talk")
+        return _talk_executor
+
+
+def _part_pool(talk: bool) -> ThreadPoolExecutor:
+    with _lock:
+        if talk not in _part_executors:
+            # Three talk synthesis workers leave capacity for an alert even during a long reply.
+            _part_executors[talk] = ThreadPoolExecutor(max_workers=_PART_WORKERS, thread_name_prefix="tts-talk-part" if talk else "tts-alert-part")
+        return _part_executors[talk]
 
 
 def _raise_for_status(response: httpx.Response) -> None:
@@ -753,8 +1110,7 @@ def _looks_like_audio(response: httpx.Response) -> bool:
     content_type = response.headers.get("content-type", "")
     if content_type.startswith("audio/") or content_type.startswith("application/octet-stream"):
         return True
-    data = response.content[:12]
-    return data.startswith((b"ID3", b"RIFF", b"OggS", b"fLaC")) or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")
+    return _has_audio_magic(response.content[:12])
 
 
 def _content_type(audio_format: str) -> str:
@@ -778,7 +1134,7 @@ def enabled(lang: str = "vi") -> bool:
     return bool(os.getenv("BLAZE_API_TOKEN", "").strip() and selected(lang))
 
 
-def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str, lang: str = "vi", *, group: str | None = None) -> dict[str, Any]:
+def _register(session_id: str | None, severity: str, text: str, path: Path, content_type: str, lang: str = "vi", *, group: str | None = None, part_index: int = 0, part_count: int = 1, timings: dict[str, float] | None = None) -> dict[str, Any]:
     clip = {
         "id": f"clip_{next(_clip_seq)}",
         "session": session_id or "",
@@ -786,11 +1142,14 @@ def _register(session_id: str | None, severity: str, text: str, path: Path, cont
         "severity": severity,
         "text": text,
         "group": group,
+        "part_index": part_index,
+        "part_count": part_count,
         "content_type": content_type,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "_path": path,
     }
     clip["seq"] = int(clip["id"].split("_")[1])
+    clip.update({f"_{key}": round(value, 1) for key, value in (timings or {}).items()})
     with _lock:
         _clips.append(clip)
     return clip
@@ -821,8 +1180,11 @@ def list_clips(session: str = Query(pattern=_SESSION), after: int = Query(0, ge=
 
 @router.get("/voice/clips/{clip_id}/audio", tags=["voice"])
 def clip_audio(clip_id: str) -> FileResponse:
-    with _lock:
-        clip = next((c for c in _clips if c["id"] == clip_id), None)
-    if clip is None or not Path(clip["_path"]).is_file():
-        raise HTTPException(status_code=404, detail="Clip not found")
-    return FileResponse(clip["_path"], media_type=clip["content_type"])
+    with _cache_lock:
+        with _lock:
+            clip = next((c for c in _clips if c["id"] == clip_id), None)
+        if clip is None or not Path(clip["_path"]).is_file():
+            raise HTTPException(status_code=404, detail="Clip not found")
+        path = Path(clip["_path"])
+        _cache_active[path] = _cache_active.get(path, 0) + 1
+        return _PinnedFileResponse(path, media_type=clip["content_type"])

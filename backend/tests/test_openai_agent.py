@@ -233,3 +233,49 @@ def test_stable_simulated_thermal_profile_cannot_be_escalated_by_model(
     assert assessment.suspected_faults == []
     assert "chưa ghi nhận dấu hiệu quá nhiệt" in assessment.diagnosis
     assert not any(item["tool"] == "search_nearby_garages" for item in trace)
+
+
+def test_every_run_logs_where_the_time_went_and_a_broken_log_never_fails_it(monkeypatch, caplog) -> None:
+    def fake_run_sync(agent, input_text, *, context, max_turns):
+        context.timings.append(("get_maintenance_history", 12.0))
+        context.timings.append(("search_nearby_garages", 340.0))
+        usage = SimpleNamespace(input_tokens=9000, output_tokens=420)
+        return SimpleNamespace(final_output=_normal_assessment(), raw_responses=[1, 2], context_wrapper=SimpleNamespace(usage=usage))
+
+    monkeypatch.setattr(orchestrator.Runner, "run_sync", fake_run_sync)
+    with caplog.at_level("INFO", logger="car_neuron.agent"):
+        orchestrator.vehicle_agent._run_analysis(_telemetry_context(), None)
+    line = next(record.getMessage() for record in caplog.records if record.getMessage().startswith("agent run"))
+    assert "llm_calls=2" in line and "get_maintenance_history:12" in line and "search_nearby_garages:340" in line
+    assert "input_tokens=9000 output_tokens=420" in line and "instructions_chars=" in line
+
+    # No usage, no raw responses and a context without timings: the run still returns its assessment.
+    monkeypatch.setattr(orchestrator.Runner, "run_sync", lambda *args, **kwargs: SimpleNamespace(final_output=_normal_assessment()))
+    assessment, _, _ = orchestrator.vehicle_agent._run_analysis(_telemetry_context(), None)
+    assert assessment.severity == Severity.NORMAL
+
+
+def test_the_tool_wrapper_times_a_tool_and_keeps_the_trace_unchanged() -> None:
+    from agent.tools.openai_tools import _run_and_trace
+
+    state = VehicleToolContext("VF-DEMO-001", None, None)
+    wrapper = SimpleNamespace(context=state)
+    _run_and_trace(wrapper, "ok_tool", {"a": 1}, lambda: {"fine": True})
+    _run_and_trace(wrapper, "bad_tool", {}, lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert [step["tool"] for step in state.trace] == ["ok_tool", "bad_tool"]
+    assert set(state.trace[0]) == {"tool", "arguments", "result"}, "the trace shown in the UI gains no field"
+    assert state.trace[1]["result"] == {"error": "boom"}
+    assert [name for name, _ in state.timings] == ["ok_tool", "bad_tool"] and all(ms >= 0 for _, ms in state.timings)
+
+
+def test_the_paid_agent_script_refuses_without_the_opt_in(monkeypatch, capsys) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("agent_latency", Path(__file__).resolve().parents[1] / "scripts" / "agent_latency.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.delenv("CAR_NEURON_ALLOW_PAID_LLM", raising=False)
+    assert module.main([]) == 2 and "Refusing paid LLM calls" in capsys.readouterr().out
+    body = module.warm_body()
+    assert body["recordCount"] == 15 and body["records"][-1]["coolant"] == 106.5 and body["records"][0]["coolant"] == 96.0

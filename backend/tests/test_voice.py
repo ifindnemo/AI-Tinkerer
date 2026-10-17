@@ -29,6 +29,183 @@ def _client(handler) -> BlazeTTS:
     )
 
 
+def test_voice_job_timings_are_logged_and_private(monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+    monkeypatch.setattr(BlazeTTS, "synthesize", lambda self, text: Speech(text, b"ID3fake", "audio/mpeg", "job"))
+    with caplog.at_level("INFO", logger="car_neuron.voice"):
+        voice._queued_speak("Private test sentence.", "normal", "private-test-key", voice.time.monotonic() - 0.01, "timings-car", "en", False)
+    clip = voice.clips_for("timings-car")[-1]
+    assert not any(key.startswith("_") for key in clip)
+    assert voice._clips[-1]["_queue_wait_ms"] >= 10
+    assert "voice job key=" in caplog.text and "synth_ms=" in caplog.text
+    assert "private-test-key" not in caplog.text and "Private test sentence" not in caplog.text
+
+
+def test_paid_latency_script_refuses_without_opt_in(monkeypatch, capsys):
+    from scripts.tts_latency import main
+    monkeypatch.delenv("CAR_NEURON_ALLOW_PAID_TTS", raising=False)
+    assert main([]) == 2
+    assert "Refusing paid TTS" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("status", [429, 502, 503, 504, "timeout", "connect"])
+def test_creation_is_retried_once_only(monkeypatch, status):
+    calls, waits = [], []
+    def handler(request):
+        calls.append(request.method)
+        if len(calls) == 1:
+            if status == "timeout": raise httpx.ConnectTimeout("fixture")
+            if status == "connect": raise httpx.ConnectError("fixture")
+            return httpx.Response(status)
+        return httpx.Response(200, content=b"ID3fixture", headers={"content-type": "audio/mpeg"})
+    monkeypatch.setattr(voice.time, "sleep", waits.append)
+    assert _client(handler).synthesize("Test.").audio.startswith(b"ID3")
+    assert calls == ["POST", "POST"] and waits == [0.4]
+
+
+@pytest.mark.parametrize("error", [httpx.ReadTimeout("fixture"), httpx.WriteTimeout("fixture")])
+def test_a_read_or_write_timeout_is_not_retried_because_the_job_may_exist(monkeypatch, error):
+    calls = []
+    monkeypatch.setattr(voice.time, "sleep", lambda _: pytest.fail("unexpected retry"))
+    def handler(request):
+        calls.append(request.method)
+        raise error
+    with pytest.raises(httpx.TimeoutException): _client(handler).synthesize("Test.")
+    assert calls == ["POST"]
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 500])
+def test_creation_does_not_retry_permanent_or_unlisted_error(monkeypatch, status):
+    calls = []
+    monkeypatch.setattr(voice.time, "sleep", lambda _: pytest.fail("unexpected retry"))
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(status)
+    with pytest.raises(BlazeError): _client(handler).synthesize("Test.")
+    assert calls == ["POST"]
+
+
+def test_polling_failure_never_creates_a_second_job(monkeypatch):
+    methods = []
+    def handler(request):
+        methods.append(request.method)
+        if request.method == "POST": return httpx.Response(202, json={"id": "known"})
+        return httpx.Response(200, json={"status": "failed"})
+    with pytest.raises(BlazeError): _client(handler).synthesize("Test.")
+    assert methods.count("POST") == 1
+
+
+def test_creation_503_twice_degrades_without_raising_from_announce(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(503)
+    class Inline:
+        def submit(self, fn, *args): fn(*args)
+    monkeypatch.setattr(voice, "_configured", lambda _: True)
+    monkeypatch.setattr(voice, "_pool", lambda: Inline())
+    monkeypatch.setattr(voice, "_client_from_env", lambda _: _client(handler))
+    monkeypatch.setattr(voice.time, "sleep", lambda _: None)
+    voice.announce_alert("Fixture.", severity="warning", dedupe_key="failed-create", session_id="failed-create-car")
+    assert calls == ["POST", "POST"]
+    assert "failed-create" not in voice._spoken
+    assert not voice.clips_for("failed-create-car")
+
+
+@pytest.mark.parametrize("blocked", [0, 1])
+def test_parallel_parts_publish_in_order_without_waiting_for_all(monkeypatch, tmp_path, blocked):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    release, fast, first_published = threading.Event(), threading.Event(), threading.Event()
+    registered = []
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def synthesize(self, text):
+            if text == f"part{blocked}": assert release.wait(3)
+            else: fast.set()
+            return Speech(text, b"ID3fake", "audio/mpeg", text)
+    monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+    monkeypatch.setattr(voice, "_client_from_env", lambda _: Client())
+    monkeypatch.setattr(voice, "_tts_parts", lambda _: ["part0", "part1", "part2"])
+    def register(*args, **kwargs):
+        registered.append(args[2])
+        if args[2] == "part0": first_published.set()
+    monkeypatch.setattr(voice, "_register", register)
+    with ThreadPoolExecutor(1) as pool:
+        job = pool.submit(voice._speak, "script", "normal", "parts", None, "en", False)
+        try:
+            assert fast.wait(2)
+            if blocked == 0: assert registered == []
+            else: assert first_published.wait(2)
+        finally:
+            release.set()
+        job.result(timeout=3)
+    assert registered == ["part0", "part1", "part2"]
+
+
+@pytest.mark.parametrize("failure", ["cancel", "error"])
+def test_later_parts_do_not_publish_after_cancel_or_failed_middle_part(monkeypatch, tmp_path, failure):
+    registered = []
+    live = [True]
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def synthesize(self, text):
+            if text == "part1" and failure == "error": raise BlazeError("fixture")
+            return Speech(text, b"ID3fake", "audio/mpeg", text)
+    monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+    monkeypatch.setattr(voice, "_client_from_env", lambda _: Client())
+    monkeypatch.setattr(voice, "_tts_parts", lambda _: ["part0", "part1", "part2"])
+    def register(*args, **kwargs):
+        registered.append(args[2])
+        if failure == "cancel": live[0] = False
+    monkeypatch.setattr(voice, "_register", register)
+    voice._spoken["parts"] = float("inf")
+    voice._speak("script", "normal", "parts", None, "en", False, lambda: live[0])
+    assert registered == ["part0"]
+    if failure == "error": assert "parts" not in voice._spoken
+
+
+def test_alert_lane_starts_while_three_talk_parts_are_blocked(monkeypatch, tmp_path):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    release, talks_started, alert_started = threading.Event(), threading.Event(), threading.Event()
+    lock = threading.Lock()
+    active, maximum = [0], [0]
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def synthesize(self, text):
+            with lock:
+                active[0] += 1; maximum[0] = max(maximum[0], active[0])
+                if active[0] == 3: talks_started.set()
+            try:
+                if text.startswith("talk"): assert release.wait(3)
+                else: alert_started.set()
+                return Speech(text, b"ID3fake", "audio/mpeg", "same-id")
+            finally:
+                with lock: active[0] -= 1
+    with ThreadPoolExecutor(2) as alert, ThreadPoolExecutor(2) as talk, ThreadPoolExecutor(3) as alert_parts, ThreadPoolExecutor(3) as talk_parts:
+        monkeypatch.setattr(voice, "_executor", alert)
+        monkeypatch.setattr(voice, "_talk_executor", talk)
+        monkeypatch.setattr(voice, "_part_executors", {False: alert_parts, True: talk_parts})
+        monkeypatch.setattr(voice, "_client_from_env", lambda _: Client())
+        monkeypatch.setattr(voice, "_configured", lambda _: True)
+        monkeypatch.setattr(voice, "_tts_parts", lambda script: script.split("|"))
+        monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
+        try:
+            assert voice.speak_line("talk0|talk1|talk2", session_id="lanes")
+            assert talks_started.wait(2)
+            voice.announce_alert("An alert.", severity="critical", dedupe_key="lane-alert")
+            assert alert_started.wait(2), "alert must not queue behind the blocked talk"
+            assert maximum[0] == 4
+        finally:
+            release.set()
+
+
 def test_alert_script_states_the_severity_once() -> None:
     spoken = alert_script(
         "Nhiệt độ nước làm mát cao.",
@@ -131,14 +308,12 @@ def test_long_options_are_split_without_losing_the_final_choice(monkeypatch, tmp
     monkeypatch.setenv("BLAZE_VOICE_DIR", str(tmp_path))
 
     def synthesize(self, text: str) -> Speech:
-        if spoken:
-            assert [clip["text"] for clip in voice.clips_for("long-options")] == parts[:len(spoken)]
         spoken.append(text)
         return Speech(text=text, audio=b"ID3file", content_type="audio/mpeg", job_id=f"job-{len(spoken)}")
 
     monkeypatch.setattr(BlazeTTS, "synthesize", synthesize)
     voice._speak(script, "warning", "long-options", session_id="long-options", remember=False)
-    assert spoken == [voice.spoken_form(part) for part in parts]  # what is read: no bracketed label
+    assert sorted(spoken) == sorted(voice.spoken_form(part) for part in parts)  # what is read: no bracketed label
     assert " ".join(clip["text"] for clip in voice.clips_for("long-options")) == script  # what is shown: all of it
     assert {clip["group"] for clip in voice.clips_for("long-options")} == {"long-options"}
 
@@ -368,13 +543,13 @@ def test_what_is_read_never_switches_language_mid_sentence() -> None:
     assert voice.spoken_form("ECT reached 108°C (hard_safety_guardrail).", "en") == "coolant temperature reached 108 degrees Celsius."
 
 
-def test_a_drowsy_driver_hears_rest_first_not_a_choice_of_garages() -> None:
+def test_a_drowsy_driver_hears_the_garages_only_as_choices_after_rest() -> None:
     trace = _garage_trace()
     vi = tool_options_line(trace, rest=True)
-    assert vi.startswith("Hãy nghỉ trước.") and "gọi cứu hộ" in vi and "Bạn muốn chọn" not in vi
-    assert vi.count("cách") == 1, "only the nearest garage, as information"
+    assert vi.startswith("Quanh bạn có 3 garage") and "chỉ sau khi bạn đã dừng, nghỉ và tỉnh táo" in vi
+    assert "Bạn muốn chọn" not in vi, "no invitation to pick a garage and drive on"
     en = tool_options_line(trace, "en", rest=True)
-    assert en.startswith("Rest first.") and "roadside assistance" in en and "You can choose" not in en
+    assert "only after you have stopped, rested and feel alert" in en and "You can choose" not in en
     assert tool_options_line([], rest=True) == ""
 
 
@@ -410,16 +585,16 @@ def test_after_the_fast_rule_line_only_the_plan_is_added(monkeypatch) -> None:
     monkeypatch.setattr(voice, "_pool", lambda: _Inline())
     voice.clear_alert_history("fast-car")
     voice.speak_car_fast("fast-car", "critical", "vi", "Nước làm mát 121°C, vượt ngưỡng nguy hiểm. Chi tiết dài.", "Dừng xe ở vị trí an toàn.")
-    assert queued == ["Cảnh báo nguy hiểm. Nước làm mát 121°C, vượt ngưỡng nguy hiểm. Dừng xe ở vị trí an toàn."]
+    assert queued == ["Cảnh báo nguy hiểm. Động cơ quá nhiệt. Dừng xe ở vị trí an toàn."]
     result = {"assessment": {"severity": "critical"}, "plan": {"code": "stop_and_get_help", "spoken": "Đừng tự lái xe đến garage."}}
     voice.speak_car_result("fast-car", "critical", "vi", result, "Chẩn đoán dài của agent.", ["Dừng xe."])
     assert queued[1] == "Đừng tự lái xe đến garage.", "no second lead, no repeated diagnosis"
     voice.speak_car_result("fast-car", "critical", "vi", result, "Chẩn đoán dài của agent.", ["Dừng xe."])
     assert len(queued) == 2, "once per episode"
     voice.clear_alert_history("fast-car")
-    voice.speak_car_fast("fast-car", "warning", "vi", "Theo các luật kiểm tra: nước làm mát 109.7°C, vượt ngưỡng.", None)
-    assert queued[2] == "Cảnh báo. Nước làm mát 109.7°C, vượt ngưỡng."
-    assert voice.spoken_form(queued[2]) == "Cảnh báo. Nước làm mát 109,7 độ C, vượt ngưỡng."
+    voice.speak_car_fast("fast-car", "warning", "vi", "Theo các luật kiểm tra: nước làm mát 109.7°C, vượt ngưỡng cảnh báo 105°C.", None)
+    assert queued[2] == "Cảnh báo. Động cơ đang nóng."
+    assert voice.spoken_form("Nước làm mát 109.7°C, vượt ngưỡng.") == "Nước làm mát 109,7 độ C, vượt ngưỡng."
     voice.clear_alert_history("fast-car")
 
 
@@ -441,3 +616,71 @@ def test_a_changed_plan_is_spoken_but_the_level_is_not_repeated(monkeypatch) -> 
     voice.speak_car_result("plan-car", "warning", "vi", rest, "Nhiệt độ cao. Chi tiết.", ["Giảm tải."])
     assert queued == ["Cảnh báo. Nhiệt độ cao. Garage gần nhất là A.", "Hãy nghỉ trước."]
     voice.clear_alert_history("plan-car")
+
+
+def test_the_rule_line_stays_quiet_when_the_agent_announced_the_level_first(monkeypatch) -> None:
+    queued = []
+
+    class _Inline:
+        def submit(self, fn, *args):
+            queued.append(args[0])
+
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setattr(voice, "_pool", lambda: _Inline())
+    voice.clear_alert_history("agent-first")
+    result = {"assessment": {"severity": "critical"}, "plan": {"code": "stop_and_get_help", "spoken": "Đừng tự lái xe."}}
+    voice.speak_car_result("agent-first", "critical", "vi", result, "Nước làm mát quá nóng.", ["Dừng xe."])
+    voice.speak_car_fast("agent-first", "critical", "vi", "Nước làm mát 122°C.", "Dừng xe.")
+    assert len(queued) == 1, "one 'critical warning', not two"
+    voice.clear_alert_history("agent-first")
+
+
+def test_an_alert_made_only_of_figures_still_speaks() -> None:
+    assert alert_script("Nước làm mát 109.7°C.", "warning") == "Cảnh báo. Xem chi tiết trên màn hình."
+    assert alert_script("Battery 9.8 V.", "critical", lang="en") == "Critical warning. See the screen for details."
+    assert alert_script("Battery 9.8 V.", "warning", ["Check the battery."], "en") == "Warning. Check the battery."
+    with pytest.raises(ValueError):
+        alert_script("  ", "warning")
+
+
+def test_a_spoken_alert_is_short_and_the_same_for_every_reading() -> None:
+    """The cache needs the same words for 106.0, 106.5 and 107.2 °C, and a driver needs them to be few."""
+    from voice import fast_alert_line
+    lines = {
+        alert_script(fast_alert_line(f"Theo các luật kiểm tra: nước làm mát {c}°C, vượt ngưỡng cảnh báo 105°C.", "vi"), "warning",
+                     ["Giảm tải động cơ và theo dõi nhiệt độ; nếu tiếp tục tăng, dừng xe ở nơi an toàn và để máy nguội."], "vi")
+        for c in ("106.0", "106.5", "107.2")
+    }
+    assert lines == {"Cảnh báo. Động cơ đang nóng. Giảm tải động cơ và theo dõi nhiệt độ."}
+    drowsy = {
+        alert_script(f"Xe đang chạy {speed} km/h, nhiệt độ động cơ đang ở mức cảnh báo ({c}°C) nhưng chưa phải dừng khẩn cấp và người lái có dấu hiệu mất tỉnh táo. Không nên tiếp tục hành trình đến garage ở xa.",
+                     "critical", ["Dừng tại vị trí an toàn gần nhất để nghỉ; không tiếp tục đến garage ở xa."], "vi")
+        for speed in (60, 65) for c in (106, 107)
+    }
+    assert drowsy == {"Cảnh báo nguy hiểm. Bạn có dấu hiệu mất tỉnh táo. Dừng tại vị trí an toàn gần nhất để nghỉ."}
+    assert all(len(line) < 110 for line in lines | drowsy)
+    english = alert_script("The car is moving at 65 km/h, the engine temperature is at warning level (107°C) but not yet an emergency stop, and the driver shows signs of low alertness.",
+                           "critical", ["Stop at the nearest safe place to rest."], "en")
+    assert english == "Critical warning. You show signs of low alertness. Stop at the nearest safe place to rest."
+
+
+def test_a_critical_engine_wins_over_the_driver_and_a_plan_speaks_one_sentence(monkeypatch) -> None:
+    assert alert_script("Severe engine overheating (122°C). This is mandatory, whatever the driver's state.", "critical",
+                        ["Stop at a safe place."], "en") == "Critical warning. Engine overheating. Stop at a safe place."
+    queued = []
+
+    class _Inline:
+        def submit(self, fn, *args):
+            queued.append(args[0])
+
+    monkeypatch.setenv("BLAZE_API_TOKEN", "test-token")
+    monkeypatch.setenv("BLAZE_SPEAKER_ID", "voice-1")
+    monkeypatch.setattr(voice, "_pool", lambda: _Inline())
+    voice.clear_alert_history("brief-plan")
+    long_plan = "Hãy nghỉ trước. Nghỉ xong mà thấy tỉnh táo thì lái chậm đến Garage A, cách 1 kilômét. Nếu vẫn mệt, hãy nhờ người đến đón."
+    result = {"assessment": {"severity": "critical"}, "plan": {"code": "rest_then_decide", "spoken": long_plan}}
+    voice.speak_car_fast("brief-plan", "critical", "vi", "Nước làm mát đã tới 122.0°C, chạm ngưỡng nguy hiểm 120°C.", "Dừng xe.")
+    voice.speak_car_result("brief-plan", "critical", "vi", result, "x", ["Dừng xe."])
+    assert queued == ["Cảnh báo nguy hiểm. Động cơ quá nhiệt. Dừng xe.", "Hãy nghỉ trước."]
+    voice.clear_alert_history("brief-plan")

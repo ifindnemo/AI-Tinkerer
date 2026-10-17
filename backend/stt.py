@@ -25,6 +25,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
+import http_pool
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 log = logging.getLogger("car_neuron.stt")
@@ -97,7 +98,7 @@ def read_clip(file: UploadFile) -> tuple[bytes, str, str]:
     return audio, file.filename or "audio.wav", content_type
 
 
-def append_turn(session_id: str, *, role: str, text: str, source: str, severity: str | None = None) -> dict[str, Any]:
+def append_turn(session_id: str, *, role: str, text: str, source: str, severity: str | None = None, conversation_id: str | None = None) -> dict[str, Any]:
     """Append one turn to the session JSON file and return the stored turn."""
     if role not in ("driver", "agent"):
         raise ValueError("role must be driver or agent")
@@ -113,6 +114,10 @@ def append_turn(session_id: str, *, role: str, text: str, source: str, severity:
     }
     if severity in ("warning", "critical"):
         turn["severity"] = severity
+    if conversation_id is not None:
+        if re.fullmatch(r"[\w-]{1,64}", conversation_id) is None:
+            raise ValueError("conversation id is invalid")
+        turn["conversationId"] = conversation_id
     path = _conversation_path(session_id)
     with _lock:
         document = _read(path, _safe_session(session_id))
@@ -123,14 +128,19 @@ def append_turn(session_id: str, *, role: str, text: str, source: str, severity:
     return turn
 
 
-def load_conversation(session_id: str) -> dict[str, Any]:
+def load_conversation(session_id: str, *, conversation_id: str | None = None) -> dict[str, Any]:
     """Read the temporary conversation. A new session is an empty turn list."""
     safe = _safe_session(session_id)
     path = _conversation_dir() / f"{safe}.json"
     with _lock:
         if not path.exists():
             return {"sessionId": safe, "updatedAt": None, "turns": []}
-        return _read(path, safe)
+        document = _read(path, safe)
+    if conversation_id is not None:
+        # Vehicle logs stay intact; a new conversation never inherits another scene/tab.
+        document["turns"] = [turn for turn in document["turns"] if turn.get("conversationId") == conversation_id]
+        document["updatedAt"] = document["turns"][-1]["at"] if document["turns"] else None
+    return document
 
 
 class BlazeSTT:
@@ -153,12 +163,12 @@ class BlazeSTT:
         self.timeout = timeout
         self.poll_interval = poll_interval
         self._owns_client = client is None
-        self._client = client or httpx.Client(timeout=min(30.0, timeout))
+        self._client = client or http_pool.shared("blaze-stt")
+        self._request_timeout = min(30.0, timeout)
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        pass  # the client is shared (or the caller's)
 
     def __enter__(self) -> "BlazeSTT":
         return self
@@ -171,6 +181,7 @@ class BlazeSTT:
             f"{self.base_url}/v1/stt/execute",
             headers=self._headers,
             params={"language": self.language, "model": self.model},
+            timeout=self._request_timeout,
             files={"audio_file": (filename or "audio.wav", audio, content_type or "application/octet-stream")},
         )
         _raise_for_status(response)
@@ -196,7 +207,7 @@ class BlazeSTT:
         while True:
             pending = False
             for url in urls:
-                response = self._client.get(url, headers=self._headers)
+                response = self._client.get(url, headers=self._headers, timeout=self._request_timeout)
                 if response.status_code == 404:
                     continue
                 if response.status_code in (429,) or response.status_code >= 500:

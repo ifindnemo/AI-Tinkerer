@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -19,6 +21,7 @@ class VehicleToolContext:
     latitude: float | None
     longitude: float | None
     trace: list[dict[str, Any]] = field(default_factory=list)
+    timings: list[tuple[str, float]] = field(default_factory=list)  # (tool, ms): for the log only, never shown
 
 
 def _run_and_trace(
@@ -27,10 +30,12 @@ def _run_and_trace(
     arguments: dict[str, Any],
     function: Callable[[], dict[str, Any]],
 ) -> str:
+    started = time.monotonic()
     try:
         result = function()
     except Exception as error:
         result = {"error": str(error)}
+    wrapper.context.timings.append((name, round((time.monotonic() - started) * 1000, 1)))
 
     wrapper.context.trace.append(
         {"tool": name, "arguments": arguments, "result": result}
