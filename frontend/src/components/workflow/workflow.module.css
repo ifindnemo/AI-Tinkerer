@@ -1,0 +1,936 @@
+/* ==========================================================================
+   Car Neuron Systems — Workflow Page
+   Aesthetic: Huashu Editorial Scientific Deck × Car Neuron Forest Green
+   Warm Sage Paper (#F5F7F3), Deep Ink (#16211C), Car Neuron Green (#1D7552)
+   ========================================================================== */
+
+.page {
+  --hs-paper: #f4f6f2;
+  --hs-card: #fafbf9;
+  --hs-card-elevated: #ffffff;
+  --hs-ink: #16211c;
+  --hs-ink-soft: #4a5952;
+  --hs-ink-faint: #73827b;
+  --hs-terracotta: #1d7552;
+  --hs-terracotta-soft: #e4f1e9;
+  --hs-rule: #d5dfd8;
+  --hs-rule-strong: #b8c8be;
+  --hs-ok: #1d7552;
+  --hs-ok-soft: #e4f1e9;
+  --hs-watch: #9a5f0c;
+  --hs-watch-soft: #fbf2e1;
+  --hs-crit: #b8382a;
+  --hs-crit-soft: #fcebe8;
+  --hs-serif: Cambria, "DejaVu Serif", Georgia, "Times New Roman", serif;
+  --hs-sans: var(--font, "Be Vietnam Pro", Calibri, "Noto Sans", sans-serif);
+  --hs-mono: var(--mono, ui-monospace, "SF Mono", "JetBrains Mono", monospace);
+
+  min-height: 100vh;
+  background: var(--hs-paper);
+  color: var(--hs-ink);
+  font-family: var(--hs-sans);
+}
+
+.main {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 36px var(--gutter, 32px) 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+/* ── Editorial Containers & Rules ── */
+.editorialSection,
+.schematicSection {
+  background: var(--hs-card);
+  border: 1px solid var(--hs-rule);
+  border-radius: 6px;
+  padding: 32px 36px;
+  box-shadow: 0 2px 10px rgba(57, 46, 43, 0.04);
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--hs-rule);
+  margin: 22px 0 26px;
+}
+
+.kicker {
+  font-family: var(--hs-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hs-terracotta);
+  margin-bottom: 8px;
+}
+
+.title {
+  font-family: var(--hs-serif);
+  font-size: clamp(28px, 3.1vw, 42px);
+  font-weight: 700;
+  line-height: 1.14;
+  letter-spacing: -0.015em;
+  color: var(--hs-ink);
+  margin: 0;
+}
+
+.sectionTitle {
+  font-family: var(--hs-serif);
+  font-size: clamp(22px, 2.3vw, 30px);
+  font-weight: 700;
+  line-height: 1.18;
+  color: var(--hs-ink);
+  margin: 0;
+}
+
+.headerSplit {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 32px;
+  align-items: end;
+}
+
+.lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--hs-ink-soft);
+}
+
+/* ── Mẫu 5 Huashu: Metric Impact Strip ── */
+.metricStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 20px 22px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.idx {
+  font-family: var(--hs-serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hs-terracotta);
+}
+
+.val {
+  font-family: var(--hs-serif);
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--hs-terracotta);
+}
+
+.txt {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--hs-ink-soft);
+}
+
+.txtSmall {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--hs-ink-soft);
+}
+
+.ct {
+  font-family: var(--hs-serif);
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.28;
+  color: var(--hs-ink);
+}
+
+/* ── Chương 2: Controls & Scenario Switcher ── */
+.schematicSection[data-tone="ok"] {
+  --tone-color: var(--hs-ok);
+  --tone-bg: var(--hs-ok-soft);
+}
+
+.schematicSection[data-tone="watch"] {
+  --tone-color: var(--hs-watch);
+  --tone-bg: var(--hs-watch-soft);
+}
+
+.schematicSection[data-tone="critical"] {
+  --tone-color: var(--hs-crit);
+  --tone-bg: var(--hs-crit-soft);
+}
+
+.schematicHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.controlsBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.scenarioGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scenarioBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 13px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  color: var(--hs-ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.scenarioBtn:hover {
+  border-color: var(--hs-terracotta);
+  color: var(--hs-ink);
+}
+
+.scenarioIdx {
+  font-family: var(--hs-serif);
+  font-weight: 700;
+  color: var(--hs-terracotta);
+}
+
+.scenarioBtnActive {
+  background: var(--hs-terracotta);
+  border-color: var(--hs-terracotta);
+  color: #ffffff !important;
+}
+
+.scenarioBtnActive .scenarioIdx {
+  color: #d4eee0;
+}
+
+.playBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 14px;
+  background: var(--hs-card-elevated);
+  border: 1px solid var(--hs-rule-strong);
+  border-radius: 4px;
+  color: var(--hs-ink);
+  font-family: var(--hs-mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.playBtn:hover {
+  border-color: var(--hs-terracotta);
+  color: var(--hs-terracotta);
+}
+
+/* ── Mẫu 3 Huashu: 5-Stage Horizontal Flow Strip ── */
+.stageStrip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.stageStep {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 13px 15px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.stageStep:hover {
+  border-color: var(--hs-terracotta);
+}
+
+.stageStepPast {
+  background: #edf3ef;
+}
+
+.stageStepCurrent {
+  background: var(--hs-card-elevated);
+  border-color: var(--hs-terracotta);
+  border-top: 3px solid var(--hs-terracotta);
+  padding-top: 11px;
+}
+
+.stageStepTop {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.stageCode {
+  font-family: var(--hs-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--hs-terracotta);
+}
+
+.stageLatency {
+  font-family: var(--hs-mono);
+  font-size: 10.5px;
+  color: var(--hs-ink-faint);
+}
+
+.stageName {
+  font-family: var(--hs-serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--hs-ink);
+  line-height: 1.25;
+}
+
+.stageSub {
+  font-size: 12px;
+  color: var(--hs-ink-soft);
+  line-height: 1.3;
+}
+
+/* ── Kinetic Blueprint Board (Light Paper Schematic) ── */
+.canvasBoard {
+  position: relative;
+  padding: 24px 20px;
+  background-color: var(--hs-paper);
+  background-image:
+    linear-gradient(to right, rgba(29, 117, 82, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(29, 117, 82, 0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.schematicSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.svgGuides path {
+  fill: none;
+  stroke: #b8c9bf;
+  stroke-width: 1.75;
+}
+
+.svgPulses path {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.inkPulseFast {
+  stroke: var(--hs-terracotta);
+  stroke-width: 3;
+  stroke-dasharray: 0.14 0.86;
+  animation: inkFlow 2.4s linear infinite;
+}
+
+.inkPulseMed {
+  stroke: var(--tone-color, var(--hs-terracotta));
+  stroke-width: 3;
+  stroke-dasharray: 0.16 0.84;
+  animation: inkFlow 3s linear infinite;
+}
+
+.inkPulseAlert {
+  stroke: var(--hs-crit);
+  stroke-width: 3.5;
+  stroke-dasharray: 0.22 0.78;
+  animation: inkFlow 1.4s linear infinite;
+}
+
+@keyframes inkFlow {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── 4-Column Architectural Stations ── */
+.stationGrid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.15fr 1.05fr;
+  gap: 22px;
+  align-items: stretch;
+}
+
+.stationCol {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 14px;
+}
+
+.colLabel {
+  font-family: var(--hs-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hs-terracotta);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hs-rule);
+}
+
+.stationCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--hs-card);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.stationCard:hover {
+  border-color: var(--hs-terracotta);
+  transform: translateY(-1px);
+}
+
+.cardActive {
+  background: var(--hs-card-elevated);
+  border-color: var(--hs-terracotta);
+  box-shadow: 0 6px 18px rgba(29, 117, 82, 0.12);
+}
+
+.cardWarn {
+  border-color: var(--hs-crit);
+  background: #fffafa;
+}
+
+.cardTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardIdx {
+  font-family: var(--hs-serif);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--hs-terracotta);
+}
+
+.tagMono {
+  font-family: var(--hs-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  color: var(--hs-ink-soft);
+}
+
+.dataGrid3,
+.dataGrid2 {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+}
+
+.dataGrid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dataGrid2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dataGrid3 > div,
+.dataGrid2 > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dataGrid3 span,
+.dataGrid2 span {
+  font-size: 10.5px;
+  color: var(--hs-ink-faint);
+}
+
+.dataGrid3 strong,
+.dataGrid2 strong {
+  font-family: var(--hs-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--hs-ink);
+}
+
+.dataGrid3 strong[data-tone="ok"],
+.dataGrid2 strong[data-tone="ok"] {
+  color: var(--hs-ok);
+}
+
+.dataGrid3 strong[data-tone="watch"],
+.dataGrid2 strong[data-tone="watch"] {
+  color: var(--hs-watch);
+}
+
+.dataGrid3 strong[data-tone="critical"],
+.dataGrid2 strong[data-tone="critical"] {
+  color: var(--hs-crit);
+}
+
+.thermalTrack {
+  height: 6px;
+  border-radius: 2px;
+  background: #dce5df;
+  overflow: hidden;
+}
+
+.thermalFill {
+  height: 100%;
+  background: var(--hs-terracotta);
+  transition: width 0.35s ease;
+}
+
+.thermalFill[data-tone="ok"] {
+  background: var(--hs-ok);
+}
+
+.thermalFill[data-tone="watch"] {
+  background: var(--hs-watch);
+}
+
+.thermalFill[data-tone="critical"] {
+  background: var(--hs-crit);
+}
+
+.cardNote {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--hs-ink-soft);
+  padding-top: 6px;
+  border-top: 1px dashed var(--hs-rule);
+}
+
+/* ── Sample Buffer Cells ── */
+.sampleCells {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0 2px;
+}
+
+.sampleCells span {
+  height: 10px;
+  border-radius: 2px;
+  background: #dce5df;
+  transition: background 0.2s ease;
+}
+
+.cellActive {
+  background: var(--hs-terracotta) !important;
+}
+
+/* ── Orchestrator & Guardrail Station (Col 3) ── */
+.orchestratorCard {
+  flex: 1;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.guardrailBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-left: 3px solid var(--hs-ok);
+  border-radius: 4px;
+}
+
+.guardrailBox[data-triggered="true"] {
+  background: var(--hs-crit-soft);
+  border-color: #e4b4ae;
+  border-left: 3px solid var(--hs-crit);
+}
+
+.guardrailBox strong {
+  font-family: var(--hs-serif);
+  font-size: 13.5px;
+  color: var(--hs-ink);
+}
+
+.guardrailBox small {
+  font-size: 11.5px;
+  color: var(--hs-ink-soft);
+}
+
+.orchestratorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolTable {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.toolRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 11px;
+  background: var(--hs-paper);
+  border-bottom: 1px solid var(--hs-rule);
+  font-size: 12px;
+  color: var(--hs-ink-faint);
+}
+
+.toolRow:last-child {
+  border-bottom: 0;
+}
+
+.toolRow[data-active="true"] {
+  background: var(--hs-card-elevated);
+  color: var(--hs-ink);
+}
+
+.toolCode {
+  font-family: var(--hs-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.toolRow[data-active="true"] .toolCode {
+  color: var(--hs-terracotta);
+}
+
+.toolVal {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* ── Column 4: Plan & Quote ── */
+.planBadge {
+  font-family: var(--hs-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--hs-terracotta-soft);
+  color: var(--hs-terracotta);
+}
+
+.quoteBox {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--hs-paper);
+  border-left: 3px solid var(--hs-terracotta);
+  font-family: var(--hs-serif);
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--hs-ink);
+}
+
+/* ── Mẫu 2 Huashu: Two-Column Stage Inspector ── */
+.inspectorSplit {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 24px;
+  padding: 22px 24px;
+  background: var(--hs-paper);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+}
+
+.inspectorLeft {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.inspectorMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.modulePath {
+  font-family: var(--hs-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--hs-card);
+  border: 1px solid var(--hs-rule);
+  border-radius: 3px;
+  color: var(--hs-ink-soft);
+}
+
+.inspectorHeading {
+  margin: 2px 0;
+  font-family: var(--hs-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--hs-ink);
+}
+
+.inspectorRight {
+  display: flex;
+  flex-direction: column;
+  background: var(--hs-card);
+  border: 1px solid var(--hs-rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.codeBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #e6efe9;
+  border-bottom: 1px solid var(--hs-rule);
+  font-family: var(--hs-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hs-ink-soft);
+}
+
+.codePre {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--hs-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--hs-ink);
+  overflow-x: auto;
+}
+
+/* ── Mẫu 4 Huashu: Evidence Data Table ── */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.evidenceTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  color: var(--hs-ink);
+}
+
+.evidenceTable th {
+  text-align: left;
+  padding: 13px 16px;
+  background: var(--hs-paper);
+  border-top: 2px solid var(--hs-ink);
+  border-bottom: 1px solid var(--hs-ink);
+  font-family: var(--hs-serif);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--hs-ink);
+}
+
+.evidenceTable td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hs-rule);
+  vertical-align: top;
+  line-height: 1.5;
+  color: var(--hs-ink-soft);
+}
+
+.evidenceTable td strong {
+  color: var(--hs-ink);
+}
+
+.evidenceTable code {
+  font-family: var(--hs-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: var(--hs-terracotta-soft);
+  color: var(--hs-terracotta);
+}
+
+.highlightRow {
+  background: #eaf4ee;
+}
+
+.highlightRow td {
+  color: var(--hs-ink);
+}
+
+.footerCta {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hs-rule);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.srcNote {
+  font-family: var(--hs-serif);
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--hs-terracotta);
+}
+
+.ctaActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ── Page Footer ── */
+.footer {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 20px var(--gutter, 32px) 40px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--hs-rule);
+  font-size: 13px;
+  color: var(--hs-ink-soft);
+}
+
+.footer > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.footer nav a {
+  color: var(--hs-ink-soft);
+  font-weight: 500;
+}
+
+.footer nav a:hover {
+  color: var(--hs-terracotta);
+}
+
+/* ── Responsive Breakpoints ── */
+@media (max-width: 1140px) {
+  .headerSplit {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .metricStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stageStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stationGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schematicSvg {
+    display: none;
+  }
+
+  .inspectorSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .main {
+    padding: 20px 16px 48px;
+  }
+
+  .editorialSection,
+  .schematicSection {
+    padding: 22px 18px;
+  }
+
+  .metricStrip,
+  .stageStrip,
+  .stationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .footer > div {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inkPulseFast,
+  .inkPulseMed,
+  .inkPulseAlert {
+    animation: none !important;
+  }
+}
