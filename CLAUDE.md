@@ -13,7 +13,7 @@ Vehicle health and driver-attention agent: a blackbox/OBD stream and a webcam fe
 | Path | What |
 |---|---|
 | `backend/` | FastAPI + SQLite. `agent/` vehicle agent (OpenAI Agents SDK), `analysis/` detector + worker for OBD data, `driver/` camera rules, Guardian policy, registry and driver agent, `voice.py` / `stt.py` Blaze TTS/STT, `llm_provider.py` Inworld or OpenAI |
-| `frontend/` | Next.js 16 / React 19. Routes `/` home, `/garage` dashboard (Mock, API, OBD modes), `/driver` camera, `/film` intro video. Pure logic in `src/lib/`, tests in `tests/`, browser checks in `scripts/verify-*.mjs` |
+| `frontend/` | Next.js 16 / React 19. Routes `/` home, `/garage` dashboard (Mock, API, OBD modes), `/driver` camera, `/film` intro video, `/present` the 7-minute talk as five slides. Pure logic in `src/lib/`, tests in `tests/`, browser checks in `scripts/verify-*.mjs` |
 | `gateway/` | OBD-II reader (real ELM327 or `--source fake-elm`) that uploads to the backend |
 | `skills/` | Diagnostic skill loaded into the vehicle agent's instructions |
 | `frontend/src/vendor/robot-heads/` | Reviewed third-party source (MIT). Do not edit for app behaviour; see its README |
@@ -27,6 +27,7 @@ Vehicle health and driver-attention agent: a blackbox/OBD stream and a webcam fe
 cd frontend && npx next build && npx next start   # the same by hand: a demo is always a production build
 cd backend && AGENT_MODE=rules .venv/bin/python -m uvicorn main:app --port 8000   # no LLM calls (batch, OBD and driver wording)
 backend/.venv/bin/python backend/scripts/llm_preflight.py   # one tiny LLM call: provider, model, latency
+backend/.venv/bin/python backend/scripts/prewarm_voice.py --dry-run   # offline preview; paid prewarm/latency require CAR_NEURON_ALLOW_PAID_TTS=1 (runbook §9)
 ```
 
 Demo address: `/garage?presenter=1&reset=1` (`reset=1` clears rehearsal leftovers in the browser). Steps and fallbacks: `docs/demo-runbook.md`.
