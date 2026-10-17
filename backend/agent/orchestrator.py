@@ -21,9 +21,11 @@ from agent.tools.garage_search import search_nearby_garages
 from agent.tools.maintenance_history import get_maintenance_history
 from booking import backend_name, build_proposal, timezone_name
 from agent.tools import (
+    PREFETCHED_VEHICLE_TOOLS,
     VEHICLE_TOOLS,
     VehicleToolContext,
     create_google_calendar_event,
+    prefetch_read_tools,
 )
 from schemas import (
     ActionType,
@@ -60,21 +62,28 @@ class VehicleAgent:
         llm_provider.configure()
         self.model = llm_provider.model_name()
         # One agent per output language: the instructions differ only in the language rule.
-        self._agents: dict[str, Agent[VehicleToolContext]] = {}
+        self._agents: dict[tuple[str, bool], Agent[VehicleToolContext]] = {}
         self.agent = self._agent_for("vi")
 
-    def _agent_for(self, lang: str) -> "Agent[VehicleToolContext]":
+    def _agent_for(self, lang: str, prefetched: bool = False) -> "Agent[VehicleToolContext]":
         lang = normalize(lang)
-        if lang not in self._agents:
-            self._agents[lang] = Agent[VehicleToolContext](
+        key = (lang, prefetched)
+        if key not in self._agents:
+            self._agents[key] = Agent[VehicleToolContext](
                 name="Vehicle Guardian",
-                instructions=build_agent_instructions(lang),
+                instructions=build_agent_instructions(lang, prefetched=prefetched),
                 model=self.model,
                 model_settings=llm_provider.model_settings(parallel_tool_calls=True),
-                tools=VEHICLE_TOOLS,
+                tools=PREFETCHED_VEHICLE_TOOLS if prefetched else VEHICLE_TOOLS,
                 output_type=VehicleAssessment,
             )
-        return self._agents[lang]
+        return self._agents[key]
+
+    @staticmethod
+    def prefetch_enabled() -> bool:
+        """AGENT_PREFETCH_TOOLS=1: look the weather, history and garages up in code, side by side, before the model
+        runs (fewer model turns). Off by default; read on every run so it can be switched without a code change."""
+        return os.getenv("AGENT_PREFETCH_TOOLS", "0").strip().lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
     def _enforce_safety_floor(
@@ -129,29 +138,40 @@ class VehicleAgent:
             "hard_safety_guardrail": safety.model_dump(mode="json"),
             "short_term_memory": short_term_memory,
         }
-        agent = self._agent_for(telemetry_context.get("lang", "vi"))
+        prefetch = self.prefetch_enabled()
         started = time.monotonic()
+        if prefetch:
+            # Garages only when the rules already point at a problem (hard safety, the batch coolant floor or a
+            # detector finding); finalize() still looks them up for a final warning the model reached on its own.
+            policy = batch_policy(telemetry_context)
+            floor = (
+                SEVERITY_RANK[safety.minimum_severity] >= SEVERITY_RANK[Severity.WARNING]
+                or bool(policy and policy.get("minimum_severity") in ("warning", "critical"))
+                or bool(telemetry_context.get("detector_findings"))
+            )
+            input_data["tool_results"] = prefetch_read_tools(context, include_garages=floor)
+        agent = self._agent_for(telemetry_context.get("lang", "vi"), prefetched=prefetch)
         result = Runner.run_sync(
             agent,
             json.dumps(for_model(input_data), ensure_ascii=False),
             context=context,
             max_turns=6,
         )
-        self._log_run(agent, result, context, (time.monotonic() - started) * 1000)
+        self._log_run(agent, result, context, (time.monotonic() - started) * 1000, prefetch)
         if not isinstance(result.final_output, VehicleAssessment):
             raise RuntimeError("OpenAI agent returned an invalid vehicle assessment")
         return result.final_output, context.trace
 
     @staticmethod
-    def _log_run(agent, result, context: VehicleToolContext, total_ms: float) -> None:
+    def _log_run(agent, result, context: VehicleToolContext, total_ms: float, prefetch: bool = False) -> None:
         """One line per run: where the 10-20 s go. Tools run side by side, so their times do not add up to a share
         of the total; the model calls are what is left. Never raises."""
         try:
             usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
             tokens = f" input_tokens={usage.input_tokens} output_tokens={usage.output_tokens}" if usage else ""
-            log.info("agent run total_ms=%.0f llm_calls=%d tools=%s instructions_chars=%d%s",
+            log.info("agent run total_ms=%.0f llm_calls=%d prefetch=%s tools=%s instructions_chars=%d%s",
                      total_ms, len(getattr(result, "raw_responses", []) or []),
-                     [f"{name}:{ms:.0f}" for name, ms in context.timings], len(str(agent.instructions or "")), tokens)
+                     "on" if prefetch else "off", [f"{name}:{ms:.0f}" for name, ms in context.timings], len(str(agent.instructions or "")), tokens)
         except Exception:
             log.debug("could not log the agent run", exc_info=True)
 
@@ -441,7 +461,12 @@ class VehicleAgent:
         vehicle_id = str(telemetry_context["vehicle_id"])
         attach_driver(telemetry_context)  # the camera's latest summary for this car, if any
         previous_memory = store.get_active_incident_memory(vehicle_id)
+        from situation import Superseded, epoch
+
+        started_epoch = epoch()
         raw, trace, engine, fallback = self._model_or_rules(telemetry_context, previous_memory)
+        if epoch() != started_epoch:
+            raise Superseded("the demo was reset while the agent was running")  # nothing of the old scenario is stored
         assessment, safety = self.finalize(raw, telemetry_context, trace, batch_policy(telemetry_context))
         result = self.persist_assessment(
             telemetry_context, assessment, trace, safety, previous_memory

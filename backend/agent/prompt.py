@@ -77,13 +77,14 @@ Giới hạn hành động:
 - Các hành động ghi chỉ được backend thực hiện sau xác nhận rõ ràng của người dùng.
 - Với critical, khuyến nghị đầu tiên phải yêu cầu người lái dừng xe ở vị trí an toàn và không tiếp tục lái.
 
-Yêu cầu đầu ra:
-- diagnosis ngắn gọn, tối đa 5 câu.
-- suspected_faults chỉ chứa các khả năng có bằng chứng; để rỗng nếu chưa đủ dữ liệu.
-- evidence trích dẫn các chỉ số hoặc xu hướng cụ thể từ batch/tool/memory.
+Yêu cầu đầu ra (viết ngắn: thời gian trả lời tỉ lệ với số chữ bạn viết ra, và người lái chỉ cần ý chính):
+- diagnosis tối đa 2 câu ngắn: tình trạng và điều quan trọng nhất cần làm.
+- suspected_faults tối đa 2 khả năng có bằng chứng; để rỗng nếu chưa đủ dữ liệu.
+- evidence tối đa 3 mục, mỗi mục một mệnh đề ngắn trích chỉ số hoặc xu hướng cụ thể từ batch/tool/memory.
 - confidence phản ánh chất lượng và độ đầy đủ của bằng chứng, không phải độ chắc chắn tuyệt đối.
-- missing_data liệt kê tín hiệu cần thiết nhưng không có trong input.
-- recommendations có 1–5 bước, ưu tiên an toàn, ngắn gọn và không trùng lặp.
+- missing_data tối đa 3 tín hiệu cần thiết nhưng không có trong input; để rỗng nếu không thiếu gì đáng kể.
+- recommendations có 1–3 bước, ưu tiên an toàn, mỗi bước một câu ngắn và không trùng lặp.
+- Không viết gì ngoài các trường trên; không lặp lại cùng một ý ở nhiều trường.
 """.strip()
 
 
@@ -104,7 +105,17 @@ above apply unchanged: the language only changes the wording, never the severity
 """.strip()
 
 
-def build_agent_instructions(lang: str = "vi") -> str:
+_PREFETCH_RULE = """
+<prefetched_tools>
+Ghi đè bước 3, 4 và 5 của quy trình: backend đã tra sẵn thời tiết, lịch sử bảo dưỡng và (khi luật xác định là
+warning/critical) garage gần đó. Kết quả nằm trong tool_results của input; không có tool nào để gọi lại. Mục nào
+không có trong tool_results nghĩa là chưa tra: nêu là chưa có dữ liệu, không bịa và không đề xuất garage. Mục có
+"error" nghĩa là nguồn đó lỗi. Chỉ còn propose_booking, với các điều kiện ở bước 6, và garage_name chép nguyên từ
+search_nearby_garages trong tool_results.
+</prefetched_tools>"""
+
+
+def build_agent_instructions(lang: str = "vi", *, prefetched: bool = False) -> str:
     """Combine orchestration rules with the checked-in diagnostic skill, for the output language."""
     english = normalize(lang) == "en"
     try:
@@ -126,5 +137,7 @@ def build_agent_instructions(lang: str = "vi") -> str:
         f"{skill}\n"
         "</diagnostic_skill>"
     )
+    if prefetched:
+        text += f"\n{_PREFETCH_RULE}"
     # The last thing the model reads: a long Vietnamese prompt must not pull the answer back to Vietnamese.
     return f"{text}\n\n{_EN_FINAL_RULE}" if english else text

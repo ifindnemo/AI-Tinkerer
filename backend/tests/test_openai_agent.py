@@ -279,3 +279,201 @@ def test_the_paid_agent_script_refuses_without_the_opt_in(monkeypatch, capsys) -
     assert module.main([]) == 2 and "Refusing paid LLM calls" in capsys.readouterr().out
     body = module.warm_body()
     assert body["recordCount"] == 15 and body["records"][-1]["coolant"] == 106.5 and body["records"][0]["coolant"] == 96.0
+
+
+def _stub_lookups(monkeypatch, calls: list[str]) -> None:
+    import agent.tools.openai_tools as tools
+
+    class Weather:
+        def model_dump(self, mode="json"):
+            return {"outside_temperature_c": 31}
+
+    def weather(*args, **kwargs):
+        calls.append("weather")
+        return Weather()
+
+    def history(vehicle_id):
+        calls.append("history")
+        return {"records": []}
+
+    def garages(**kwargs):
+        calls.append("garages")
+        return {"garages": [{"name": "Gara An Phat"}]}
+
+    monkeypatch.setattr(tools, "get_external_environment_context_data", weather)
+    monkeypatch.setattr(tools, "get_maintenance_history", history)
+    monkeypatch.setattr(tools, "search_nearby_garages", garages)
+
+
+def test_prefetch_is_off_unless_asked_and_the_model_keeps_all_four_tools(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_PREFETCH_TOOLS", raising=False)
+    seen = {}
+
+    def fake_run_sync(agent, input_text, *, context, max_turns):
+        seen["tools"] = {tool.name for tool in agent.tools}
+        seen["payload"] = json.loads(input_text)
+        return SimpleNamespace(final_output=_normal_assessment())
+
+    monkeypatch.setattr(orchestrator.Runner, "run_sync", fake_run_sync)
+    orchestrator.vehicle_agent.model_assessment(_telemetry_context(), None)
+
+    assert len(seen["tools"]) == 4 and "tool_results" not in seen["payload"]
+    assert "<prefetched_tools>" not in build_agent_instructions()
+
+
+def test_prefetch_looks_the_tools_up_before_the_model_and_leaves_it_only_the_booking_tool(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_PREFETCH_TOOLS", "1")
+    calls: list[str] = []
+    _stub_lookups(monkeypatch, calls)
+    seen = {}
+
+    def fake_run_sync(agent, input_text, *, context, max_turns):
+        seen["tools"] = {tool.name for tool in agent.tools}
+        seen["payload"] = json.loads(input_text)
+        seen["instructions"] = agent.instructions
+        return SimpleNamespace(final_output=_normal_assessment())
+
+    monkeypatch.setattr(orchestrator.Runner, "run_sync", fake_run_sync)
+    # 125 °C coolant: the rules floor is critical, so the garages are fetched too
+    _, trace = orchestrator.vehicle_agent.model_assessment(_telemetry_context(coolant=125), None)
+
+    assert sorted(calls) == ["garages", "history", "weather"]
+    assert seen["tools"] == {"propose_booking"}
+    assert set(seen["payload"]["tool_results"]) == {
+        "get_external_environment_context", "get_maintenance_history", "search_nearby_garages",
+    }
+    assert "<prefetched_tools>" in seen["instructions"]
+    # the trace the page shows is the same shape and always in the same order
+    assert [step["tool"] for step in trace] == [
+        "get_external_environment_context", "get_maintenance_history", "search_nearby_garages",
+    ]
+    assert all(set(step) == {"tool", "arguments", "result"} for step in trace)
+
+
+def test_prefetch_skips_the_garages_when_the_rules_say_normal_and_finalize_still_adds_them(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_PREFETCH_TOOLS", "1")
+    monkeypatch.setenv("EXTERNAL_TOOLS", "on")
+    calls: list[str] = []
+    _stub_lookups(monkeypatch, calls)
+    warning = _normal_assessment().model_copy(update={"severity": Severity.WARNING})
+    monkeypatch.setattr(
+        orchestrator.Runner, "run_sync", lambda *a, **k: SimpleNamespace(final_output=warning)
+    )
+    monkeypatch.setattr(
+        orchestrator, "search_nearby_garages", lambda **kwargs: calls.append("garages") or {"options": []}
+    )
+
+    _, trace, _ = orchestrator.vehicle_agent._run_analysis(_telemetry_context(), None)
+
+    assert calls.count("garages") == 1, "looked up once, by finalize, not twice"
+    assert [step["tool"] for step in trace].count("search_nearby_garages") == 1
+    assert sorted(set(calls)) == ["garages", "history", "weather"]
+
+
+def test_prefetch_lookup_failure_becomes_an_error_entry_and_missing_gps_is_reported(monkeypatch) -> None:
+    from agent.tools.openai_tools import prefetch_read_tools
+
+    calls: list[str] = []
+    _stub_lookups(monkeypatch, calls)
+    import agent.tools.openai_tools as tools
+
+    monkeypatch.setattr(tools, "get_maintenance_history", lambda vehicle_id: (_ for _ in ()).throw(OSError("disk")))
+    context = VehicleToolContext("VF-DEMO-001", None, None)
+
+    results = prefetch_read_tools(context, include_garages=True)
+
+    assert results["get_maintenance_history"] == {"error": "disk"}
+    assert "GPS" in results["get_external_environment_context"]["error"]
+    assert "GPS" in results["search_nearby_garages"]["error"]
+    assert calls == [], "no GPS: no external lookup was attempted"
+    assert [name for name, _ in context.timings] == [step["tool"] for step in context.trace]
+
+
+def test_the_run_log_says_whether_prefetch_was_on(monkeypatch, caplog) -> None:
+    import logging
+
+    caplog.set_level(logging.INFO, logger="car_neuron.agent")
+    monkeypatch.setenv("AGENT_PREFETCH_TOOLS", "1")
+    _stub_lookups(monkeypatch, [])
+    monkeypatch.setattr(
+        orchestrator.Runner, "run_sync", lambda *a, **k: SimpleNamespace(final_output=_normal_assessment())
+    )
+    orchestrator.vehicle_agent.model_assessment(_telemetry_context(), None)
+    assert any("prefetch=on" in record.getMessage() for record in caplog.records)
+
+
+def test_prefetch_fetches_the_garages_for_the_sustained_heat_floor_that_drives_the_booking_scene(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_PREFETCH_TOOLS", "1")
+    calls: list[str] = []
+    _stub_lookups(monkeypatch, calls)
+    monkeypatch.setattr(
+        orchestrator.Runner, "run_sync", lambda *a, **k: SimpleNamespace(final_output=_normal_assessment())
+    )
+    context = _telemetry_context(coolant=108)
+    context["records"] = [dict(context["records"][0], coolant_temp_c=108.0) for _ in range(10)]
+
+    orchestrator.vehicle_agent.model_assessment(context, None)
+
+    assert "garages" in calls, "warm engine, no hard-safety trigger: the batch floor must still fetch garages"
+
+
+def test_outside_lookups_are_cached_per_place_and_errors_are_not(monkeypatch) -> None:
+    from agent.tools import lookup_cache
+    from agent.tools.openai_tools import prefetch_read_tools
+
+    monkeypatch.setenv("TOOL_CACHE_SECONDS", "600")
+    lookup_cache.clear()
+    calls: list[str] = []
+    _stub_lookups(monkeypatch, calls)
+
+    def run(latitude: float = 10.7769, longitude: float = 106.7009) -> dict:
+        return prefetch_read_tools(VehicleToolContext("VF-DEMO-001", latitude, longitude), include_garages=True)
+
+    first = run()
+    second = run()
+    assert calls.count("weather") == 1 and calls.count("garages") == 1, "second run served from the cache"
+    assert calls.count("history") == 2, "the local history file is cheap and always read fresh"
+    assert second == first
+    run(latitude=10.77694, longitude=106.70088)  # GPS jitter of a few metres: same spot
+    assert calls.count("weather") == 1
+    run(latitude=10.80, longitude=106.70)  # a different place
+    assert calls.count("weather") == 2 and calls.count("garages") == 2
+
+    # an error is retried, not remembered
+    import agent.tools.openai_tools as tools
+
+    lookup_cache.clear()
+    failing = {"on": True}
+
+    def flaky(**kwargs):
+        if failing["on"]:
+            raise TimeoutError("slow")
+        return {"garages": []}
+
+    monkeypatch.setattr(tools, "search_nearby_garages", flaky)
+    assert "error" in run()["search_nearby_garages"]
+    failing["on"] = False
+    assert run()["search_nearby_garages"] == {"garages": []}
+    lookup_cache.clear()
+
+
+def test_the_cache_returns_copies_expires_and_can_be_switched_off(monkeypatch) -> None:
+    from agent.tools import lookup_cache
+
+    monkeypatch.setenv("TOOL_CACHE_SECONDS", "600")
+    lookup_cache.clear()
+    value = {"items": [1]}
+    got = lookup_cache.cached(("k",), lambda: value)
+    got["items"].append(2)  # a caller changing its copy must not change what is stored
+    assert lookup_cache.cached(("k",), lambda: {"items": ["new"]}) == {"items": [1]}
+    monkeypatch.setenv("TOOL_CACHE_SECONDS", "0")
+    assert lookup_cache.cached(("k",), lambda: {"items": ["new"]}) == {"items": ["new"]}
+    monkeypatch.setenv("TOOL_CACHE_SECONDS", "oops")
+    assert lookup_cache.ttl_seconds() == 600.0
+    monkeypatch.setenv("TOOL_CACHE_SECONDS", "600")
+    clock = iter([1000.0, 1000.0, 1601.0, 1601.0])  # now + stored-at for each call
+    monkeypatch.setattr(lookup_cache.time, "monotonic", lambda: next(clock))
+    lookup_cache.clear()
+    assert lookup_cache.cached(("t",), lambda: 1) == 1
+    assert lookup_cache.cached(("t",), lambda: 2) == 2, "expired after the TTL"
+    lookup_cache.clear()

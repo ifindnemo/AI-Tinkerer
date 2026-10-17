@@ -29,12 +29,14 @@ def main(argv=None) -> int:
         print("Refusing paid LLM calls: set CAR_NEURON_ALLOW_PAID_LLM=1 explicitly to run.")
         return 2
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repeat", type=int, choices=range(1, 3), default=2, help="the second run shows prompt caching")
+    parser.add_argument("--repeat", type=int, choices=range(1, 6), default=2, help="model runs (at most 5); the second shows prompt caching")
     args = parser.parse_args(argv)
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     import logging
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    for noisy in ("httpx", "httpcore"):  # their INFO lines print request URLs, and a provider key can be in the query string
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     logging.getLogger("car_neuron.agent").setLevel(logging.INFO)
     from agent.orchestrator import VehicleAgent
     from schemas import TelemetryBatchInput
