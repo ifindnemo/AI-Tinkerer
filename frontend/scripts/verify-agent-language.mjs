@@ -29,6 +29,7 @@ try {
   const page = await context.newPage();
   await page.goto(`${base}/garage?presenter=1&reset=1`);
   await expect(page.getByTestId("garage-camera")).toBeVisible({timeout: 60_000});
+  await page.getByTestId("demo-settings-button").click();
   const settings = page.getByTestId("agent-settings");
   await expect(settings).toBeVisible();
 
@@ -43,6 +44,7 @@ try {
   await expect(page.getByTestId("agent-lang-en")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByTestId("agent-voice-status")).toContainText("tiếng Anh");
   await expect.poll(() => voice.some(search => search.includes("lang=en"))).toBe(true);
+  await page.keyboard.press("Escape");
   await page.getByLabel("Kịch bản mô phỏng").selectOption("warm");
   await page.waitForTimeout(9_000);
   await page.getByTestId("garage-camera-sim-drowsy").click();
@@ -65,6 +67,7 @@ try {
   await expect(page.getByTestId("board-action")).toContainText("Dừng ở vị trí an toàn gần nhất");
 
   // 4. The interface stays Vietnamese: the setting pins the agent only. The robot panel's mute is the same switch.
+  await page.getByTestId("demo-settings-button").click();
   await expect(page.getByTestId("agent-voice-status")).toContainText("tiếng Anh");
   await page.getByTestId("agent-voice-toggle").click();
   await expect(page.getByTestId("agent-voice-toggle")).toHaveAttribute("aria-pressed", "false");
@@ -75,6 +78,7 @@ try {
 
   // 5. The choice survives a reload, and "auto" returns to following the interface.
   await page.reload();
+  await page.getByTestId("demo-settings-button").click();
   await expect(page.getByTestId("agent-lang-en")).toHaveAttribute("aria-checked", "true");
   await page.getByTestId("agent-lang-auto").click();
   await expect(page.getByTestId("agent-voice-status")).toContainText("tiếng Việt");
